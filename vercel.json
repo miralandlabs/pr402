@@ -1,0 +1,15 @@
+{
+  "builds": [
+    {
+      "src": "src/bin/facilitator.rs",
+      "use": "@vercel/rust"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/facilitator/(.*)",
+      "dest": "/src/bin/facilitator"
+    }
+  ]
+}
+
