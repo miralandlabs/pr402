@@ -37,7 +37,8 @@ spl-token = { version = "9.0", features = ["no-entrypoint"] }
 spl-token-2022 = { version = "10.0", features = ["no-entrypoint"] }
 solana-client = "3.1"
 bs58 = "0.5"
-universalsettle-api = { path = "../universalsettle/api" }
+# universalsettle-api = { path = "../universalsettle/api" }
+universalsettle-api = "0.1.0"
 
 # Base64 encoding
 base64 = "0.22"
