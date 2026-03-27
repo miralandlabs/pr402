@@ -61,7 +61,7 @@ pub fn build_signed_onboard_message(
     Pubkey::from_str(wallet_b58).map_err(|_| "invalid wallet pubkey")?;
 
     let mut nonce = [0u8; 16];
-    getrandom::getrandom(&mut nonce).map_err(|_| "RNG failure")?;
+    getrandom::fill(&mut nonce).map_err(|_| "RNG failure")?;
     let nonce_hex = hex_lower(&nonce);
     let issued = now_unix();
     let expires = issued.saturating_add(ttl_sec);
