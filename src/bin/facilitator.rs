@@ -1,40 +1,39 @@
 //! Vercel serverless function entrypoint for x402 facilitator.
+//!
+//! Like `signer-payer-serverless-copy` bins: build `Arc` state in [`main`] before
+//! [`vercel_runtime::run`]. Avoid `once_cell::sync::Lazy` for the facilitator: if init panics,
+//! `Lazy` stays poisoned for the lifetime of the warm Lambda.
 
-use once_cell::sync::Lazy;
 use pr402::{chain::ChainProvider, config::Config, db::Pr402Db, facilitator::Facilitator};
 use serde::Deserialize;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tracing::warn;
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
 
-// Lazy static facilitator instance (initialized once)
-static FACILITATOR: Lazy<
-    Result<
-        Arc<dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync>,
-        String,
-    >,
-> = Lazy::new(|| {
-    let config = Config::from_env().map_err(|e| format!("Config error: {}", e))?;
-    let rt = tokio::runtime::Runtime::new().map_err(|e| format!("Runtime error: {}", e))?;
-    let chain_provider = rt
-        .block_on(ChainProvider::from_config(&config))
-        .map_err(|e| format!("Chain provider error: {}", e))?;
-    let facilitator = pr402::facilitator::FacilitatorLocal::new(chain_provider)
-        .map_err(|e| format!("Facilitator error: {}", e))?;
-    Ok(Arc::new(facilitator))
-});
+type DynFacilitator =
+    Arc<dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync>;
 
-/// Optional Postgres (see `migrations/init.sql`). Omit `DATABASE_URL` to run without DB.
-static PR402_DB: Lazy<Option<Pr402Db>> =
-    Lazy::new(|| match Pr402Db::from_env_var("DATABASE_URL") {
+/// Set once from [`main`] so handlers can read optional DB the same way as before.
+static PR402_DB: OnceLock<Option<Pr402Db>> = OnceLock::new();
+
+fn pr402_db() -> Option<&'static Pr402Db> {
+    PR402_DB
+        .get()
+        .expect("PR402_DB: set in main before run()")
+        .as_ref()
+}
+
+fn init_pr402_db_from_env() -> Option<Pr402Db> {
+    match Pr402Db::from_env_var("DATABASE_URL") {
         None => None,
         Some(Ok(db)) => Some(db),
         Some(Err(e)) => {
             warn!("DATABASE_URL is set but pr402 could not connect: {}", e);
             None
         }
-    });
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -42,8 +41,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    let facilitator_ready: Result<DynFacilitator, String> = (async {
+        let config = Config::from_env().map_err(|e| format!("Config error: {}", e))?;
+        let chain_provider = ChainProvider::from_config(&config)
+            .await
+            .map_err(|e| format!("Chain provider error: {}", e))?;
+        let facilitator = pr402::facilitator::FacilitatorLocal::new(chain_provider)
+            .map_err(|e| format!("Facilitator error: {}", e))?;
+        Ok(Arc::new(facilitator) as DynFacilitator)
+    })
+    .await;
+
+    if PR402_DB.set(init_pr402_db_from_env()).is_err() {
+        return Err("PR402_DB: OnceLock already initialized".into());
+    }
+
     let handler = move |req: Request| {
-        let facilitator_result = FACILITATOR.as_ref();
+        let facilitator_result = facilitator_ready.clone();
 
         Box::pin(async move {
             let path = req.uri().path().to_string();
@@ -129,17 +143,15 @@ async fn handle_verify(
     match facilitator.verify(&verify_request).await {
         Ok(response) => {
             let effective_cid = persist_meta.clone().or_else(|| {
-                if PR402_DB.is_some() && payee.is_some() {
+                if pr402_db().is_some() && payee.is_some() {
                     Some(pr402::payment_attempt::mint_correlation_id())
                 } else {
                     None
                 }
             });
-            if let (Some(db), Some(cid), Some(wallet)) = (
-                PR402_DB.as_ref(),
-                effective_cid.as_deref(),
-                payee.as_deref(),
-            ) {
+            if let (Some(db), Some(cid), Some(wallet)) =
+                (pr402_db(), effective_cid.as_deref(), payee.as_deref())
+            {
                 if let Err(e) = db.record_payment_verify(cid, wallet, true, None).await {
                     warn!(error = %e, "record_payment_verify skipped");
                 }
@@ -161,7 +173,7 @@ async fn handle_verify(
         }
         Err(e) => {
             if let (Some(db), Some(cid), Some(wallet)) =
-                (PR402_DB.as_ref(), persist_meta.as_deref(), payee.as_deref())
+                (pr402_db(), persist_meta.as_deref(), payee.as_deref())
             {
                 let msg = format!("{}", e);
                 if let Err(err) = db
@@ -203,7 +215,7 @@ async fn handle_settle(
     let persist_meta = settle_request.correlation_id_for_persistence(correlation_http);
     let payee = settle_request.payee_wallet();
 
-    pr402::parameters::refresh_parameters_from_db(PR402_DB.as_ref()).await;
+    pr402::parameters::refresh_parameters_from_db(pr402_db()).await;
 
     match facilitator.settle(&settle_request).await {
         Ok(response) => {
@@ -216,7 +228,7 @@ async fn handle_settle(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             if let (Some(db), Some(cid), Some(wallet)) =
-                (PR402_DB.as_ref(), persist_meta.as_deref(), payee.as_deref())
+                (pr402_db(), persist_meta.as_deref(), payee.as_deref())
             {
                 if let Err(e) = db
                     .record_payment_settle(cid, wallet, true, None, sig.as_deref())
@@ -238,7 +250,7 @@ async fn handle_settle(
         }
         Err(e) => {
             if let (Some(db), Some(cid), Some(wallet)) =
-                (PR402_DB.as_ref(), persist_meta.as_deref(), payee.as_deref())
+                (pr402_db(), persist_meta.as_deref(), payee.as_deref())
             {
                 let msg = format!("{}", e);
                 if let Err(err) = db
@@ -318,15 +330,14 @@ async fn handle_onboard_challenge(query: &str) -> Response<Body> {
             );
         }
     };
-    let Some(secret) = pr402::parameters::resolve_onboard_hmac_secret(PR402_DB.as_ref()).await
-    else {
+    let Some(secret) = pr402::parameters::resolve_onboard_hmac_secret(pr402_db()).await else {
         return error_response(
             StatusCode::SERVICE_UNAVAILABLE,
             "PR402_ONBOARD_HMAC_SECRET not set (env or parameters table); see migrations/init.sql",
         );
     };
     let ttl = pr402::parameters::resolve_onboard_challenge_ttl_sec(
-        PR402_DB.as_ref(),
+        pr402_db(),
         cfg.onboard_challenge_ttl_sec,
     )
     .await
@@ -363,8 +374,7 @@ async fn handle_onboard_submit(
     >,
     body: Body,
 ) -> Response<Body> {
-    let Some(secret) = pr402::parameters::resolve_onboard_hmac_secret(PR402_DB.as_ref()).await
-    else {
+    let Some(secret) = pr402::parameters::resolve_onboard_hmac_secret(pr402_db()).await else {
         return error_response(
             StatusCode::SERVICE_UNAVAILABLE,
             "PR402_ONBOARD_HMAC_SECRET not set (env or parameters table); see migrations/init.sql",
@@ -391,7 +401,7 @@ async fn handle_onboard_submit(
 
     match facilitator.onboard(&submit.wallet).await {
         Ok(response) => {
-            if let Some(db) = PR402_DB.as_ref() {
+            if let Some(db) = pr402_db() {
                 if let Some(info) = response.schemes.get("exact") {
                     if let Err(e) = db
                         .upsert_resource_provider_vaults_verified(

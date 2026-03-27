@@ -2651,7 +2651,6 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "hmac",
- "once_cell",
  "openssl",
  "postgres-openssl",
  "serde",
