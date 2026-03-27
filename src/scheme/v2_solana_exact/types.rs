@@ -5,11 +5,34 @@ use std::fmt;
 use crate::chain::solana::Address;
 use crate::proto::util::U64String;
 use crate::proto::v2;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Exact scheme identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Wire format is the string `"exact"` (x402 `PaymentRequirements.scheme`), not a unit JSON value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExactScheme;
+
+impl Serialize for ExactScheme {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(ExactScheme.as_ref())
+    }
+}
+
+impl<'de> Deserialize<'de> for ExactScheme {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s == ExactScheme.as_ref() {
+            Ok(ExactScheme)
+        } else {
+            Err(serde::de::Error::custom(format!(
+                "expected scheme {:?}, got {:?}",
+                ExactScheme.as_ref(),
+                s
+            )))
+        }
+    }
+}
 
 impl AsRef<str> for ExactScheme {
     fn as_ref(&self) -> &str {
