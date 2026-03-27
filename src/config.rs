@@ -65,10 +65,12 @@ impl Config {
     /// - `DATABASE_URL`: PostgreSQL connection string; enables persistence (`migrations/init.sql`).
     /// - `PR402_ONBOARD_HMAC_SECRET`: Signed onboard HMAC key; may use `parameters` table instead (see `migrations/init.sql`, [`crate::parameters`]).
     /// - `PR402_ONBOARD_CHALLENGE_TTL_SEC`: Challenge lifetime (default 600).
-    /// - `PR402_PARAMETERS_CACHE_TTL_SEC`: Revalidate Postgres `parameters` cache (default 60).
+    /// - `PR402_PARAMETERS_CACHE_TTL_SEC`: Per-process cache TTL for Postgres `parameters` reads (default 60); **env only**, not read from the `parameters` row.
     /// - `SOLANA_PUBSUB_URL`: WebSocket URL for pubsub (default: None)
     /// - `MAX_COMPUTE_UNIT_LIMIT`: Max compute units (default: 400000)
     /// - `MAX_COMPUTE_UNIT_PRICE`: Max compute unit price (default: 1000000)
+    /// - `UNIVERSALSETTLE_PROGRAM_ID`: Enables `v2:solana:exact` with UniversalSettle (vault, fees, sweep). Omit only if you do not serve that scheme.
+    /// - `ESCROW_PROGRAM_ID`: Registers `v2:solana:sla-escrow`. Omit if you do not serve escrow. At least one settlement program should match what RPs advertise.
     pub fn from_env() -> Result<Self, ConfigError> {
         let solana_rpc_url = std::env::var("SOLANA_RPC_URL")
             .map_err(|_| ConfigError::MissingEnvVar("SOLANA_RPC_URL"))?

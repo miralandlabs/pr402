@@ -54,6 +54,9 @@ CREATE INDEX IF NOT EXISTS idx_payment_attempts_provider
 
 -- =============================================================================
 -- parameters (key/value; DB overrides env for long or frequently rotated values)
+--
+-- Do NOT store PR402_PARAMETERS_CACHE_TTL_SEC here: pr402 reads that only from the
+-- process environment (e.g. Vercel env / .env). It is not read from this table.
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS parameters (
@@ -78,6 +81,8 @@ CREATE INDEX IF NOT EXISTS idx_parameters_inactive ON parameters (inactive ASC);
 -- =============================================================================
 
 INSERT INTO parameters (param_name, param_value) VALUES
+    ('PR402_ONBOARD_HMAC_SECRET', 'AgenticEconomics'),
+    ('PR402_ONBOARD_CHALLENGE_TTL_SEC', '600'),
     ('PR402_SWEEP_MIN_SPENDABLE_LAMPORTS', '30000000'),
     (
         'PR402_SWEEP_MIN_SPL_RAW_BY_MINT',

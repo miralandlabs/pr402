@@ -31,7 +31,8 @@ fn cache_store() -> &'static RwLock<ParametersCache> {
     PARAMETERS.get_or_init(|| RwLock::new(ParametersCache::empty()))
 }
 
-/// How often to re-query Postgres (per serverless instance).
+/// How often to re-query Postgres (per serverless instance). **Env `PR402_PARAMETERS_CACHE_TTL_SEC` only** —
+/// not loaded from the `parameters` table (a row with that name would be ignored for TTL).
 pub fn parameters_cache_ttl() -> Duration {
     static TTL: OnceLock<Duration> = OnceLock::new();
     *TTL.get_or_init(|| {
