@@ -21,6 +21,9 @@ pub const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey =
     solana_pubkey::pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 pub const TOKEN_PROGRAM_ID: Pubkey =
     solana_pubkey::pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+/// SPL Token-2022 program (`spl_token_2022::ID`); kept here to avoid the `spl-token-2022` crate (broken 10.0.0 publish vs `spl-token-group-interface`).
+pub const TOKEN_2022_PROGRAM_ID: Pubkey =
+    solana_pubkey::pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 
 /// A Solana chain reference consisting of 32 ASCII characters.
 #[derive(Clone, Debug, PartialEq)]
@@ -390,7 +393,7 @@ impl SolanaChainProvider {
         let account_keys = tx.message.static_account_keys();
         let program_id = *last_ix.program_id(account_keys);
 
-        if program_id == TOKEN_PROGRAM_ID || program_id == spl_token_2022::ID {
+        if program_id == TOKEN_PROGRAM_ID || program_id == TOKEN_2022_PROGRAM_ID {
             if data.len() < 9 {
                 return Err(SolanaChainProviderError::AccountNotFound);
             }

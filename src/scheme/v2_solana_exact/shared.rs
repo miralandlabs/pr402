@@ -351,12 +351,13 @@ pub async fn verify_transfer_instruction(
             authority: instruction.account(3)?,
             token_program: spl_token::ID,
         }
-    } else if spl_token_2022::ID.eq(&program_id) {
+    } else if crate::chain::solana::TOKEN_2022_PROGRAM_ID.eq(&program_id) {
+        // Same `TransferChecked` wire format as legacy Token; avoid `spl-token-2022` crate (see Cargo.toml).
         let token_instruction =
-            spl_token_2022::instruction::TokenInstruction::unpack(instruction.data_slice())
+            spl_token::instruction::TokenInstruction::unpack(instruction.data_slice())
                 .map_err(|_| SolanaExactError::InvalidTokenInstruction)?;
         let amount = match token_instruction {
-            spl_token_2022::instruction::TokenInstruction::TransferChecked {
+            spl_token::instruction::TokenInstruction::TransferChecked {
                 amount,
                 decimals: _,
             } => amount,
@@ -367,7 +368,7 @@ pub async fn verify_transfer_instruction(
             source: instruction.account(0)?,
             destination: instruction.account(2)?,
             authority: instruction.account(3)?,
-            token_program: spl_token_2022::ID,
+            token_program: crate::chain::solana::TOKEN_2022_PROGRAM_ID,
         }
     } else if crate::chain::solana::SYSTEM_PROGRAM_ID.eq(&program_id) {
         let instruction_data = instruction.data_slice();
