@@ -1,14 +1,22 @@
 {
+  "version": 2,
   "builds": [
     {
       "src": "src/bin/facilitator.rs",
-      "use": "@vercel/rust"
+      "use": "vercel-rust@4.0.8",
+      "config": {
+        "env": {
+          "CARGO_HOME": "/tmp/cargo",
+          "RUSTUP_HOME": "/tmp/rustup"
+        }
+      }
     }
   ],
   "routes": [
     {
       "src": "/api/facilitator/(.*)",
-      "dest": "/src/bin/facilitator"
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "POST", "OPTIONS"]
     }
   ]
 }

@@ -38,6 +38,12 @@ When deployed, the facilitator exposes:
 - `POST /api/facilitator/verify` — Verify raw payment transactions against the protocol.
 - `POST /api/facilitator/settle` — Sign and relay verified transactions to the Solana network.
 - `GET /api/facilitator/supported` — List active schemes based on environment configuration.
+- `GET /api/facilitator/health` — Same handler as `supported` (load balancer / uptime check).
+
+### Vercel deployment
+- **`vercel.json`** uses `vercel-rust@4.0.8` and routes `/api/facilitator/*` to the `facilitator` binary.
+- CI deploy: **[`.github/workflows/build-and-deploy.yml`](.github/workflows/build-and-deploy.yml)** (repository root = this project).
+- In the Vercel project settings, **Root Directory** should be the repo root (or leave blank), not a parent monorepo path — otherwise you can get a platform **404** for `/api/facilitator/health`.
 
 ### Correlation id (optional DB merge key)
 x402 does not require a correlation id. For integrators who **do** enable Postgres (`DATABASE_URL`), pr402 merges `/verify` and `/settle` into one `payment_attempts` row when the **same** id is used.
