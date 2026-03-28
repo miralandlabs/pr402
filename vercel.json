@@ -14,19 +14,49 @@
   ],
   "routes": [
     {
-      "src": "/api/v1/facilitator",
-      "dest": "/api/facilitator",
-      "methods": ["GET", "POST", "OPTIONS"]
+      "src": "/api/v1/facilitator/verify",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
     },
     {
-      "src": "/api/v1/facilitator/(.*)",
-      "dest": "/api/facilitator/$1",
-      "methods": ["GET", "POST", "OPTIONS"]
+      "src": "/api/v1/facilitator/settle",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
     },
     {
-      "src": "/api/facilitator/(.*)",
+      "src": "/api/v1/facilitator/supported",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/health",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/capabilities",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/onboard/challenge",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/onboard",
       "dest": "/src/bin/facilitator",
       "methods": ["GET", "POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/vault-snapshot",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/build-exact-payment-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
     }
   ]
 }

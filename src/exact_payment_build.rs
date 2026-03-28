@@ -27,7 +27,7 @@ use crate::chain::solana::{
 
 use spl_token::solana_program::program_pack::Pack;
 
-/// Request body for `POST /api/facilitator/build-exact-payment-tx` (facilitator serverless binary).
+/// Request body for `POST /api/v1/facilitator/build-exact-payment-tx` (facilitator serverless binary).
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildExactPaymentTxRequest {

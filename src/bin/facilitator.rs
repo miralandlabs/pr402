@@ -11,7 +11,7 @@ use std::sync::{Arc, OnceLock};
 use tracing::warn;
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
 
-/// Shared CORS headers for `/api/facilitator/*` (browser preflight + cross-origin JSON).
+/// Shared CORS headers for `/api/v1/facilitator/*` (browser preflight + cross-origin JSON).
 macro_rules! facilitator_response {
     () => {
         Response::builder()
@@ -42,30 +42,11 @@ static PR402_DB: OnceLock<Option<Pr402Db>> = OnceLock::new();
 /// Shared [`ChainProvider`] for transaction-build helpers (`build-exact-payment-tx`).
 static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 
-/// Map `/api/v1/facilitator/*` onto legacy `/api/facilitator/*` routes; detect v1 header pinning.
-fn normalize_facilitator_path(path: &str, headers: &http::HeaderMap) -> (String, bool) {
-    let api_v1_path = path.starts_with("/api/v1/facilitator");
-    let api_v1_header = headers
-        .get("X-API-Version")
-        .or_else(|| headers.get("X-Api-Version"))
-        .and_then(|v| v.to_str().ok())
-        .map(str::trim)
-        .is_some_and(|s| s.eq_ignore_ascii_case("1") || s.eq_ignore_ascii_case("v1"));
-    let route_path = if api_v1_path {
-        path.replacen("/api/v1/facilitator", "/api/facilitator", 1)
-    } else {
-        path.to_string()
-    };
-    (route_path, api_v1_path || api_v1_header)
-}
-
-fn with_optional_api_version(mut res: Response<Body>, emit_v1: bool) -> Response<Body> {
-    if emit_v1 {
-        res.headers_mut().insert(
-            http::HeaderName::from_static("x-api-version"),
-            http::HeaderValue::from_static("1"),
-        );
-    }
+fn with_api_version_v1(mut res: Response<Body>) -> Response<Body> {
+    res.headers_mut().insert(
+        http::HeaderName::from_static("x-api-version"),
+        http::HeaderValue::from_static("1"),
+    );
     res
 }
 
@@ -123,7 +104,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let path = req.uri().path().to_string();
             let method = req.method().clone();
             let query = req.uri().query().unwrap_or_default().to_string();
-            let (route_path, emit_api_version) = normalize_facilitator_path(&path, req.headers());
             let correlation_hdr: Option<String> = req
                 .headers()
                 .get("X-Correlation-Id")
@@ -136,43 +116,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let facilitator = match facilitator_result {
                 Ok(f) => f.clone(),
                 Err(e) => {
-                    return Ok(with_optional_api_version(
+                    return Ok(with_api_version_v1(
                         facilitator_response!()
                             .status(StatusCode::INTERNAL_SERVER_ERROR)
                             .header("Content-Type", "application/json")
                             .body(Body::Text(format!(r#"{{"error":"{}"}}"#, e)))
                             .unwrap(),
-                        emit_api_version,
                     ));
                 }
             };
 
-            // Route requests (`/api/v1/facilitator/*` aliases `/api/facilitator/*`).
-            let response = match (method.as_str(), route_path.as_str()) {
-                ("OPTIONS", p) if p.starts_with("/api/facilitator") => cors_preflight_response(),
-                ("POST", "/api/facilitator/verify") => {
+            let response = match (method.as_str(), path.as_str()) {
+                ("OPTIONS", p) if p.starts_with("/api/v1/facilitator") => cors_preflight_response(),
+                ("POST", "/api/v1/facilitator/verify") => {
                     handle_verify(facilitator.clone(), body, correlation_hdr.as_deref()).await
                 }
-                ("POST", "/api/facilitator/settle") => {
+                ("POST", "/api/v1/facilitator/settle") => {
                     handle_settle(facilitator.clone(), body, correlation_hdr.as_deref()).await
                 }
-                ("GET", "/api/facilitator/supported") | ("GET", "/api/facilitator/health") => {
+                ("GET", "/api/v1/facilitator/supported")
+                | ("GET", "/api/v1/facilitator/health") => {
                     handle_supported(facilitator.clone()).await
                 }
-                ("GET", "/api/facilitator/capabilities") => {
+                ("GET", "/api/v1/facilitator/capabilities") => {
                     handle_capabilities(facilitator.clone()).await
                 }
-                ("GET", "/api/facilitator/onboard/challenge") => {
+                ("GET", "/api/v1/facilitator/onboard/challenge") => {
                     handle_onboard_challenge(&query).await
                 }
-                ("POST", "/api/facilitator/onboard") => {
+                ("POST", "/api/v1/facilitator/onboard") => {
                     handle_onboard_submit(facilitator.clone(), body).await
                 }
-                ("GET", "/api/facilitator/onboard") => {
+                ("GET", "/api/v1/facilitator/onboard") => {
                     handle_onboard_preview(facilitator.clone(), &query).await
                 }
-                ("GET", "/api/facilitator/vault-snapshot") => handle_vault_snapshot(&query).await,
-                ("POST", "/api/facilitator/build-exact-payment-tx") => {
+                ("GET", "/api/v1/facilitator/vault-snapshot") => {
+                    handle_vault_snapshot(&query).await
+                }
+                ("POST", "/api/v1/facilitator/build-exact-payment-tx") => {
                     handle_build_exact_payment_tx(body).await
                 }
                 _ => facilitator_response!()
@@ -181,7 +162,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
                     .unwrap(),
             };
-            Ok(with_optional_api_version(response, emit_api_version))
+            Ok(with_api_version_v1(response))
         })
     };
 
@@ -407,14 +388,6 @@ async fn handle_capabilities(
             "unsignedExactPaymentTxBuild": true
         },
         "httpEndpoints": {
-            "verify": { "method": "POST", "path": "/api/facilitator/verify" },
-            "settle": { "method": "POST", "path": "/api/facilitator/settle" },
-            "buildExactPaymentTx": { "method": "POST", "path": "/api/facilitator/build-exact-payment-tx" },
-            "supported": { "method": "GET", "path": "/api/facilitator/supported" },
-            "health": { "method": "GET", "path": "/api/facilitator/health" },
-            "capabilities": { "method": "GET", "path": "/api/facilitator/capabilities" }
-        },
-        "httpEndpointsV1": {
             "verify": { "method": "POST", "path": "/api/v1/facilitator/verify" },
             "settle": { "method": "POST", "path": "/api/v1/facilitator/settle" },
             "buildExactPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-exact-payment-tx" },

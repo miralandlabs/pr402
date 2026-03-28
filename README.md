@@ -34,19 +34,19 @@ Optional:
 - `MAX_COMPUTE_UNIT_LIMIT`: Transaction compute limit (default: 400,000).
 - `MAX_COMPUTE_UNIT_PRICE`: Transaction compute price in micro-lamports (default: 1,000,000).
 
-## 🚀 API Endpoints
-When deployed, the facilitator exposes:
-- `POST /api/facilitator/verify` — Verify raw payment transactions against the protocol.
-- `POST /api/facilitator/settle` — Sign and relay verified transactions to the Solana network.
-- `GET /api/facilitator/supported` — List active schemes based on environment configuration.
-- `GET /api/facilitator/health` — Same handler as `supported` (load balancer / uptime check).
-- `GET /api/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags (UniversalSettle, escrow, unsigned tx build), and relative HTTP endpoint paths + x402 v2 spec link.
-- `POST /api/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL payment transaction (compute budget + optional merchant ATA create + `TransferChecked`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"? }`. Response includes `transaction` (base64 bincode) and `verify_body_template` (replace `paymentPayload.payload.transaction` after the payer signs). Same layout as the local `x402_pr402_pay` helper in spl-token-balance-serverless; **native SOL** mint is rejected here (use a different path). **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.
+## 🚀 API Endpoints (v1)
+When deployed, the facilitator exposes **only** `/api/v1/facilitator/*` (HTTP API version `X-API-Version: 1` on JSON responses):
+- `POST /api/v1/facilitator/verify` — Verify raw payment transactions against the protocol.
+- `POST /api/v1/facilitator/settle` — Sign and relay verified transactions to the Solana network.
+- `GET /api/v1/facilitator/supported` — List active schemes based on environment configuration.
+- `GET /api/v1/facilitator/health` — Same handler as `supported` (load balancer / uptime check).
+- `GET /api/v1/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags (UniversalSettle, escrow, unsigned tx build), and relative HTTP endpoint paths + x402 v2 spec link.
+- `POST /api/v1/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL payment transaction (compute budget + optional merchant ATA create + `TransferChecked`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"? }`. Response includes `transaction` (base64 bincode) and `verify_body_template` (replace `paymentPayload.payload.transaction` after the payer signs). Same layout as the local `x402_pr402_pay` helper in spl-token-balance-serverless; **native SOL** mint is rejected here (use a different path). **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/v1/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.
 
 ### Vercel deployment
-- **`vercel.json`** uses `vercel-rust@4.0.8` and routes `/api/facilitator/*` to the `facilitator` binary.
+- **`vercel.json`** uses `vercel-rust@4.0.8` and maps each `/api/v1/facilitator/...` path to the `facilitator` binary.
 - CI deploy: **[`.github/workflows/build-and-deploy.yml`](.github/workflows/build-and-deploy.yml)** (repository root = this project).
-- In the Vercel project settings, **Root Directory** should be the repo root (or leave blank), not a parent monorepo path — otherwise you can get a platform **404** for `/api/facilitator/health`.
+- In the Vercel project settings, **Root Directory** should be the repo root (or leave blank), not a parent monorepo path — otherwise you can get a platform **404** for `/api/v1/facilitator/health`.
 
 ### Correlation id (optional DB merge key)
 x402 does not require a correlation id. For integrators who **do** enable Postgres (`DATABASE_URL`), pr402 merges `/verify` and `/settle` into one `payment_attempts` row when the **same** id is used.
