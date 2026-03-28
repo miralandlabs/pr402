@@ -6,6 +6,7 @@
 pub mod chain;
 pub mod config;
 pub mod db;
+pub mod exact_payment_build;
 pub mod facilitator;
 pub mod onboard_auth;
 pub mod parameters;

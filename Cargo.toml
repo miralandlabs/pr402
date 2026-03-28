@@ -11,6 +11,7 @@ categories = ["cryptography", "finance", "stablecoins"]
 [dependencies]
 # Vercel Runtime
 vercel_runtime = "1.1.4"
+http = "1"
 
 # Async runtime
 tokio = { version = "1.45", features = ["full", "rt-multi-thread"] }

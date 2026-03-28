@@ -11,11 +11,67 @@ use std::sync::{Arc, OnceLock};
 use tracing::warn;
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
 
+/// Shared CORS headers for `/api/facilitator/*` (browser preflight + cross-origin JSON).
+macro_rules! facilitator_response {
+    () => {
+        Response::builder()
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            .header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, Authorization, X-Correlation-Id, X-Correlation-ID, X-API-Version",
+            )
+    };
+}
+
+/// `OPTIONS` preflight for cross-origin POST/GET to the facilitator API.
+fn cors_preflight_response() -> Response<Body> {
+    facilitator_response!()
+        .status(StatusCode::NO_CONTENT)
+        .header("Access-Control-Max-Age", "86400")
+        .body(Body::Empty)
+        .unwrap()
+}
+
 type DynFacilitator =
     Arc<dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync>;
 
 /// Set once from [`main`] so handlers can read optional DB the same way as before.
 static PR402_DB: OnceLock<Option<Pr402Db>> = OnceLock::new();
+
+/// Shared [`ChainProvider`] for transaction-build helpers (`build-exact-payment-tx`).
+static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
+
+/// Map `/api/v1/facilitator/*` onto legacy `/api/facilitator/*` routes; detect v1 header pinning.
+fn normalize_facilitator_path(path: &str, headers: &http::HeaderMap) -> (String, bool) {
+    let api_v1_path = path.starts_with("/api/v1/facilitator");
+    let api_v1_header = headers
+        .get("X-API-Version")
+        .or_else(|| headers.get("X-Api-Version"))
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .is_some_and(|s| s.eq_ignore_ascii_case("1") || s.eq_ignore_ascii_case("v1"));
+    let route_path = if api_v1_path {
+        path.replacen("/api/v1/facilitator", "/api/facilitator", 1)
+    } else {
+        path.to_string()
+    };
+    (route_path, api_v1_path || api_v1_header)
+}
+
+fn with_optional_api_version(mut res: Response<Body>, emit_v1: bool) -> Response<Body> {
+    if emit_v1 {
+        res.headers_mut().insert(
+            http::HeaderName::from_static("x-api-version"),
+            http::HeaderValue::from_static("1"),
+        );
+    }
+    res
+}
+
+fn chain_provider_for_build() -> Result<&'static Arc<ChainProvider>, &'static str> {
+    CHAIN_PROVIDER.get().ok_or("chain provider not initialized")
+}
 
 fn pr402_db() -> Option<&'static Pr402Db> {
     PR402_DB
@@ -46,8 +102,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let chain_provider = ChainProvider::from_config(&config)
             .await
             .map_err(|e| format!("Chain provider error: {}", e))?;
-        let facilitator = pr402::facilitator::FacilitatorLocal::new(chain_provider)
+        let chain_arc = Arc::new(chain_provider);
+        let facilitator = pr402::facilitator::FacilitatorLocal::new((*chain_arc).clone())
             .map_err(|e| format!("Facilitator error: {}", e))?;
+        if CHAIN_PROVIDER.set(chain_arc).is_err() {
+            return Err("CHAIN_PROVIDER: OnceLock already initialized".into());
+        }
         Ok(Arc::new(facilitator) as DynFacilitator)
     })
     .await;
@@ -63,6 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let path = req.uri().path().to_string();
             let method = req.method().clone();
             let query = req.uri().query().unwrap_or_default().to_string();
+            let (route_path, emit_api_version) = normalize_facilitator_path(&path, req.headers());
             let correlation_hdr: Option<String> = req
                 .headers()
                 .get("X-Correlation-Id")
@@ -75,16 +136,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let facilitator = match facilitator_result {
                 Ok(f) => f.clone(),
                 Err(e) => {
-                    return Ok(Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .header("Content-Type", "application/json")
-                        .body(Body::Text(format!(r#"{{"error":"{}"}}"#, e)))
-                        .unwrap());
+                    return Ok(with_optional_api_version(
+                        facilitator_response!()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(Body::Text(format!(r#"{{"error":"{}"}}"#, e)))
+                            .unwrap(),
+                        emit_api_version,
+                    ));
                 }
             };
 
-            // Route requests
-            let response = match (method.as_str(), path.as_str()) {
+            // Route requests (`/api/v1/facilitator/*` aliases `/api/facilitator/*`).
+            let response = match (method.as_str(), route_path.as_str()) {
+                ("OPTIONS", p) if p.starts_with("/api/facilitator") => cors_preflight_response(),
                 ("POST", "/api/facilitator/verify") => {
                     handle_verify(facilitator.clone(), body, correlation_hdr.as_deref()).await
                 }
@@ -93,6 +158,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 ("GET", "/api/facilitator/supported") | ("GET", "/api/facilitator/health") => {
                     handle_supported(facilitator.clone()).await
+                }
+                ("GET", "/api/facilitator/capabilities") => {
+                    handle_capabilities(facilitator.clone()).await
                 }
                 ("GET", "/api/facilitator/onboard/challenge") => {
                     handle_onboard_challenge(&query).await
@@ -104,13 +172,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     handle_onboard_preview(facilitator.clone(), &query).await
                 }
                 ("GET", "/api/facilitator/vault-snapshot") => handle_vault_snapshot(&query).await,
-                _ => Response::builder()
+                ("POST", "/api/facilitator/build-exact-payment-tx") => {
+                    handle_build_exact_payment_tx(body).await
+                }
+                _ => facilitator_response!()
                     .status(StatusCode::NOT_FOUND)
                     .header("Content-Type", "application/json")
                     .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
                     .unwrap(),
             };
-            Ok(response)
+            Ok(with_optional_api_version(response, emit_api_version))
         })
     };
 
@@ -160,7 +231,7 @@ async fn handle_verify(
             if let Some(ref cid) = effective_cid {
                 pr402::payment_attempt::merge_correlation_into_value(&mut json, cid);
             }
-            let mut res = Response::builder()
+            let mut res = facilitator_response!()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json");
             if let Some(ref cid) = effective_cid {
@@ -237,7 +308,7 @@ async fn handle_settle(
                     warn!(error = %e, "record_payment_settle skipped");
                 }
             }
-            let mut res = Response::builder()
+            let mut res = facilitator_response!()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json");
             if let Some(cid) = persist_meta.as_deref() {
@@ -275,7 +346,7 @@ async fn handle_supported(
     >,
 ) -> Response<Body> {
     match facilitator.supported().await {
-        Ok(response) => Response::builder()
+        Ok(response) => facilitator_response!()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
             .body(Body::Text(serde_json::to_string(&response).unwrap_or_else(
@@ -284,6 +355,83 @@ async fn handle_supported(
             .unwrap(),
         Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Error: {}", e)),
     }
+}
+
+/// Stable discovery document for agents / dashboards (machine-readable complement to `/supported`).
+async fn handle_capabilities(
+    facilitator: Arc<
+        dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,
+    >,
+) -> Response<Body> {
+    let supported = match facilitator.supported().await {
+        Ok(s) => s,
+        Err(e) => {
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Error: {}", e))
+        }
+    };
+    let supported_json = match serde_json::to_value(&supported) {
+        Ok(v) => v,
+        Err(e) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("serialization failed: {}", e),
+            );
+        }
+    };
+
+    let (chain_id, fee_payer, universal_settle, sla_escrow) = if let Some(cp) = CHAIN_PROVIDER.get()
+    {
+        (
+            cp.solana.chain_id().to_string(),
+            cp.solana.fee_payer().to_string(),
+            cp.solana.universalsettle().is_some(),
+            cp.solana.sla_escrow().is_some(),
+        )
+    } else {
+        return error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "chain provider not initialized",
+        );
+    };
+
+    let body = serde_json::json!({
+        "schemaVersion": "1",
+        "x402Version": 2,
+        "name": "pr402 facilitator",
+        "chainId": chain_id,
+        "feePayer": fee_payer,
+        "supported": supported_json,
+        "features": {
+            "universalSettleExact": universal_settle,
+            "slaEscrow": sla_escrow,
+            "unsignedExactPaymentTxBuild": true
+        },
+        "httpEndpoints": {
+            "verify": { "method": "POST", "path": "/api/facilitator/verify" },
+            "settle": { "method": "POST", "path": "/api/facilitator/settle" },
+            "buildExactPaymentTx": { "method": "POST", "path": "/api/facilitator/build-exact-payment-tx" },
+            "supported": { "method": "GET", "path": "/api/facilitator/supported" },
+            "health": { "method": "GET", "path": "/api/facilitator/health" },
+            "capabilities": { "method": "GET", "path": "/api/facilitator/capabilities" }
+        },
+        "httpEndpointsV1": {
+            "verify": { "method": "POST", "path": "/api/v1/facilitator/verify" },
+            "settle": { "method": "POST", "path": "/api/v1/facilitator/settle" },
+            "buildExactPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-exact-payment-tx" },
+            "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
+            "health": { "method": "GET", "path": "/api/v1/facilitator/health" },
+            "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" }
+        },
+        "specification": {
+            "x402V2": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"
+        }
+    });
+
+    facilitator_response!()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Body::Text(body.to_string()))
+        .unwrap()
 }
 
 /// Public PDA preview only (no DB). Use challenge + POST `/onboard` to persist with proof-of-control.
@@ -302,7 +450,7 @@ async fn handle_onboard_preview(
     }
 
     match facilitator.onboard(&wallet).await {
-        Ok(response) => Response::builder()
+        Ok(response) => facilitator_response!()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
             .body(Body::Text(serde_json::to_string(&response).unwrap_or_else(
@@ -353,7 +501,7 @@ async fn handle_onboard_challenge(query: &str) -> Response<Body> {
         "expiresUnix": expires,
         "ttlSeconds": ttl,
     });
-    Response::builder()
+    facilitator_response!()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
         .body(Body::Text(body.to_string()))
@@ -419,7 +567,7 @@ async fn handle_onboard_submit(
             } else {
                 warn!("DATABASE_URL unset; onboard signature accepted but resource_providers not persisted");
             }
-            Response::builder()
+            facilitator_response!()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
                 .body(Body::Text(serde_json::to_string(&response).unwrap_or_else(
@@ -534,11 +682,57 @@ async fn handle_vault_snapshot(query: &str) -> Response<Body> {
         "splDecimals": snap.spl_decimals,
         "splBalanceScope": spl_scope_out,
     });
-    Response::builder()
+    facilitator_response!()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
         .body(Body::Text(body.to_string()))
         .unwrap()
+}
+
+/// Build an unsigned `v2:solana:exact` SPL `TransferChecked` transaction (+ compute budget + optional
+/// merchant ATA create) for wallet signing. See [`pr402::exact_payment_build`].
+async fn handle_build_exact_payment_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+    };
+    let req: pr402::exact_payment_build::BuildExactPaymentTxRequest =
+        match serde_json::from_str(&body_str) {
+            Ok(r) => r,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
+            }
+        };
+    match pr402::exact_payment_build::build_exact_spl_payment_tx(&cp.solana, req).await {
+        Ok(out) => facilitator_response!()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Body::Text(
+                serde_json::to_string(&out)
+                    .unwrap_or_else(|_| r#"{"error":"serialize failed"}"#.into()),
+            ))
+            .unwrap(),
+        Err(e) => {
+            let status = match e {
+                pr402::exact_payment_build::ExactPaymentBuildError::NetworkMismatch { .. }
+                | pr402::exact_payment_build::ExactPaymentBuildError::InvalidRequest(_) => {
+                    StatusCode::BAD_REQUEST
+                }
+                pr402::exact_payment_build::ExactPaymentBuildError::Unsupported(_) => {
+                    StatusCode::NOT_IMPLEMENTED
+                }
+                pr402::exact_payment_build::ExactPaymentBuildError::Rpc(_) => {
+                    StatusCode::BAD_GATEWAY
+                }
+            };
+            error_response(status, &e.to_string())
+        }
+    }
 }
 
 fn query_param(query: &str, key: &str) -> String {
@@ -569,7 +763,7 @@ fn error_response_with_optional_correlation(
         );
     }
     let json = serde_json::Value::Object(body);
-    let mut res = Response::builder()
+    let mut res = facilitator_response!()
         .status(status)
         .header("Content-Type", "application/json");
     if let Some(cid) = correlation_id {

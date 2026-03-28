@@ -19,6 +19,7 @@ pr402 currently facilitates two core settlement patterns:
 - [`src/bin/facilitator.rs`](src/bin/facilitator.rs) — Vercel serverless entrypoint handling HTTP requests.
 - [`src/chain/`](src/chain/) — Solana-specific chain provider and instruction builders for UniversalSettle and SLA-Escrow.
 - [`src/scheme/`](src/scheme/) — Protocol verification logic for Exact and Escrow schemes.
+- [`src/exact_payment_build.rs`](src/exact_payment_build.rs) — Optional **shared** SPL `TransferChecked` tx shell for `v2:solana:exact` (unsigned legacy `VersionedTransaction` + verify-body template).
 - [`src/config.rs`](src/config.rs) — Environment-based configuration.
 
 ## ⚙️ Environment Variables
@@ -39,6 +40,8 @@ When deployed, the facilitator exposes:
 - `POST /api/facilitator/settle` — Sign and relay verified transactions to the Solana network.
 - `GET /api/facilitator/supported` — List active schemes based on environment configuration.
 - `GET /api/facilitator/health` — Same handler as `supported` (load balancer / uptime check).
+- `GET /api/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags (UniversalSettle, escrow, unsigned tx build), and relative HTTP endpoint paths + x402 v2 spec link.
+- `POST /api/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL payment transaction (compute budget + optional merchant ATA create + `TransferChecked`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"? }`. Response includes `transaction` (base64 bincode) and `verify_body_template` (replace `paymentPayload.payload.transaction` after the payer signs). Same layout as the local `x402_pr402_pay` helper in spl-token-balance-serverless; **native SOL** mint is rejected here (use a different path). **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.
 
 ### Vercel deployment
 - **`vercel.json`** uses `vercel-rust@4.0.8` and routes `/api/facilitator/*` to the `facilitator` binary.

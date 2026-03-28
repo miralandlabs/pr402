@@ -14,10 +14,19 @@
   ],
   "routes": [
     {
+      "src": "/api/v1/facilitator",
+      "dest": "/api/facilitator",
+      "methods": ["GET", "POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/(.*)",
+      "dest": "/api/facilitator/$1",
+      "methods": ["GET", "POST", "OPTIONS"]
+    },
+    {
       "src": "/api/facilitator/(.*)",
       "dest": "/src/bin/facilitator",
       "methods": ["GET", "POST", "OPTIONS"]
     }
   ]
 }
-
