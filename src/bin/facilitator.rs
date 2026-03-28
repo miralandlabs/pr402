@@ -1,14 +1,15 @@
 //! Vercel serverless function entrypoint for x402 facilitator.
 //!
 //! Like `signer-payer-serverless-copy` bins: build `Arc` state in [`main`] before
-//! [`vercel_runtime::run`]. Avoid `once_cell::sync::Lazy` for the facilitator: if init panics,
-//! `Lazy` stays poisoned for the lifetime of the warm Lambda.
+//! [`vercel_runtime::run`], and **probe Postgres on cold start** the same way those bins call
+//! `init_parameters()` (DB touch) before serving. See `signer-payer/src/route_handler.rs`
+//! (`DATABASE.get_or_init` before `run`) and `pr402::db` module docs.
 
 use pr402::{chain::ChainProvider, config::Config, db::Pr402Db, facilitator::Facilitator};
 use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
 
 /// Shared CORS headers for `/api/v1/facilitator/*` (browser preflight + cross-origin JSON).
@@ -61,14 +62,33 @@ fn pr402_db() -> Option<&'static Pr402Db> {
         .as_ref()
 }
 
-fn init_pr402_db_from_env() -> Option<Pr402Db> {
+/// Optional DB: unset `DATABASE_URL` → `None`. If set, build pool (signer-payer `Database::new` parity)
+/// then **`smoke_check`** so a bad Neon URL fails at cold start with a full error chain, not only on `/verify`.
+async fn init_pr402_db_from_env() -> Option<Pr402Db> {
     match Pr402Db::from_env_var("DATABASE_URL") {
         None => None,
-        Some(Ok(db)) => Some(db),
         Some(Err(e)) => {
-            warn!("DATABASE_URL is set but pr402 could not connect: {}", e);
+            warn!(
+                error = %e,
+                "DATABASE_URL is set but pr402 could not create the Postgres pool (check URL / TLS)"
+            );
             None
         }
+        Some(Ok(db)) => match db.smoke_check().await {
+            Ok(()) => {
+                info!("Postgres smoke check succeeded (signer-payer-style cold-start probe)");
+                Some(db)
+            }
+            Err(e) => {
+                error!(
+                    error = %e,
+                    "Postgres smoke check failed — running without DB persistence for this instance. \
+                Fix DATABASE_URL (Neon **pooler** connection string + sslmode=require is the usual Vercel fix), \
+                run pr402 migrations/init.sql, then redeploy."
+                );
+                None
+            }
+        },
     }
 }
 
@@ -103,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     })
     .await;
 
-    if PR402_DB.set(init_pr402_db_from_env()).is_err() {
+    if PR402_DB.set(init_pr402_db_from_env().await).is_err() {
         return Err("PR402_DB: OnceLock already initialized".into());
     }
 

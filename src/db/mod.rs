@@ -1,15 +1,34 @@
 //! Optional PostgreSQL persistence (Vercel + Neon/Supabase).
 //!
 //! Set `DATABASE_URL` to enable. Run `migrations/init.sql` once against Postgres.
+//!
+//! **Reference (same repo):** `signer-payer-serverless-copy/signer-payer/src/database.rs` — pool
+//! sizing, deadpool + `postgres-openssl` + `SslVerifyMode::NONE`, and wait/create/recycle timeouts
+//! match signer-payer’s `Database::new`. This crate adds an eager **`smoke_check`** on facilitator
+//! cold start (like signer-payer bins calling `init_parameters()` before `run_server`) so broken
+//! `DATABASE_URL` surfaces immediately with a full error chain, not only on first `/verify`.
 
 use deadpool_postgres::{Client, Config, Pool, PoolConfig, Runtime};
 use openssl::ssl::{SslConnector, SslMethod};
 use postgres_openssl::MakeTlsConnector;
 use std::collections::HashMap;
+use std::error::Error;
 use std::time::Duration;
 use tokio::time::timeout;
 
-/// pr402 facilitator DB pool (deadpool + TLS like `horizon-serverless-copy`).
+/// Deadpool/tokio-postgres often surface a useless Display ("db error"); walk `source()` for the real message.
+fn format_err_chain(err: &dyn Error) -> String {
+    let mut out = err.to_string();
+    let mut src = err.source();
+    while let Some(s) = src {
+        out.push_str(" | ");
+        out.push_str(&s.to_string());
+        src = s.source();
+    }
+    out
+}
+
+/// pr402 facilitator DB pool (deadpool + TLS; parity with signer-payer `Database`).
 #[derive(Clone)]
 pub struct Pr402Db {
     pool: Pool,
@@ -41,6 +60,8 @@ impl Pr402Db {
     /// Serverless-friendly statement cleanup (see horizon-srv `database.rs`).
     const DEALLOCATE_TIMEOUT: Duration = Duration::from_secs(5);
     const QUERY_TIMEOUT: Duration = Duration::from_secs(60);
+    /// Cold-start probe timeout (keep short; full queries use [`Self::QUERY_TIMEOUT`]).
+    const SMOKE_TIMEOUT: Duration = Duration::from_secs(15);
 
     pub fn connect(database_url: impl Into<String>) -> Result<Self, DbError> {
         let mut cfg = Config::new();
@@ -61,7 +82,7 @@ impl Pr402Db {
         let tls = MakeTlsConnector::new(builder.build());
         let pool = cfg
             .create_pool(Some(Runtime::Tokio1), tls)
-            .map_err(|e| DbError::Pool(e.to_string()))?;
+            .map_err(|e| DbError::Pool(format_err_chain(&e)))?;
         Ok(Pr402Db { pool })
     }
 
@@ -80,7 +101,20 @@ impl Pr402Db {
         self.pool
             .get()
             .await
-            .map_err(|e| DbError::Pool(e.to_string()))
+            .map_err(|e| DbError::Pool(format_err_chain(&e)))
+    }
+
+    /// Eager connectivity check (signer-payer pattern: touch DB during bin startup, not only on first row write).
+    pub async fn smoke_check(&self) -> Result<(), DbError> {
+        let client = self.conn().await?;
+        timeout(
+            Self::SMOKE_TIMEOUT,
+            client.query_one("SELECT 1 as smoke_ok", &[]),
+        )
+        .await
+        .map_err(|_| DbError::Timeout)?
+        .map_err(|e| DbError::Query(format_err_chain(&e)))?;
+        Ok(())
     }
 
     /// Load `parameters` rows (active + in effective window). Same shape as signer-payer `get_platform_parameters`.
