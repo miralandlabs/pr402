@@ -78,6 +78,32 @@ impl VerifyRequest {
             .filter(|s| !s.is_empty())
     }
 
+    /// Maps `paymentRequirements.asset` (fallback: `paymentPayload.accepted.asset`) to
+    /// `resource_providers.settlement_mode` / `spl_mint` per `migrations/init.sql` (`native_sol` | `spl`).
+    pub fn resource_provider_settlement(&self) -> (String, Option<String>) {
+        let asset = self
+            .0
+            .get("paymentRequirements")
+            .and_then(|r| r.get("asset"))
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                self.0
+                    .get("paymentPayload")
+                    .and_then(|p| p.get("accepted"))
+                    .and_then(|a| a.get("asset"))
+                    .and_then(|v| v.as_str())
+            })
+            .unwrap_or("")
+            .trim();
+        const NATIVE: &str = "11111111111111111111111111111111";
+        const WSOL: &str = "So11111111111111111111111111111111111111112";
+        if asset.is_empty() || asset == NATIVE || asset == WSOL {
+            ("native_sol".to_owned(), None)
+        } else {
+            ("spl".to_owned(), Some(asset.to_owned()))
+        }
+    }
+
     pub fn scheme_handler_slug(&self) -> Option<SchemeHandlerSlug> {
         let x402_version = self.0.get("x402Version")?.as_u64()?;
         // Only support v2

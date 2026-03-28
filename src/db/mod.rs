@@ -56,6 +56,13 @@ impl std::fmt::Display for DbError {
 
 impl std::error::Error for DbError {}
 
+/// Pairs `resource_providers.settlement_mode` with optional `spl_mint` (keeps call arity down for clippy).
+#[derive(Clone, Copy)]
+pub struct ResourceProviderRail<'a> {
+    pub settlement_mode: &'a str,
+    pub spl_mint: Option<&'a str>,
+}
+
 impl Pr402Db {
     const WAIT: Duration = Duration::from_secs(15);
     const CREATE: Duration = Duration::from_secs(10);
@@ -193,7 +200,9 @@ impl Pr402Db {
                 INSERT INTO resource_providers (wallet_pubkey, settlement_mode, spl_mint, last_seen_at)
                 VALUES ($1, $2, $3, NOW())
                 ON CONFLICT (wallet_pubkey) DO UPDATE SET
-                    last_seen_at = NOW()
+                    last_seen_at = NOW(),
+                    settlement_mode = EXCLUDED.settlement_mode,
+                    spl_mint = EXCLUDED.spl_mint
                 RETURNING id
                 "#;
 
@@ -410,11 +419,13 @@ impl Pr402Db {
         &self,
         correlation_id: &str,
         wallet_pubkey: &str,
+        settlement_mode: &str,
+        spl_mint: Option<&str>,
         verify_ok: bool,
         verify_error: Option<&str>,
     ) -> Result<(), DbError> {
         let provider_id = self
-            .ensure_resource_provider(wallet_pubkey, "native_sol", None)
+            .ensure_resource_provider(wallet_pubkey, settlement_mode, spl_mint)
             .await?;
 
         const SQL: &str = r#"
@@ -486,12 +497,17 @@ impl Pr402Db {
         &self,
         correlation_id: &str,
         wallet_pubkey: &str,
+        rail: ResourceProviderRail<'_>,
         settle_ok: bool,
         settle_error: Option<&str>,
         settlement_signature: Option<&str>,
     ) -> Result<(), DbError> {
         let provider_id = self
-            .ensure_resource_provider(wallet_pubkey, "native_sol", None)
+            .ensure_resource_provider(
+                wallet_pubkey,
+                rail.settlement_mode,
+                rail.spl_mint,
+            )
             .await?;
 
         const SQL: &str = r#"

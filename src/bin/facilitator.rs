@@ -4,7 +4,12 @@
 //! DB: `signer-payer/src/route_handler.rs` calls `DATABASE.get_or_init(init_database)` before `run`;
 //! pr402 sets `PR402_DB` the same way — pool from `DATABASE_URL`, mirroring `database.rs` `Database::new`.
 
-use pr402::{chain::ChainProvider, config::Config, db::Pr402Db, facilitator::Facilitator};
+use pr402::{
+    chain::ChainProvider,
+    config::Config,
+    db::{Pr402Db, ResourceProviderRail},
+    facilitator::Facilitator,
+};
 use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
@@ -211,6 +216,8 @@ async fn handle_verify(
 
     let persist_meta = verify_request.correlation_id_for_persistence(correlation_http);
     let payee = verify_request.payee_wallet();
+    let (settlement_mode, spl_mint_owned) = verify_request.resource_provider_settlement();
+    let spl_mint_ref = spl_mint_owned.as_deref();
 
     match facilitator.verify(&verify_request).await {
         Ok(response) => {
@@ -224,7 +231,17 @@ async fn handle_verify(
             if let (Some(db), Some(cid), Some(wallet)) =
                 (pr402_db(), effective_cid.as_deref(), payee.as_deref())
             {
-                if let Err(e) = db.record_payment_verify(cid, wallet, true, None).await {
+                if let Err(e) = db
+                    .record_payment_verify(
+                        cid,
+                        wallet,
+                        settlement_mode.as_str(),
+                        spl_mint_ref,
+                        true,
+                        None,
+                    )
+                    .await
+                {
                     warn!(
                         target: LOG_PR402_HTTP,
                         error = %e,
@@ -272,7 +289,14 @@ async fn handle_verify(
             {
                 let msg = format!("{}", e);
                 if let Err(err) = db
-                    .record_payment_verify(cid, wallet, false, Some(&msg))
+                    .record_payment_verify(
+                        cid,
+                        wallet,
+                        settlement_mode.as_str(),
+                        spl_mint_ref,
+                        false,
+                        Some(&msg),
+                    )
                     .await
                 {
                     warn!(
@@ -321,6 +345,8 @@ async fn handle_settle(
 
     let persist_meta = settle_request.correlation_id_for_persistence(correlation_http);
     let payee = settle_request.payee_wallet();
+    let (settlement_mode, spl_mint_owned) = settle_request.resource_provider_settlement();
+    let spl_mint_ref = spl_mint_owned.as_deref();
 
     pr402::parameters::refresh_parameters_from_db(pr402_db()).await;
 
@@ -338,7 +364,17 @@ async fn handle_settle(
                 (pr402_db(), persist_meta.as_deref(), payee.as_deref())
             {
                 if let Err(e) = db
-                    .record_payment_settle(cid, wallet, true, None, sig.as_deref())
+                    .record_payment_settle(
+                        cid,
+                        wallet,
+                        ResourceProviderRail {
+                            settlement_mode: settlement_mode.as_str(),
+                            spl_mint: spl_mint_ref,
+                        },
+                        true,
+                        None,
+                        sig.as_deref(),
+                    )
                     .await
                 {
                     warn!(
@@ -381,7 +417,17 @@ async fn handle_settle(
             {
                 let msg = format!("{}", e);
                 if let Err(err) = db
-                    .record_payment_settle(cid, wallet, false, Some(&msg), None)
+                    .record_payment_settle(
+                        cid,
+                        wallet,
+                        ResourceProviderRail {
+                            settlement_mode: settlement_mode.as_str(),
+                            spl_mint: spl_mint_ref,
+                        },
+                        false,
+                        Some(&msg),
+                        None,
+                    )
                     .await
                 {
                     warn!(
