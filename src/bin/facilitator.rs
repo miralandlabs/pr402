@@ -1,15 +1,14 @@
 //! Vercel serverless function entrypoint for x402 facilitator.
 //!
-//! Like `signer-payer-serverless-copy` bins: build `Arc` state in [`main`] before
-//! [`vercel_runtime::run`], and **probe Postgres on cold start** the same way those bins call
-//! `init_parameters()` (DB touch) before serving. See `signer-payer/src/route_handler.rs`
-//! (`DATABASE.get_or_init` before `run`) and `pr402::db` module docs.
+//! Like `signer-payer-serverless-copy` bins: build state in [`main`] before [`vercel_runtime::run`].
+//! DB: `signer-payer/src/route_handler.rs` calls `DATABASE.get_or_init(init_database)` before `run`;
+//! pr402 sets `PR402_DB` the same way — pool from `DATABASE_URL`, mirroring `database.rs` `Database::new`.
 
 use pr402::{chain::ChainProvider, config::Config, db::Pr402Db, facilitator::Facilitator};
 use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
 
 /// Shared CORS headers for `/api/v1/facilitator/*` (browser preflight + cross-origin JSON).
@@ -43,6 +42,10 @@ static PR402_DB: OnceLock<Option<Pr402Db>> = OnceLock::new();
 /// Shared [`ChainProvider`] for transaction-build helpers (`build-exact-payment-tx`).
 static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 
+/// Use an explicit target so `RUST_LOG=pr402=info` shows **`facilitator` bin** lines (default target is
+/// `facilitator`, which does not match the `pr402` filter and hides verify/settle logs).
+const LOG_PR402_HTTP: &str = "pr402::facilitator_http";
+
 fn with_api_version_v1(mut res: Response<Body>) -> Response<Body> {
     res.headers_mut().insert(
         http::HeaderName::from_static("x-api-version"),
@@ -62,33 +65,20 @@ fn pr402_db() -> Option<&'static Pr402Db> {
         .as_ref()
 }
 
-/// Optional DB: unset `DATABASE_URL` → `None`. If set, build pool (signer-payer `Database::new` parity)
-/// then **`smoke_check`** so a bad Neon URL fails at cold start with a full error chain, not only on `/verify`.
-async fn init_pr402_db_from_env() -> Option<Pr402Db> {
+/// Optional DB: unset `DATABASE_URL` → `None`. Pool construction only — same as signer-payer
+/// `signer-payer-serverless-copy/signer-payer/src/database.rs` `Database::new` (no extra probe).
+fn init_pr402_db_from_env() -> Option<Pr402Db> {
     match Pr402Db::from_env_var("DATABASE_URL") {
         None => None,
         Some(Err(e)) => {
             warn!(
+                target: LOG_PR402_HTTP,
                 error = %e,
-                "DATABASE_URL is set but pr402 could not create the Postgres pool (check URL / TLS)"
+                "DATABASE_URL is set but pr402 could not create the Postgres pool"
             );
             None
         }
-        Some(Ok(db)) => match db.smoke_check().await {
-            Ok(()) => {
-                info!("Postgres smoke check succeeded (signer-payer-style cold-start probe)");
-                Some(db)
-            }
-            Err(e) => {
-                error!(
-                    error = %e,
-                    "Postgres smoke check failed — running without DB persistence for this instance. \
-                Fix DATABASE_URL (Neon **pooler** connection string + sslmode=require is the usual Vercel fix), \
-                run pr402 migrations/init.sql, then redeploy."
-                );
-                None
-            }
-        },
+        Some(Ok(db)) => Some(db),
     }
 }
 
@@ -123,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     })
     .await;
 
-    if PR402_DB.set(init_pr402_db_from_env().await).is_err() {
+    if PR402_DB.set(init_pr402_db_from_env()).is_err() {
         return Err("PR402_DB: OnceLock already initialized".into());
     }
 
@@ -235,15 +225,29 @@ async fn handle_verify(
                 (pr402_db(), effective_cid.as_deref(), payee.as_deref())
             {
                 if let Err(e) = db.record_payment_verify(cid, wallet, true, None).await {
-                    warn!(error = %e, "record_payment_verify skipped");
+                    warn!(
+                        target: LOG_PR402_HTTP,
+                        error = %e,
+                        "record_payment_verify skipped"
+                    );
                 }
             }
             if let Some(ref cid) = effective_cid {
                 let minted = persist_meta.is_none();
                 info!(
+                    target: LOG_PR402_HTTP,
                     correlation_id = %cid,
                     minted,
                     payee = %payee.as_deref().unwrap_or("(none)"),
+                    "verify ok"
+                );
+            } else {
+                // No pool (`DATABASE_URL` unset) or no `payTo` / client correlation id — no minted id.
+                info!(
+                    target: LOG_PR402_HTTP,
+                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    db_enabled = pr402_db().is_some(),
+                    note = "no correlation id: need DB+payTo to mint, or client sends correlationId",
                     "verify ok"
                 );
             }
@@ -271,11 +275,16 @@ async fn handle_verify(
                     .record_payment_verify(cid, wallet, false, Some(&msg))
                     .await
                 {
-                    warn!(error = %err, "record_payment_verify skipped");
+                    warn!(
+                        target: LOG_PR402_HTTP,
+                        error = %err,
+                        "record_payment_verify skipped"
+                    );
                 }
             }
             if let Some(ref cid) = persist_meta {
                 info!(
+                    target: LOG_PR402_HTTP,
                     correlation_id = %cid,
                     payee = %payee.as_deref().unwrap_or("(none)"),
                     "verify failed (client correlation id)"
@@ -332,15 +341,27 @@ async fn handle_settle(
                     .record_payment_settle(cid, wallet, true, None, sig.as_deref())
                     .await
                 {
-                    warn!(error = %e, "record_payment_settle skipped");
+                    warn!(
+                        target: LOG_PR402_HTTP,
+                        error = %e,
+                        "record_payment_settle skipped"
+                    );
                 }
             }
             if let Some(cid) = persist_meta.as_deref() {
                 info!(
+                    target: LOG_PR402_HTTP,
                     correlation_id = %cid,
                     payee = %payee.as_deref().unwrap_or("(none)"),
                     settlement_signature = sig.as_deref(),
                     "settle ok"
+                );
+            } else {
+                info!(
+                    target: LOG_PR402_HTTP,
+                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    db_enabled = pr402_db().is_some(),
+                    "settle ok (no correlation id; payment still settled on-chain)"
                 );
             }
             let mut res = facilitator_response!()
@@ -363,11 +384,16 @@ async fn handle_settle(
                     .record_payment_settle(cid, wallet, false, Some(&msg), None)
                     .await
                 {
-                    warn!(error = %err, "record_payment_settle skipped");
+                    warn!(
+                        target: LOG_PR402_HTTP,
+                        error = %err,
+                        "record_payment_settle skipped"
+                    );
                 }
             }
             if let Some(cid) = persist_meta.as_deref() {
                 info!(
+                    target: LOG_PR402_HTTP,
                     correlation_id = %cid,
                     payee = %payee.as_deref().unwrap_or("(none)"),
                     "settle failed (client correlation id)"

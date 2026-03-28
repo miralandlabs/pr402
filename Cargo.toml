@@ -64,7 +64,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # URL parsing
 url = { version = "2.5", features = ["serde"] }
 
-# Optional PostgreSQL (Vercel serverless + Neon/Supabase), same stack as horizon-serverless-copy
+# Optional PostgreSQL: deadpool + openssl — same stack as signer-payer-serverless-copy/signer-payer/src/database.rs
 deadpool-postgres = { version = "0.14", features = ["serde"] }
 tokio-postgres = "0.7"
 postgres-openssl = "0.5"

@@ -1,12 +1,10 @@
-//! Optional PostgreSQL persistence (Vercel + Neon/Supabase).
+//! PostgreSQL persistence: **mirror** signer-payer-serverless-copy
+//! `signer-payer/src/database.rs` (`Database::new`) for the pool + TLS.
 //!
-//! Set `DATABASE_URL` to enable. Run `migrations/init.sql` once against Postgres.
-//!
-//! **Reference (same repo):** `signer-payer-serverless-copy/signer-payer/src/database.rs` — pool
-//! sizing, deadpool + `postgres-openssl` + `SslVerifyMode::NONE`, and wait/create/recycle timeouts
-//! match signer-payer’s `Database::new`. This crate adds an eager **`smoke_check`** on facilitator
-//! cold start (like signer-payer bins calling `init_parameters()` before `run_server`) so broken
-//! `DATABASE_URL` surfaces immediately with a full error chain, not only on first `/verify`.
+//! **CRUD:** each operation uses the same transaction pattern as `database/base.rs`
+//! (`get_platform_parameters`) and `database/payment.rs` (`add_payment`): `BEGIN` →
+//! `DEALLOCATE ALL` with `DEALLOCATE_TIMEOUT` and `server_log` tracing → main statement under
+//! `QUERY_TIMEOUT` → `COMMIT` or explicit `ROLLBACK` with failure logs.
 
 use deadpool_postgres::{Client, Config, Pool, PoolConfig, Runtime};
 use openssl::ssl::{SslConnector, SslMethod};
@@ -15,6 +13,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 use tokio::time::timeout;
+use tokio_postgres::Transaction;
+use tracing::{error, info};
 
 /// Deadpool/tokio-postgres often surface a useless Display ("db error"); walk `source()` for the real message.
 fn format_err_chain(err: &dyn Error) -> String {
@@ -39,6 +39,8 @@ pub enum DbError {
     Pool(String),
     Query(String),
     Timeout,
+    /// Mirror signer-payer `DatabaseError::TransactionFailed`.
+    TransactionFailed,
 }
 
 impl std::fmt::Display for DbError {
@@ -47,6 +49,7 @@ impl std::fmt::Display for DbError {
             DbError::Pool(s) => write!(f, "db pool: {}", s),
             DbError::Query(s) => write!(f, "db query: {}", s),
             DbError::Timeout => write!(f, "db query timed out"),
+            DbError::TransactionFailed => write!(f, "database transaction failed"),
         }
     }
 }
@@ -57,11 +60,23 @@ impl Pr402Db {
     const WAIT: Duration = Duration::from_secs(15);
     const CREATE: Duration = Duration::from_secs(10);
     const RECYCLE: Duration = Duration::from_secs(30);
-    /// Serverless-friendly statement cleanup (see horizon-srv `database.rs`).
+    /// `signer-payer-serverless-copy/signer-payer/src/database/base.rs` + `payment.rs`.
     const DEALLOCATE_TIMEOUT: Duration = Duration::from_secs(5);
+    /// `signer-payer` `database.rs`: 60s for Vercel serverless + pooled Postgres.
     const QUERY_TIMEOUT: Duration = Duration::from_secs(60);
-    /// Cold-start probe timeout (keep short; full queries use [`Self::QUERY_TIMEOUT`]).
-    const SMOKE_TIMEOUT: Duration = Duration::from_secs(15);
+
+    /// Same `match` as signer-payer `get_platform_parameters` / `add_payment` after `BEGIN`.
+    async fn deallocate_all_signer_style(tx: &Transaction<'_>) {
+        match timeout(Self::DEALLOCATE_TIMEOUT, tx.execute("DEALLOCATE ALL", &[])).await {
+            Ok(Ok(_)) => info!(target: "server_log", "DEALLOCATE ALL succeeded"),
+            Ok(Err(e)) => error!(target: "server_log", error = %e, "DEALLOCATE ALL failed"),
+            Err(_) => error!(
+                target: "server_log",
+                "DEALLOCATE ALL timed out after {:?}",
+                Self::DEALLOCATE_TIMEOUT
+            ),
+        }
+    }
 
     pub fn connect(database_url: impl Into<String>) -> Result<Self, DbError> {
         let mut cfg = Config::new();
@@ -104,60 +119,67 @@ impl Pr402Db {
             .map_err(|e| DbError::Pool(format_err_chain(&e)))
     }
 
-    /// Eager connectivity check (signer-payer pattern: touch DB during bin startup, not only on first row write).
-    pub async fn smoke_check(&self) -> Result<(), DbError> {
-        let client = self.conn().await?;
-        timeout(
-            Self::SMOKE_TIMEOUT,
-            client.query_one("SELECT 1 as smoke_ok", &[]),
-        )
-        .await
-        .map_err(|_| DbError::Timeout)?
-        .map_err(|e| DbError::Query(format_err_chain(&e)))?;
-        Ok(())
-    }
-
-    /// Load `parameters` rows (active + in effective window). Same shape as signer-payer `get_platform_parameters`.
+    /// Load `parameters` rows — transaction + `DEALLOCATE ALL` + timeouts like signer-payer `get_platform_parameters`.
     pub async fn fetch_parameters_map(&self) -> Result<HashMap<String, String>, DbError> {
-        let mut client = self.conn().await?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-
-        let _ = timeout(Self::DEALLOCATE_TIMEOUT, tx.execute("DEALLOCATE ALL", &[])).await;
-
-        let rows = timeout(
-            Self::QUERY_TIMEOUT,
-            tx.query(
-                r#"
+        const SQL: &str = r#"
                 SELECT param_name, param_value
                 FROM parameters
                 WHERE inactive = false
                   AND (effective_from IS NULL OR effective_from <= NOW())
                   AND (expires_at IS NULL OR expires_at > NOW())
                 ORDER BY param_name ASC
-                "#,
-                &[],
-            ),
-        )
-        .await
-        .map_err(|_| DbError::Timeout)?
-        .map_err(|e| DbError::Query(e.to_string()))?;
+                "#;
 
-        let map: HashMap<String, String> = rows
-            .iter()
-            .map(|row| {
-                let name: String = row.get("param_name");
-                let value: String = row.get("param_value");
-                (name, value)
-            })
-            .collect();
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
 
-        tx.commit()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        Ok(map)
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(Self::QUERY_TIMEOUT, tx.query(SQL, &[])).await {
+            Ok(Ok(rows)) => {
+                let map: HashMap<String, String> = rows
+                    .into_iter()
+                    .map(|row| {
+                        let name: String = row.get("param_name");
+                        let value: String = row.get("param_value");
+                        (name, value)
+                    })
+                    .collect();
+                Ok(map)
+            }
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "Query failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "Query timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                Err(DbError::Timeout)
+            }
+        };
+
+        match result {
+            Ok(map) => {
+                tx.commit().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Commit failed");
+                    DbError::TransactionFailed
+                })?;
+                Ok(map)
+            }
+            Err(e) => {
+                tx.rollback().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Rollback failed");
+                    DbError::TransactionFailed
+                })?;
+                Err(e)
+            }
+        }
     }
 
     /// Ensure a row exists for `wallet_pubkey`; return `id`.
@@ -167,36 +189,59 @@ impl Pr402Db {
         settlement_mode: &str,
         spl_mint: Option<&str>,
     ) -> Result<i64, DbError> {
-        let mut client = self.conn().await?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-
-        let _ = timeout(Self::DEALLOCATE_TIMEOUT, tx.execute("DEALLOCATE ALL", &[])).await;
-
-        let row = timeout(
-            Self::QUERY_TIMEOUT,
-            tx.query_one(
-                r#"
+        const SQL: &str = r#"
                 INSERT INTO resource_providers (wallet_pubkey, settlement_mode, spl_mint, last_seen_at)
                 VALUES ($1, $2, $3, NOW())
                 ON CONFLICT (wallet_pubkey) DO UPDATE SET
                     last_seen_at = NOW()
                 RETURNING id
-                "#,
-                &[&wallet_pubkey, &settlement_mode, &spl_mint],
-            ),
+                "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query_one(SQL, &[&wallet_pubkey, &settlement_mode, &spl_mint]),
         )
         .await
-        .map_err(|_| DbError::Timeout)?
-        .map_err(|e| DbError::Query(e.to_string()))?;
+        {
+            Ok(Ok(row)) => Ok(row.get::<_, i64>("id")),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "ensure_resource_provider query_one failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "Query timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                Err(DbError::Timeout)
+            }
+        };
 
-        let id: i64 = row.get("id");
-        tx.commit()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        Ok(id)
+        match result {
+            Ok(id) => {
+                tx.commit().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Commit failed");
+                    DbError::TransactionFailed
+                })?;
+                Ok(id)
+            }
+            Err(e) => {
+                tx.rollback().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Rollback failed");
+                    DbError::TransactionFailed
+                })?;
+                Err(e)
+            }
+        }
     }
 
     /// Upsert provider and cache UniversalSettle PDAs from onboarding / discovery.
@@ -208,17 +253,7 @@ impl Pr402Db {
         split_vault_pda: &str,
         vault_sol_storage_pda: &str,
     ) -> Result<i64, DbError> {
-        let mut client = self.conn().await?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        let _ = timeout(Self::DEALLOCATE_TIMEOUT, tx.execute("DEALLOCATE ALL", &[])).await;
-
-        let row = timeout(
-            Self::QUERY_TIMEOUT,
-            tx.query_one(
-                r#"
+        const SQL: &str = r#"
                 INSERT INTO resource_providers (
                     wallet_pubkey, settlement_mode, spl_mint,
                     split_vault_pda, vault_sol_storage_pda, last_seen_at
@@ -231,7 +266,20 @@ impl Pr402Db {
                     vault_sol_storage_pda = EXCLUDED.vault_sol_storage_pda,
                     last_seen_at = NOW()
                 RETURNING id
-                "#,
+                "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query_one(
+                SQL,
                 &[
                     &wallet_pubkey,
                     &settlement_mode,
@@ -242,14 +290,38 @@ impl Pr402Db {
             ),
         )
         .await
-        .map_err(|_| DbError::Timeout)?
-        .map_err(|e| DbError::Query(e.to_string()))?;
+        {
+            Ok(Ok(row)) => Ok(row.get::<_, i64>("id")),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "upsert_resource_provider_vaults failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "Query timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                Err(DbError::Timeout)
+            }
+        };
 
-        let id: i64 = row.get("id");
-        tx.commit()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        Ok(id)
+        match result {
+            Ok(id) => {
+                tx.commit().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Commit failed");
+                    DbError::TransactionFailed
+                })?;
+                Ok(id)
+            }
+            Err(e) => {
+                tx.rollback().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Rollback failed");
+                    DbError::TransactionFailed
+                })?;
+                Err(e)
+            }
+        }
     }
 
     /// Like [`Self::upsert_resource_provider_vaults`], but sets `registration_verified_at` (wallet-signed onboard).
@@ -261,17 +333,7 @@ impl Pr402Db {
         split_vault_pda: &str,
         vault_sol_storage_pda: &str,
     ) -> Result<i64, DbError> {
-        let mut client = self.conn().await?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        let _ = timeout(Self::DEALLOCATE_TIMEOUT, tx.execute("DEALLOCATE ALL", &[])).await;
-
-        let row = timeout(
-            Self::QUERY_TIMEOUT,
-            tx.query_one(
-                r#"
+        const SQL: &str = r#"
                 INSERT INTO resource_providers (
                     wallet_pubkey, settlement_mode, spl_mint,
                     split_vault_pda, vault_sol_storage_pda, last_seen_at, registration_verified_at
@@ -285,7 +347,20 @@ impl Pr402Db {
                     last_seen_at = NOW(),
                     registration_verified_at = NOW()
                 RETURNING id
-                "#,
+                "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query_one(
+                SQL,
                 &[
                     &wallet_pubkey,
                     &settlement_mode,
@@ -296,14 +371,38 @@ impl Pr402Db {
             ),
         )
         .await
-        .map_err(|_| DbError::Timeout)?
-        .map_err(|e| DbError::Query(e.to_string()))?;
+        {
+            Ok(Ok(row)) => Ok(row.get::<_, i64>("id")),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "upsert_resource_provider_vaults_verified failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "Query timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                Err(DbError::Timeout)
+            }
+        };
 
-        let id: i64 = row.get("id");
-        tx.commit()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        Ok(id)
+        match result {
+            Ok(id) => {
+                tx.commit().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Commit failed");
+                    DbError::TransactionFailed
+                })?;
+                Ok(id)
+            }
+            Err(e) => {
+                tx.rollback().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Rollback failed");
+                    DbError::TransactionFailed
+                })?;
+                Err(e)
+            }
+        }
     }
 
     /// Record or merge `/verify` outcome for a correlation id.
@@ -318,17 +417,7 @@ impl Pr402Db {
             .ensure_resource_provider(wallet_pubkey, "native_sol", None)
             .await?;
 
-        let mut client = self.conn().await?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        let _ = timeout(Self::DEALLOCATE_TIMEOUT, tx.execute("DEALLOCATE ALL", &[])).await;
-
-        timeout(
-            Self::QUERY_TIMEOUT,
-            tx.execute(
-                r#"
+        const SQL: &str = r#"
                 INSERT INTO payment_attempts (
                     correlation_id, resource_provider_id,
                     verify_at, verify_ok, verify_error, updated_at
@@ -340,18 +429,56 @@ impl Pr402Db {
                     verify_ok = EXCLUDED.verify_ok,
                     verify_error = EXCLUDED.verify_error,
                     updated_at = NOW()
-                "#,
+                "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.execute(
+                SQL,
                 &[&correlation_id, &provider_id, &verify_ok, &verify_error],
             ),
         )
         .await
-        .map_err(|_| DbError::Timeout)?
-        .map_err(|e| DbError::Query(e.to_string()))?;
+        {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "record_payment_verify failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "Query timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                Err(DbError::Timeout)
+            }
+        };
 
-        tx.commit()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        Ok(())
+        match result {
+            Ok(()) => {
+                tx.commit().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Commit failed");
+                    DbError::TransactionFailed
+                })?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Rollback failed");
+                    DbError::TransactionFailed
+                })?;
+                Err(e)
+            }
+        }
     }
 
     /// Record or merge `/settle` outcome (on-chain signature optional).
@@ -367,17 +494,7 @@ impl Pr402Db {
             .ensure_resource_provider(wallet_pubkey, "native_sol", None)
             .await?;
 
-        let mut client = self.conn().await?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        let _ = timeout(Self::DEALLOCATE_TIMEOUT, tx.execute("DEALLOCATE ALL", &[])).await;
-
-        timeout(
-            Self::QUERY_TIMEOUT,
-            tx.execute(
-                r#"
+        const SQL: &str = r#"
                 INSERT INTO payment_attempts (
                     correlation_id, resource_provider_id,
                     settle_at, settle_ok, settle_error, settlement_signature, updated_at
@@ -390,7 +507,20 @@ impl Pr402Db {
                     settle_error = EXCLUDED.settle_error,
                     settlement_signature = COALESCE(EXCLUDED.settlement_signature, payment_attempts.settlement_signature),
                     updated_at = NOW()
-                "#,
+                "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.execute(
+                SQL,
                 &[
                     &correlation_id,
                     &provider_id,
@@ -401,12 +531,37 @@ impl Pr402Db {
             ),
         )
         .await
-        .map_err(|_| DbError::Timeout)?
-        .map_err(|e| DbError::Query(e.to_string()))?;
+        {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "record_payment_settle failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "Query timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                Err(DbError::Timeout)
+            }
+        };
 
-        tx.commit()
-            .await
-            .map_err(|e| DbError::Query(e.to_string()))?;
-        Ok(())
+        match result {
+            Ok(()) => {
+                tx.commit().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Commit failed");
+                    DbError::TransactionFailed
+                })?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.map_err(|e| {
+                    error!(target: "server_log", error = %e, "Rollback failed");
+                    DbError::TransactionFailed
+                })?;
+                Err(e)
+            }
+        }
     }
 }
