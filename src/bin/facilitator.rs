@@ -8,7 +8,7 @@ use pr402::{chain::ChainProvider, config::Config, db::Pr402Db, facilitator::Faci
 use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
-use tracing::warn;
+use tracing::{info, warn};
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
 
 /// Shared CORS headers for `/api/v1/facilitator/*` (browser preflight + cross-origin JSON).
@@ -72,10 +72,20 @@ fn init_pr402_db_from_env() -> Option<Pr402Db> {
     }
 }
 
+fn tracing_env_filter() -> tracing_subscriber::EnvFilter {
+    // Vercel often omits RUST_LOG; `from_default_env` alone defaults to ERROR and hides `warn!`
+    // (e.g. DB persistence failures). Prefer INFO when unset; still honor RUST_LOG when set.
+    match std::env::var("RUST_LOG") {
+        Ok(spec) => tracing_subscriber::EnvFilter::try_new(&spec)
+            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        Err(_) => tracing_subscriber::EnvFilter::new("info"),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_env_filter(tracing_env_filter())
         .init();
 
     let facilitator_ready: Result<DynFacilitator, String> = (async {
@@ -208,6 +218,15 @@ async fn handle_verify(
                     warn!(error = %e, "record_payment_verify skipped");
                 }
             }
+            if let Some(ref cid) = effective_cid {
+                let minted = persist_meta.is_none();
+                info!(
+                    correlation_id = %cid,
+                    minted,
+                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    "verify ok"
+                );
+            }
             let mut json = response.into_json();
             if let Some(ref cid) = effective_cid {
                 pr402::payment_attempt::merge_correlation_into_value(&mut json, cid);
@@ -234,6 +253,13 @@ async fn handle_verify(
                 {
                     warn!(error = %err, "record_payment_verify skipped");
                 }
+            }
+            if let Some(ref cid) = persist_meta {
+                info!(
+                    correlation_id = %cid,
+                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    "verify failed (client correlation id)"
+                );
             }
             error_response_with_optional_correlation(
                 StatusCode::BAD_REQUEST,
@@ -289,6 +315,14 @@ async fn handle_settle(
                     warn!(error = %e, "record_payment_settle skipped");
                 }
             }
+            if let Some(cid) = persist_meta.as_deref() {
+                info!(
+                    correlation_id = %cid,
+                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    settlement_signature = sig.as_deref(),
+                    "settle ok"
+                );
+            }
             let mut res = facilitator_response!()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json");
@@ -311,6 +345,13 @@ async fn handle_settle(
                 {
                     warn!(error = %err, "record_payment_settle skipped");
                 }
+            }
+            if let Some(cid) = persist_meta.as_deref() {
+                info!(
+                    correlation_id = %cid,
+                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    "settle failed (client correlation id)"
+                );
             }
             error_response_with_optional_correlation(
                 StatusCode::BAD_REQUEST,
