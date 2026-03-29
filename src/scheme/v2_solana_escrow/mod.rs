@@ -241,8 +241,8 @@ pub async fn verify_transfer(
             "Invalid SLAEscrow Instruction".into(),
         ));
     }
-    if data.len() < 209 {
-        // Minimal length for FundPayment
+    if data.len() < 177 {
+        // Minimal length for FundPayment (1 byte discriminator + 176 bytes data)
         return Err(PaymentVerificationError::TransactionSimulation(
             "Invalid FundPayment Data Length".into(),
         ));
@@ -259,7 +259,7 @@ pub async fn verify_transfer(
     let mint = Pubkey::new_from_array(data[33..65].try_into().unwrap());
     let amount = read_u64_le(&data[65..73]);
     let ttl_seconds = read_u64_le(&data[73..81]);
-    let oracle_authority = Pubkey::new_from_array(data[177..209].try_into().unwrap());
+    let oracle_authority = Pubkey::new_from_array(data[145..177].try_into().unwrap());
 
     if Address::new(seller) != requirements.pay_to {
         return Err(PaymentVerificationError::RecipientMismatch);

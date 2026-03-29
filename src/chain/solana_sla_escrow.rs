@@ -35,9 +35,8 @@ pub struct FundPaymentData {
     pub mint: Pubkey,             // 32 bytes
     pub amount: [u8; 8],          // 8 bytes (u64 little-endian)
     pub ttl_seconds: [u8; 8],     // 8 bytes (i64 little-endian)
-    pub reference: Pubkey,        // 32 bytes
     pub payment_uid: [u8; 32],    // 32 bytes
-    pub order_num: [u8; 32],      // 32 bytes
+    pub sla_hash: [u8; 32],       // 32 bytes
     pub oracle_authority: Pubkey, // 32 bytes
 }
 
@@ -48,9 +47,8 @@ impl FundPaymentData {
         bytes.extend_from_slice(&self.mint.to_bytes());
         bytes.extend_from_slice(&self.amount);
         bytes.extend_from_slice(&self.ttl_seconds);
-        bytes.extend_from_slice(&self.reference.to_bytes());
         bytes.extend_from_slice(&self.payment_uid);
-        bytes.extend_from_slice(&self.order_num);
+        bytes.extend_from_slice(&self.sla_hash);
         bytes.extend_from_slice(&self.oracle_authority.to_bytes());
         bytes
     }
@@ -138,7 +136,7 @@ pub fn build_fund_payment_instruction(
     amount: u64,
     ttl_seconds: i64,
     payment_uid: &str,
-    order_num: &str,
+    sla_hash: [u8; 32],
     oracle_authority: Pubkey,
 ) -> Instruction {
     let (bank_pda, _) = derive_bank_pda(&program_id);
@@ -147,16 +145,14 @@ pub fn build_fund_payment_instruction(
     let (payment_pda, _) = derive_payment_pda(&program_id, &bank_pda, payment_uid);
 
     let is_sol = mint == Pubkey::default();
-    let reference_pubkey = Pubkey::default();
 
     let data = FundPaymentData {
         seller,
         mint,
         amount: amount.to_le_bytes(),
         ttl_seconds: ttl_seconds.to_le_bytes(),
-        reference: reference_pubkey,
         payment_uid: sanitize_uid(payment_uid),
-        order_num: sanitize_uid(order_num),
+        sla_hash,
         oracle_authority,
     };
 
@@ -171,7 +167,6 @@ pub fn build_fund_payment_instruction(
         AccountMeta::new(escrow_pda, false),
         AccountMeta::new(payment_pda, false),
         AccountMeta::new_readonly(mint, false),
-        AccountMeta::new_readonly(reference_pubkey, false),
     ];
 
     if is_sol {
