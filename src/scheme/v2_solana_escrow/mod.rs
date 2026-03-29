@@ -257,9 +257,9 @@ pub async fn verify_transfer(
 
     let seller = Pubkey::new_from_array(data[1..33].try_into().unwrap());
     let mint = Pubkey::new_from_array(data[33..65].try_into().unwrap());
-    let amount = read_u64_le(&data[65..73]);
-    let ttl_seconds = read_u64_le(&data[73..81]);
-    let oracle_authority = Pubkey::new_from_array(data[145..177].try_into().unwrap());
+    let amount = read_u64_le(&data[161..169]);
+    let ttl_seconds = read_u64_le(&data[169..177]);
+    let oracle_authority = Pubkey::new_from_array(data[65..97].try_into().unwrap());
 
     if Address::new(seller) != requirements.pay_to {
         return Err(PaymentVerificationError::RecipientMismatch);

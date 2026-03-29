@@ -23,21 +23,22 @@ pub enum SLAEscrowInstruction {
     ReleasePayment = 1,
     RefundPayment = 2,
     ClosePayment = 3,
-    ExtendPaymentTTL = 6,
-    ConfirmOracle = 9,
+    ExtendPaymentTTL = 4,
+    SubmitDelivery = 5,
+    ConfirmOracle = 6,
 }
 
 /// SLAEscrow FundPayment instruction data structure (176 bytes total).
 #[repr(C)]
 #[derive(Clone, Debug)]
 pub struct FundPaymentData {
-    pub seller: Pubkey,           // 32 bytes
-    pub mint: Pubkey,             // 32 bytes
-    pub amount: [u8; 8],          // 8 bytes (u64 little-endian)
-    pub ttl_seconds: [u8; 8],     // 8 bytes (i64 little-endian)
-    pub payment_uid: [u8; 32],    // 32 bytes
-    pub sla_hash: [u8; 32],       // 32 bytes
-    pub oracle_authority: Pubkey, // 32 bytes
+    pub seller: Pubkey,           // 32 bytes (1..33)
+    pub mint: Pubkey,             // 32 bytes (33..65)
+    pub oracle_authority: Pubkey, // 32 bytes (65..97)
+    pub payment_uid: [u8; 32],    // 32 bytes (97..129)
+    pub sla_hash: [u8; 32],       // 32 bytes (129..161)
+    pub amount: [u8; 8],          // 8 bytes (161..169)
+    pub ttl_seconds: [u8; 8],     // 8 bytes (169..177)
 }
 
 impl FundPaymentData {
@@ -45,11 +46,11 @@ impl FundPaymentData {
         let mut bytes = Vec::with_capacity(176);
         bytes.extend_from_slice(&self.seller.to_bytes());
         bytes.extend_from_slice(&self.mint.to_bytes());
-        bytes.extend_from_slice(&self.amount);
-        bytes.extend_from_slice(&self.ttl_seconds);
+        bytes.extend_from_slice(&self.oracle_authority.to_bytes());
         bytes.extend_from_slice(&self.payment_uid);
         bytes.extend_from_slice(&self.sla_hash);
-        bytes.extend_from_slice(&self.oracle_authority.to_bytes());
+        bytes.extend_from_slice(&self.amount);
+        bytes.extend_from_slice(&self.ttl_seconds);
         bytes
     }
 }

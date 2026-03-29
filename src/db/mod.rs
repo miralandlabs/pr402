@@ -503,11 +503,7 @@ impl Pr402Db {
         settlement_signature: Option<&str>,
     ) -> Result<(), DbError> {
         let provider_id = self
-            .ensure_resource_provider(
-                wallet_pubkey,
-                rail.settlement_mode,
-                rail.spl_mint,
-            )
+            .ensure_resource_provider(wallet_pubkey, rail.settlement_mode, rail.spl_mint)
             .await?;
 
         const SQL: &str = r#"
