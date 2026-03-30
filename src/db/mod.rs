@@ -221,10 +221,8 @@ impl Pr402Db {
         const SQL: &str = r#"
                 INSERT INTO resource_providers (wallet_pubkey, settlement_mode, spl_mint, last_seen_at)
                 VALUES ($1, $2, $3, NOW())
-                ON CONFLICT (wallet_pubkey) DO UPDATE SET
-                    last_seen_at = NOW(),
-                    settlement_mode = EXCLUDED.settlement_mode,
-                    spl_mint = EXCLUDED.spl_mint
+                ON CONFLICT (wallet_pubkey, settlement_mode, spl_mint) DO UPDATE SET
+                    last_seen_at = NOW()
                 RETURNING id
                 "#;
 
@@ -290,9 +288,7 @@ impl Pr402Db {
                     split_vault_pda, vault_sol_storage_pda, last_seen_at
                 )
                 VALUES ($1, $2, $3, $4, $5, NOW())
-                ON CONFLICT (wallet_pubkey) DO UPDATE SET
-                    settlement_mode = EXCLUDED.settlement_mode,
-                    spl_mint = COALESCE(EXCLUDED.spl_mint, resource_providers.spl_mint),
+                ON CONFLICT (wallet_pubkey, settlement_mode, spl_mint) DO UPDATE SET
                     split_vault_pda = EXCLUDED.split_vault_pda,
                     vault_sol_storage_pda = EXCLUDED.vault_sol_storage_pda,
                     last_seen_at = NOW()
@@ -370,9 +366,7 @@ impl Pr402Db {
                     split_vault_pda, vault_sol_storage_pda, last_seen_at, registration_verified_at
                 )
                 VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-                ON CONFLICT (wallet_pubkey) DO UPDATE SET
-                    settlement_mode = EXCLUDED.settlement_mode,
-                    spl_mint = COALESCE(EXCLUDED.spl_mint, resource_providers.spl_mint),
+                ON CONFLICT (wallet_pubkey, settlement_mode, spl_mint) DO UPDATE SET
                     split_vault_pda = EXCLUDED.split_vault_pda,
                     vault_sol_storage_pda = EXCLUDED.vault_sol_storage_pda,
                     last_seen_at = NOW(),

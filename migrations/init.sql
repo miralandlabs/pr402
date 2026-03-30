@@ -35,6 +35,12 @@ CREATE TABLE IF NOT EXISTS resource_providers (
 
 ALTER TABLE resource_providers ENABLE ROW LEVEL SECURITY;
 
+-- Create THE HIGH-FIDELITY NULL-SAFE UNIQUE INDEX
+-- This ensures that (Alice, 'spl', NULL) == (Alice, 'spl', NULL)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_providers_dedup_trip 
+ON resource_providers (wallet_pubkey, settlement_mode, spl_mint) 
+NULLS NOT DISTINCT;
+
 CREATE INDEX IF NOT EXISTS idx_resource_providers_last_seen
     ON resource_providers (last_seen_at ASC);
 
