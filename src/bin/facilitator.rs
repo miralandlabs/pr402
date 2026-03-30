@@ -11,11 +11,13 @@ use pr402::{
         PaymentAuditMetadata, PaymentOutcome, Pr402Db, ResourceProviderInfo, ResourceProviderRail,
     },
     facilitator::Facilitator,
+    scheme::v2_solana_escrow::types::SLAEscrowScheme,
 };
 use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use tracing::{info, warn};
+use tracing_subscriber::{fmt::format::FmtSpan, prelude::*};
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
 
 /// Shared CORS headers for `/api/v1/facilitator/*` (browser preflight + cross-origin JSON).
@@ -51,7 +53,8 @@ static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 
 /// Use an explicit target so `RUST_LOG=pr402=info` shows **`facilitator` bin** lines (default target is
 /// `facilitator`, which does not match the `pr402` filter and hides verify/settle logs).
-const LOG_PR402_HTTP: &str = "pr402::facilitator_http";
+/// Institutional audit log category (mirrors signer-payer baseline).
+const LOG_SERVER_LOG: &str = "server_log";
 
 fn with_api_version_v1(mut res: Response<Body>) -> Response<Body> {
     res.headers_mut().insert(
@@ -72,6 +75,63 @@ fn pr402_db() -> Option<&'static Pr402Db> {
         .as_ref()
 }
 
+fn payment_scheme_is_sla_escrow(scheme: Option<&str>) -> bool {
+    scheme == Some(SLAEscrowScheme.as_ref())
+}
+
+/// Runs after `payment_attempts` insert so `escrow_details.upsert` can resolve `payment_attempt_id`.
+async fn persist_escrow_audit_if_applicable_verify(
+    db: &Pr402Db,
+    verify_request: &pr402::proto::VerifyRequest,
+    correlation_id: &str,
+    scheme_opt: Option<&str>,
+) {
+    if !payment_scheme_is_sla_escrow(scheme_opt) {
+        return;
+    }
+    let Some(cp) = CHAIN_PROVIDER.get() else {
+        warn!(
+            target: LOG_SERVER_LOG,
+            "escrow audit after verify skipped: CHAIN_PROVIDER not initialized"
+        );
+        return;
+    };
+    pr402::scheme::v2_solana_escrow::persist_escrow_audit_after_verify(
+        db,
+        cp.solana.as_ref(),
+        verify_request,
+        correlation_id,
+    )
+    .await;
+}
+
+async fn persist_escrow_audit_if_applicable_settle(
+    db: &Pr402Db,
+    settle_request: &pr402::proto::SettleRequest,
+    correlation_id: &str,
+    scheme_opt: Option<&str>,
+    fund_signature: Option<&str>,
+) {
+    if !payment_scheme_is_sla_escrow(scheme_opt) {
+        return;
+    }
+    let Some(cp) = CHAIN_PROVIDER.get() else {
+        warn!(
+            target: LOG_SERVER_LOG,
+            "escrow audit after settle skipped: CHAIN_PROVIDER not initialized"
+        );
+        return;
+    };
+    pr402::scheme::v2_solana_escrow::persist_escrow_audit_after_settle(
+        db,
+        cp.solana.as_ref(),
+        settle_request,
+        correlation_id,
+        fund_signature,
+    )
+    .await;
+}
+
 /// Optional DB: unset `DATABASE_URL` → `None`. Pool construction only — same as signer-payer
 /// `signer-payer-serverless-copy/signer-payer/src/database.rs` `Database::new` (no extra probe).
 fn init_pr402_db_from_env() -> Option<Pr402Db> {
@@ -79,7 +139,7 @@ fn init_pr402_db_from_env() -> Option<Pr402Db> {
         None => None,
         Some(Err(e)) => {
             warn!(
-                target: LOG_PR402_HTTP,
+                target: LOG_SERVER_LOG,
                 error = %e,
                 "DATABASE_URL is set but pr402 could not create the Postgres pool"
             );
@@ -89,21 +149,35 @@ fn init_pr402_db_from_env() -> Option<Pr402Db> {
     }
 }
 
-fn tracing_env_filter() -> tracing_subscriber::EnvFilter {
-    // Vercel often omits RUST_LOG; `from_default_env` alone defaults to ERROR and hides `warn!`
-    // (e.g. DB persistence failures). Prefer INFO when unset; still honor RUST_LOG when set.
-    match std::env::var("RUST_LOG") {
-        Ok(spec) => tracing_subscriber::EnvFilter::try_new(&spec)
-            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        Err(_) => tracing_subscriber::EnvFilter::new("info"),
+/// Institutional baseline: `signer-payer-serverless-copy/signer-payer/src/init.rs` `init_tracing`.
+/// Registry + compact fmt layer with explicit `with_target(true)` so `target: "server_log"` lines
+/// filter and print correctly; default `RUST_LOG` unset → `server_log=info` (honor `RUST_LOG` when set).
+fn init_tracing() {
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_target(true)
+        .with_level(true)
+        .with_span_events(FmtSpan::NONE)
+        .compact();
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("server_log=info"));
+
+    if let Err(e) = tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(env_filter)
+        .try_init()
+    {
+        eprintln!(
+            "Failed to initialize tracing subscriber: {}. Logs may be limited.",
+            e
+        );
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_env_filter())
-        .init();
+    init_tracing();
 
     let db = init_pr402_db_from_env();
     if PR402_DB.set(db.clone()).is_err() {
@@ -236,7 +310,7 @@ async fn handle_verify(
             if let (Some(db), Some(cid), Some(wallet)) =
                 (pr402_db(), effective_cid.as_deref(), payee)
             {
-                if let Err(e) = db
+                match db
                     .record_payment_verify(
                         cid,
                         ResourceProviderInfo {
@@ -260,17 +334,28 @@ async fn handle_verify(
                     )
                     .await
                 {
-                    warn!(
-                        target: LOG_PR402_HTTP,
-                        error = %e,
-                        "record_payment_verify skipped"
-                    );
+                    Ok(()) => {
+                        persist_escrow_audit_if_applicable_verify(
+                            db,
+                            &verify_request,
+                            cid,
+                            scheme_opt.as_deref(),
+                        )
+                        .await;
+                    }
+                    Err(e) => {
+                        warn!(
+                            target: LOG_SERVER_LOG,
+                            error = %e,
+                            "record_payment_verify skipped"
+                        );
+                    }
                 }
             }
             if let Some(ref cid) = effective_cid {
                 let minted = persist_meta.is_none();
                 info!(
-                    target: LOG_PR402_HTTP,
+                    target: LOG_SERVER_LOG,
                     correlation_id = %cid,
                     minted,
                     payee = %payee.unwrap_or("(none)"),
@@ -279,7 +364,7 @@ async fn handle_verify(
             } else {
                 // No pool (`DATABASE_URL` unset) or no `payTo` / client correlation id — no minted id.
                 info!(
-                    target: LOG_PR402_HTTP,
+                    target: LOG_SERVER_LOG,
                     payee = %payee.unwrap_or("(none)"),
                     db_enabled = pr402_db().is_some(),
                     note = "no correlation id: need DB+payTo to mint, or client sends correlationId",
@@ -331,7 +416,7 @@ async fn handle_verify(
                     .await
                 {
                     warn!(
-                        target: LOG_PR402_HTTP,
+                        target: LOG_SERVER_LOG,
                         error = %err,
                         "record_payment_verify skipped"
                     );
@@ -339,7 +424,7 @@ async fn handle_verify(
             }
             if let Some(ref cid) = persist_meta {
                 info!(
-                    target: LOG_PR402_HTTP,
+                    target: LOG_SERVER_LOG,
                     correlation_id = %cid,
                     payee = %payee.unwrap_or("(none)"),
                     "verify failed (client correlation id)"
@@ -396,7 +481,7 @@ async fn handle_settle(
             if let (Some(db), Some(cid), Some(wallet)) =
                 (pr402_db(), persist_meta.as_deref(), payee)
             {
-                if let Err(e) = db
+                match db
                     .record_payment_settle(
                         cid,
                         ResourceProviderInfo {
@@ -420,16 +505,28 @@ async fn handle_settle(
                     )
                     .await
                 {
-                    warn!(
-                        target: LOG_PR402_HTTP,
-                        error = %e,
-                        "record_payment_settle skipped"
-                    );
+                    Ok(()) => {
+                        persist_escrow_audit_if_applicable_settle(
+                            db,
+                            &settle_request,
+                            cid,
+                            scheme_opt.as_deref(),
+                            sig.as_deref(),
+                        )
+                        .await;
+                    }
+                    Err(e) => {
+                        warn!(
+                            target: LOG_SERVER_LOG,
+                            error = %e,
+                            "record_payment_settle skipped"
+                        );
+                    }
                 }
             }
             if let Some(cid) = persist_meta.as_deref() {
                 info!(
-                    target: LOG_PR402_HTTP,
+                    target: LOG_SERVER_LOG,
                     correlation_id = %cid,
                     payee = %payee.unwrap_or("(none)"),
                     settlement_signature = sig.as_deref(),
@@ -437,7 +534,7 @@ async fn handle_settle(
                 );
             } else {
                 info!(
-                    target: LOG_PR402_HTTP,
+                    target: LOG_SERVER_LOG,
                     payee = %payee.unwrap_or("(none)"),
                     db_enabled = pr402_db().is_some(),
                     "settle ok (no correlation id; payment still settled on-chain)"
@@ -484,7 +581,7 @@ async fn handle_settle(
                     .await
                 {
                     warn!(
-                        target: LOG_PR402_HTTP,
+                        target: LOG_SERVER_LOG,
                         error = %err,
                         "record_payment_settle skipped"
                     );
@@ -492,7 +589,7 @@ async fn handle_settle(
             }
             if let Some(cid) = persist_meta.as_deref() {
                 info!(
-                    target: LOG_PR402_HTTP,
+                    target: LOG_SERVER_LOG,
                     correlation_id = %cid,
                     payee = %payee.unwrap_or("(none)"),
                     "settle failed (client correlation id)"
@@ -720,11 +817,14 @@ async fn handle_onboard_submit(
                         )
                         .await
                     {
-                        warn!(error = %e, "persist verified onboard vaults skipped");
+                        warn!(target: LOG_SERVER_LOG, error = %e, "persist verified onboard vaults skipped");
                     }
                 }
             } else {
-                warn!("DATABASE_URL unset; onboard signature accepted but resource_providers not persisted");
+                warn!(
+                    target: LOG_SERVER_LOG,
+                    "DATABASE_URL unset; onboard signature accepted but resource_providers not persisted"
+                );
             }
             facilitator_response!()
                 .status(StatusCode::OK)

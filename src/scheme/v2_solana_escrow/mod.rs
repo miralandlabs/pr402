@@ -46,7 +46,7 @@ impl X402SchemeFacilitatorBuilder for V2SolanaSLAEscrow {
         &self,
         provider: ChainProvider,
         _config: Option<serde_json::Value>,
-        db: Option<crate::db::Pr402Db>,
+        _db: Option<crate::db::Pr402Db>,
     ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn Error>> {
         // SLAEscrow requires SLAEscrowConfig to be present
         if provider.solana.sla_escrow().is_none() {
@@ -54,14 +54,12 @@ impl X402SchemeFacilitatorBuilder for V2SolanaSLAEscrow {
         }
         Ok(Box::new(V2SolanaSLAEscrowFacilitator {
             provider: provider.solana,
-            db,
         }))
     }
 }
 
 pub struct V2SolanaSLAEscrowFacilitator {
     provider: Arc<SolanaChainProvider>,
-    db: Option<crate::db::Pr402Db>,
 }
 
 #[async_trait::async_trait]
@@ -73,26 +71,9 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         let request_v2 = types::VerifyRequest::from_proto(request.clone())?;
         let verification = verify_transfer(&self.provider, &request_v2).await?;
 
-        // 🛡️ High-Fidelity Enriched Logging
-        // If DB is enabled and correlation ID exists, persist escrow milestones.
-        if let (Some(db), Some(cid)) = (&self.db, request.correlation_id_for_persistence(None)) {
-            // We use the same verify_transfer logic to re-extract the exact PDA and terms
-            if let Ok(metadata) = extract_escrow_audit_metadata(&self.provider, &request_v2) {
-                if let Err(e) = db
-                    .upsert_escrow_detail(
-                        &cid,
-                        &metadata.escrow_pda,
-                        &metadata.bank_pda,
-                        &metadata.oracle,
-                        metadata.sla_hash.as_deref(),
-                        None, // Fund signature not yet in verify phase (simulation done)
-                    )
-                    .await
-                {
-                    tracing::warn!(error = %e, correlation_id = %cid, "upsert_escrow_detail failed during verify");
-                }
-            }
-        }
+        // Escrow audit rows (`escrow_details`) are persisted in `bin/facilitator.rs` *after*
+        // `record_payment_verify` creates the parent `payment_attempts` row — this scheme runs
+        // before that insert, so upserting here always failed with "Parent payment attempt not found".
 
         Ok(proto::v2::VerifyResponse::valid(verification.payer.to_string()).into())
     }
@@ -105,26 +86,8 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         let verification = verify_transfer(&self.provider, &request_v2).await?;
         let payer = verification.payer.to_string();
 
-        // 🛡️ High-Fidelity Enriched Logging
-        if let (Some(db), Some(cid)) = (&self.db, request.correlation_id_for_persistence(None)) {
-            if let Ok(metadata) = extract_escrow_audit_metadata(&self.provider, &request_v2) {
-                // Settle correlates to Escrow RELEASE normally, but in facilitator it's often the re-verification.
-                // For now we ensure we have the fundamental escrow metadata.
-                if let Err(e) = db
-                    .upsert_escrow_detail(
-                        &cid,
-                        &metadata.escrow_pda,
-                        &metadata.bank_pda,
-                        &metadata.oracle,
-                        metadata.sla_hash.as_deref(),
-                        None,
-                    )
-                    .await
-                {
-                    tracing::warn!(error = %e, correlation_id = %cid, "upsert_escrow_detail failed during settle");
-                }
-            }
-        }
+        // `escrow_details` upsert runs after `record_payment_settle` in `bin/facilitator.rs`
+        // so the parent `payment_attempts` row exists (same ordering bug as verify).
 
         // Use the shared settle_transaction logic
         let tx_sig = settle_transaction(&self.provider, verification).await?;
@@ -434,4 +397,107 @@ fn extract_escrow_audit_metadata(
         oracle: Pubkey::from(fund_payment.oracle_authority.to_bytes()).to_string(),
         sla_hash: None, // Could be extracted if present in data, currently placeholder
     })
+}
+
+/// Persist [`crate::db::Pr402Db::upsert_escrow_detail`] **after** `record_payment_verify` created `payment_attempts`.
+pub async fn persist_escrow_audit_after_verify(
+    db: &crate::db::Pr402Db,
+    provider: &SolanaChainProvider,
+    request: &proto::VerifyRequest,
+    correlation_id: &str,
+) {
+    let request_v2 = match types::VerifyRequest::from_proto(request.clone()) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                target: "server_log",
+                error = %e,
+                correlation_id = %correlation_id,
+                "escrow audit after verify: from_proto failed"
+            );
+            return;
+        }
+    };
+    let metadata = match extract_escrow_audit_metadata(provider, &request_v2) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!(
+                target: "server_log",
+                error = %e,
+                correlation_id = %correlation_id,
+                "extract_escrow_audit_metadata failed"
+            );
+            return;
+        }
+    };
+    if let Err(e) = db
+        .upsert_escrow_detail(
+            correlation_id,
+            &metadata.escrow_pda,
+            &metadata.bank_pda,
+            &metadata.oracle,
+            metadata.sla_hash.as_deref(),
+            None,
+        )
+        .await
+    {
+        tracing::warn!(
+            target: "server_log",
+            error = %e,
+            correlation_id = %correlation_id,
+            "upsert_escrow_detail failed after verify"
+        );
+    }
+}
+
+/// Persist escrow audit row **after** `record_payment_settle` (optionally stores settlement tx id).
+pub async fn persist_escrow_audit_after_settle(
+    db: &crate::db::Pr402Db,
+    provider: &SolanaChainProvider,
+    request: &proto::SettleRequest,
+    correlation_id: &str,
+    fund_signature: Option<&str>,
+) {
+    let request_v2 = match types::SettleRequest::from_proto(request.clone()) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                target: "server_log",
+                error = %e,
+                correlation_id = %correlation_id,
+                "escrow audit after settle: from_proto failed"
+            );
+            return;
+        }
+    };
+    let metadata = match extract_escrow_audit_metadata(provider, &request_v2) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!(
+                target: "server_log",
+                error = %e,
+                correlation_id = %correlation_id,
+                "extract_escrow_audit_metadata failed (settle)"
+            );
+            return;
+        }
+    };
+    if let Err(e) = db
+        .upsert_escrow_detail(
+            correlation_id,
+            &metadata.escrow_pda,
+            &metadata.bank_pda,
+            &metadata.oracle,
+            metadata.sla_hash.as_deref(),
+            fund_signature,
+        )
+        .await
+    {
+        tracing::warn!(
+            target: "server_log",
+            error = %e,
+            correlation_id = %correlation_id,
+            "upsert_escrow_detail failed after settle"
+        );
+    }
 }

@@ -659,11 +659,26 @@ impl Pr402Db {
         .await
         {
             Ok(Ok(Some(row))) => row.get::<_, i64>("id"),
-            _ => {
+            Ok(Ok(None)) => {
+                error!(target: "server_log", "Parent payment attempt not found for correlation_id: {}", correlation_id);
                 tx.rollback().await.ok();
                 return Err(DbError::Query(
                     "Parent payment attempt not found".to_string(),
                 ));
+            }
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "payment_attempts id lookup failed (escrow upsert)");
+                tx.rollback().await.ok();
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "payment_attempts id lookup timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                tx.rollback().await.ok();
+                return Err(DbError::Timeout);
             }
         };
 
@@ -685,8 +700,18 @@ impl Pr402Db {
         .await
         {
             Ok(Ok(_)) => Ok(()),
-            Ok(Err(e)) => Err(DbError::Query(format_err_chain(&e))),
-            Err(_) => Err(DbError::Timeout),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "upsert_escrow_detail execute failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "upsert_escrow_detail execute timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                Err(DbError::Timeout)
+            }
         };
 
         match result {
