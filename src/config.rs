@@ -6,7 +6,9 @@ use std::str::FromStr;
 use url::Url;
 
 use crate::chain::ChainId;
+use sla_escrow_api::state::Bank as EscrowBank;
 use solana_pubkey::Pubkey;
+use universalsettle_api::state::Config as USConfig;
 
 /// Facilitator configuration loaded from environment variables.
 #[derive(Debug, Clone)]
@@ -184,43 +186,24 @@ impl UniversalSettleConfig {
             )
         })?;
 
-        // Deserialize Config (using steel discriminators)
-        // SettlementAccount::Config = 0
-        // Config structure: discriminator (1) + authority (32) + fee_destination (32) + updated_at (8) + min_fee_amount (8) + fee_bps (2)
-        if account.data.len() < 1 + 32 + 32 + 8 + 8 + 2 {
+        // Deserialize Config using bytemuck (skipping 8-byte discriminator)
+        if account.data.len() < 8 {
             return Err(ConfigError::InvalidChainId(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
                 "Config account data too short".to_string(),
             ));
         }
 
-        if account.data[0] != 0 {
-            return Err(ConfigError::InvalidChainId(
-                "UNIVERSALSETTLE_CONFIG".to_string(),
-                format!(
-                    "Invalid Config discriminator: expected 0, got {}",
-                    account.data[0]
-                ),
-            ));
-        }
+        let config_state =
+            bytemuck::try_from_bytes::<USConfig>(&account.data[8..]).map_err(|e| {
+                ConfigError::InvalidChainId(
+                    "UNIVERSALSETTLE_CONFIG".to_string(),
+                    format!("Failed to deserialize UniversalSettle Config: {}", e),
+                )
+            })?;
 
-        // Extract fee_destination (bytes 33-65: after 1 discriminator + 32 authority)
-        let fee_destination_bytes: [u8; 32] = account.data[33..65].try_into().map_err(|_| {
-            ConfigError::InvalidChainId(
-                "UNIVERSALSETTLE_CONFIG".to_string(),
-                "Failed to extract fee_destination".to_string(),
-            )
-        })?;
-        self.fee_destination = Some(Pubkey::from(fee_destination_bytes));
-
-        // Extract fee_bps (bytes 81-83: after 1 discriminator + 32 authority + 32 fee_dest + 8 updated_at + 8 min_fee_amount)
-        let fee_bps_bytes: [u8; 2] = account.data[81..83].try_into().map_err(|_| {
-            ConfigError::InvalidChainId(
-                "UNIVERSALSETTLE_CONFIG".to_string(),
-                "Failed to extract fee_bps".to_string(),
-            )
-        })?;
-        self.fee_bps = Some(u16::from_le_bytes(fee_bps_bytes));
+        self.fee_destination = Some(Pubkey::from(config_state.fee_destination.to_bytes()));
+        self.fee_bps = Some(config_state.fee_bps);
 
         Ok(())
     }
@@ -247,35 +230,23 @@ impl SLAEscrowConfig {
             )
         })?;
 
-        // Deserialize Bank (using steel discriminators)
-        // EscrowAccount::Bank = 100
-        // Bank structure: discriminator (1) + authority (32) + open_at (8) + fee_bps (2)
-        if account.data.len() < 1 + 32 + 8 + 2 {
+        // Deserialize Bank using bytemuck (skipping 8-byte discriminator)
+        if account.data.len() < 8 {
             return Err(ConfigError::InvalidChainId(
                 "SLAESCROW_BANK".to_string(),
                 "Bank account data too short".to_string(),
             ));
         }
 
-        if account.data[0] != 100 {
-            return Err(ConfigError::InvalidChainId(
-                "SLAESCROW_BANK".to_string(),
-                format!(
-                    "Invalid Bank discriminator: expected 100, got {}",
-                    account.data[0]
-                ),
-            ));
-        }
+        let bank_state =
+            bytemuck::try_from_bytes::<EscrowBank>(&account.data[8..]).map_err(|e| {
+                ConfigError::InvalidChainId(
+                    "SLAESCROW_BANK".to_string(),
+                    format!("Failed to deserialize SLAEscrow Bank: {}", e),
+                )
+            })?;
 
-        // Extract fee_bps (bytes 41-43: after 1 discriminator + 32 authority + 8 open_at)
-        let fee_bps_bytes: [u8; 2] = account.data[41..43].try_into().map_err(|_| {
-            ConfigError::InvalidChainId(
-                "SLAESCROW_BANK".to_string(),
-                "Failed to extract fee_bps from bank".to_string(),
-            )
-        })?;
-
-        self.fee_bps = Some(u16::from_le_bytes(fee_bps_bytes));
+        self.fee_bps = Some(bank_state.fee_bps);
         self.bank_address = Some(bank_pda);
 
         Ok(())
