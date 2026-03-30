@@ -99,13 +99,25 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                 .provider
                 .sla_escrow()
                 .expect("SLAEscrow config missing");
-            let oracle_authority = self.provider.fee_payer();
+
+            let (bank_address, _) = self.provider.get_bank_pda(&escrow_config.program_id);
+            let (config_address, _) = self.provider.get_config_pda(&escrow_config.program_id);
+            let fee_bps = escrow_config.fee_bps.unwrap_or(0);
+
+            let oracle_authorities = escrow_config
+                .oracle_authorities
+                .iter()
+                .map(|p| (*p).into())
+                .collect::<Vec<Address>>();
 
             let extra = Some(
                 serde_json::to_value(types::SLAEscrowPaymentRequirementsExtra {
                     fee_payer: fee_payer.into(),
-                    oracle_authority: oracle_authority.into(),
+                    oracle_authorities,
                     escrow_program_id: escrow_config.program_id.into(),
+                    bank_address: bank_address.into(),
+                    config_address: config_address.into(),
+                    fee_bps,
                     ttl_seconds: 3600, // Default 1 hour
                 })
                 .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?,
@@ -267,11 +279,10 @@ pub async fn verify_transfer(
             "Missing extra requirements".into(),
         ))?;
 
-    if Address::new(Pubkey::from(fund_payment.oracle_authority.to_bytes()))
-        != extra.oracle_authority
-    {
+    let selected_oracle = Address::new(Pubkey::from(fund_payment.oracle_authority.to_bytes()));
+    if !extra.oracle_authorities.contains(&selected_oracle) {
         return Err(PaymentVerificationError::TransactionSimulation(
-            "Oracle authority mismatch".into(),
+            "Untrusted Oracle authority selected".into(),
         ));
     }
 

@@ -58,6 +58,9 @@ pub struct ExactSolanaPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SupportedPaymentKindExtra {
     pub fee_payer: Address,
+    pub program_id: Address,
+    pub config_address: Address,
+    pub fee_bps: u16,
 }
 
 /// Verify request for v2:solana:exact.

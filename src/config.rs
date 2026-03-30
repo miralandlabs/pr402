@@ -51,6 +51,8 @@ pub struct SLAEscrowConfig {
     pub bank_address: Option<Pubkey>,
     /// Fee basis points (read from on-chain Bank account)
     pub fee_bps: Option<u16>,
+    /// List of trusted oracle authorities as candidates for user selection
+    pub oracle_authorities: Vec<Pubkey>,
 }
 
 impl Config {
@@ -121,10 +123,26 @@ impl Config {
             let program_id = Pubkey::from_str(&program_id_str).map_err(|e| {
                 ConfigError::InvalidChainId("ESCROW_PROGRAM_ID".to_string(), e.to_string())
             })?;
+
+            // Oracle candidate list (comma-separated pubkeys)
+            let oracle_authorities = std::env::var("ORACLE_AUTHORITIES")
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|s| {
+                    let s = s.trim();
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Pubkey::from_str(s).ok()
+                    }
+                })
+                .collect::<Vec<Pubkey>>();
+
             Some(SLAEscrowConfig {
                 program_id,
-                bank_address: None, // Can be set or derived later
+                bank_address: None,
                 fee_bps: None,
+                oracle_authorities,
             })
         } else {
             None

@@ -100,12 +100,24 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         let chain_id = self.provider.chain_id();
         let kinds: Vec<proto::SupportedPaymentKind> = {
             let fee_payer = self.provider.fee_payer();
-            let extra = Some(
-                serde_json::to_value(SupportedPaymentKindExtra {
-                    fee_payer: fee_payer.into(),
-                })
-                .unwrap(),
-            );
+            let extra = if let Some(us_config) = self.provider.universalsettle() {
+                let (config_address, _) = self.provider.get_config_pda(&us_config.program_id);
+                let fee_bps = us_config.fee_bps.unwrap_or(0);
+
+                Some(
+                    serde_json::to_value(SupportedPaymentKindExtra {
+                        fee_payer: fee_payer.into(),
+                        program_id: us_config.program_id.into(),
+                        config_address: config_address.into(),
+                        fee_bps,
+                    })
+                    .unwrap(),
+                )
+            } else {
+                // If UniversalSettle is not enabled, this scheme is technically legacy/direct transfer
+                None
+            };
+
             vec![proto::SupportedPaymentKind {
                 x402_version: 2,
                 scheme: ExactScheme.to_string(),

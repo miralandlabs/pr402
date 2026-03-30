@@ -58,8 +58,11 @@ pub struct SLAEscrowSolanaPayload {
 #[serde(rename_all = "camelCase")]
 pub struct SLAEscrowPaymentRequirementsExtra {
     pub fee_payer: Address,
-    pub oracle_authority: Address,
+    pub oracle_authorities: Vec<Address>,
     pub escrow_program_id: Address,
+    pub bank_address: Address,
+    pub config_address: Address,
+    pub fee_bps: u16,
     pub ttl_seconds: u64,
 }
 
