@@ -63,21 +63,24 @@ pub struct FacilitatorLocal {
 }
 
 impl FacilitatorLocal {
-    /// Create a new facilitator with the given chain provider.
-    pub fn new(chain_provider: ChainProvider) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Create a new facilitator with the given chain provider and optional database.
+    pub fn new(
+        chain_provider: ChainProvider,
+        db: Option<crate::db::Pr402Db>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut scheme_handlers: HashMap<String, Arc<dyn X402SchemeFacilitator>> = HashMap::new();
 
         // Always register exact scheme
         let exact_scheme = V2SolanaExact;
         scheme_handlers.insert(
             exact_scheme.scheme().to_string(),
-            Arc::from(exact_scheme.build(chain_provider.clone(), None)?),
+            Arc::from(exact_scheme.build(chain_provider.clone(), None, db.clone())?),
         );
 
         // Register escrow scheme if configured
         if let Some(escrow_config) = chain_provider.solana.sla_escrow() {
             let escrow_scheme = V2SolanaSLAEscrow;
-            match escrow_scheme.build(chain_provider.clone(), None) {
+            match escrow_scheme.build(chain_provider.clone(), None, db.clone()) {
                 Ok(handler) => {
                     scheme_handlers.insert(escrow_scheme.scheme().to_string(), Arc::from(handler));
                     info!(

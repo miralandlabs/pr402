@@ -7,7 +7,7 @@
 use pr402::{
     chain::ChainProvider,
     config::Config,
-    db::{Pr402Db, ResourceProviderRail},
+    db::{PaymentAuditMetadata, PaymentOutcome, Pr402Db, ResourceProviderInfo, ResourceProviderRail},
     facilitator::Facilitator,
 };
 use serde::Deserialize;
@@ -103,13 +103,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with_env_filter(tracing_env_filter())
         .init();
 
+    let db = init_pr402_db_from_env();
+    if PR402_DB.set(db.clone()).is_err() {
+        return Err("PR402_DB: OnceLock already initialized".into());
+    }
+
     let facilitator_ready: Result<DynFacilitator, String> = (async {
         let config = Config::from_env().map_err(|e| format!("Config error: {}", e))?;
         let chain_provider = ChainProvider::from_config(&config)
             .await
             .map_err(|e| format!("Chain provider error: {}", e))?;
         let chain_arc = Arc::new(chain_provider);
-        let facilitator = pr402::facilitator::FacilitatorLocal::new((*chain_arc).clone())
+        let facilitator = pr402::facilitator::FacilitatorLocal::new((*chain_arc).clone(), db)
             .map_err(|e| format!("Facilitator error: {}", e))?;
         if CHAIN_PROVIDER.set(chain_arc).is_err() {
             return Err("CHAIN_PROVIDER: OnceLock already initialized".into());
@@ -117,10 +122,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Ok(Arc::new(facilitator) as DynFacilitator)
     })
     .await;
-
-    if PR402_DB.set(init_pr402_db_from_env()).is_err() {
-        return Err("PR402_DB: OnceLock already initialized".into());
-    }
 
     let handler = move |req: Request| {
         let facilitator_result = facilitator_ready.clone();
@@ -215,7 +216,9 @@ async fn handle_verify(
     };
 
     let persist_meta = verify_request.correlation_id_for_persistence(correlation_http);
-    let payee = verify_request.payee_wallet();
+    let (payee_wallet_opt, scheme_opt, amount_opt, asset_opt) = verify_request.v2_metadata();
+    let backup_payee = verify_request.payee_wallet();
+    let payee = payee_wallet_opt.as_deref().or(backup_payee.as_deref());
     let (settlement_mode, spl_mint_owned) = verify_request.resource_provider_settlement();
     let spl_mint_ref = spl_mint_owned.as_deref();
 
@@ -229,16 +232,29 @@ async fn handle_verify(
                 }
             });
             if let (Some(db), Some(cid), Some(wallet)) =
-                (pr402_db(), effective_cid.as_deref(), payee.as_deref())
+                (pr402_db(), effective_cid.as_deref(), payee)
             {
                 if let Err(e) = db
                     .record_payment_verify(
                         cid,
-                        wallet,
-                        settlement_mode.as_str(),
-                        spl_mint_ref,
-                        true,
-                        None,
+                        ResourceProviderInfo {
+                            wallet_pubkey: wallet,
+                            rail: ResourceProviderRail {
+                                settlement_mode: settlement_mode.as_str(),
+                                spl_mint: spl_mint_ref,
+                            },
+                        },
+                        PaymentOutcome {
+                            ok: true,
+                            error: None,
+                            signature: None,
+                        },
+                        PaymentAuditMetadata {
+                            payer_wallet: None,
+                            scheme: scheme_opt.as_deref(),
+                            amount: amount_opt.as_deref(),
+                            asset: asset_opt.as_deref(),
+                        },
                     )
                     .await
                 {
@@ -255,14 +271,14 @@ async fn handle_verify(
                     target: LOG_PR402_HTTP,
                     correlation_id = %cid,
                     minted,
-                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    payee = %payee.unwrap_or("(none)"),
                     "verify ok"
                 );
             } else {
                 // No pool (`DATABASE_URL` unset) or no `payTo` / client correlation id — no minted id.
                 info!(
                     target: LOG_PR402_HTTP,
-                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    payee = %payee.unwrap_or("(none)"),
                     db_enabled = pr402_db().is_some(),
                     note = "no correlation id: need DB+payTo to mint, or client sends correlationId",
                     "verify ok"
@@ -285,17 +301,30 @@ async fn handle_verify(
         }
         Err(e) => {
             if let (Some(db), Some(cid), Some(wallet)) =
-                (pr402_db(), persist_meta.as_deref(), payee.as_deref())
+                (pr402_db(), persist_meta.as_deref(), payee)
             {
                 let msg = format!("{}", e);
                 if let Err(err) = db
                     .record_payment_verify(
                         cid,
-                        wallet,
-                        settlement_mode.as_str(),
-                        spl_mint_ref,
-                        false,
-                        Some(&msg),
+                        ResourceProviderInfo {
+                            wallet_pubkey: wallet,
+                            rail: ResourceProviderRail {
+                                settlement_mode: settlement_mode.as_str(),
+                                spl_mint: spl_mint_ref,
+                            },
+                        },
+                        PaymentOutcome {
+                            ok: false,
+                            error: Some(&msg),
+                            signature: None,
+                        },
+                        PaymentAuditMetadata {
+                            payer_wallet: None,
+                            scheme: scheme_opt.as_deref(),
+                            amount: amount_opt.as_deref(),
+                            asset: asset_opt.as_deref(),
+                        },
                     )
                     .await
                 {
@@ -310,7 +339,7 @@ async fn handle_verify(
                 info!(
                     target: LOG_PR402_HTTP,
                     correlation_id = %cid,
-                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    payee = %payee.unwrap_or("(none)"),
                     "verify failed (client correlation id)"
                 );
             }
@@ -344,7 +373,9 @@ async fn handle_settle(
     };
 
     let persist_meta = settle_request.correlation_id_for_persistence(correlation_http);
-    let payee = settle_request.payee_wallet();
+    let (payee_wallet_opt, scheme_opt, amount_opt, asset_opt) = settle_request.v2_metadata();
+    let backup_payee = settle_request.payee_wallet();
+    let payee = payee_wallet_opt.as_deref().or(backup_payee.as_deref());
     let (settlement_mode, spl_mint_owned) = settle_request.resource_provider_settlement();
     let spl_mint_ref = spl_mint_owned.as_deref();
 
@@ -361,19 +392,29 @@ async fn handle_settle(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             if let (Some(db), Some(cid), Some(wallet)) =
-                (pr402_db(), persist_meta.as_deref(), payee.as_deref())
+                (pr402_db(), persist_meta.as_deref(), payee)
             {
                 if let Err(e) = db
                     .record_payment_settle(
                         cid,
-                        wallet,
-                        ResourceProviderRail {
-                            settlement_mode: settlement_mode.as_str(),
-                            spl_mint: spl_mint_ref,
+                        ResourceProviderInfo {
+                            wallet_pubkey: wallet,
+                            rail: ResourceProviderRail {
+                                settlement_mode: settlement_mode.as_str(),
+                                spl_mint: spl_mint_ref,
+                            },
                         },
-                        true,
-                        None,
-                        sig.as_deref(),
+                        PaymentOutcome {
+                            ok: true,
+                            error: None,
+                            signature: sig.as_deref(),
+                        },
+                        PaymentAuditMetadata {
+                            payer_wallet: None,
+                            scheme: scheme_opt.as_deref(),
+                            amount: amount_opt.as_deref(),
+                            asset: asset_opt.as_deref(),
+                        },
                     )
                     .await
                 {
@@ -388,14 +429,14 @@ async fn handle_settle(
                 info!(
                     target: LOG_PR402_HTTP,
                     correlation_id = %cid,
-                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    payee = %payee.unwrap_or("(none)"),
                     settlement_signature = sig.as_deref(),
                     "settle ok"
                 );
             } else {
                 info!(
                     target: LOG_PR402_HTTP,
-                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    payee = %payee.unwrap_or("(none)"),
                     db_enabled = pr402_db().is_some(),
                     "settle ok (no correlation id; payment still settled on-chain)"
                 );
@@ -413,20 +454,30 @@ async fn handle_settle(
         }
         Err(e) => {
             if let (Some(db), Some(cid), Some(wallet)) =
-                (pr402_db(), persist_meta.as_deref(), payee.as_deref())
+                (pr402_db(), persist_meta.as_deref(), payee)
             {
                 let msg = format!("{}", e);
                 if let Err(err) = db
                     .record_payment_settle(
                         cid,
-                        wallet,
-                        ResourceProviderRail {
-                            settlement_mode: settlement_mode.as_str(),
-                            spl_mint: spl_mint_ref,
+                        ResourceProviderInfo {
+                            wallet_pubkey: wallet,
+                            rail: ResourceProviderRail {
+                                settlement_mode: settlement_mode.as_str(),
+                                spl_mint: spl_mint_ref,
+                            },
                         },
-                        false,
-                        Some(&msg),
-                        None,
+                        PaymentOutcome {
+                            ok: false,
+                            error: Some(&msg),
+                            signature: None,
+                        },
+                        PaymentAuditMetadata {
+                            payer_wallet: None,
+                            scheme: scheme_opt.as_deref(),
+                            amount: amount_opt.as_deref(),
+                            asset: asset_opt.as_deref(),
+                        },
                     )
                     .await
                 {
@@ -441,7 +492,7 @@ async fn handle_settle(
                 info!(
                     target: LOG_PR402_HTTP,
                     correlation_id = %cid,
-                    payee = %payee.as_deref().unwrap_or("(none)"),
+                    payee = %payee.unwrap_or("(none)"),
                     "settle failed (client correlation id)"
                 );
             }

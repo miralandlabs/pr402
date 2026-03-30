@@ -28,7 +28,7 @@ SLA_ESCROW_ID="s1jWKnB1QwKKKZUDq3bZCmqvwEf8UQpQCbkEtQzHknS"
 
 # CLIs
 UNIVERSALSETTLE_CLI="../universalsettle/target/release/universalsettle"
-SLA_ESCROW_CLI="../sla-escrow/target/release/sla-escrow-cli"
+SLA_ESCROW_CLI="../sla-escrow/target/release/sla-escrow"
 PR402_CLI="./target/release/pr402"
 
 echo "=============================================="
@@ -63,7 +63,7 @@ $UNIVERSALSETTLE_CLI create-vault \
 # b) SLAEscrow Bank (already exists on devnet usually, but we ensure bank 0)
 # Usually Bank is global, but we ensure seller has knowledge of it.
 echo "   Ensuring SLAEscrow Bank 0 exists..."
-$SLA_ESCROW_CLI admin initialize --fee-bps 100 --rpc "$RPC" --keypair "$ADMIN_KP" --yes || true
+$SLA_ESCROW_CLI initialize --fee-bps 100 --rpc "$RPC" --keypair "$ADMIN_KP" --yes || true
 echo "✅ Onboarding Complete."
 echo ""
 

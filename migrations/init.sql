@@ -1,3 +1,11 @@
+
+-- Drop all existing tables (clean slate)
+DROP TABLE IF EXISTS parameters CASCADE;
+DROP TABLE IF EXISTS escrow_details CASCADE;
+DROP TABLE IF EXISTS payment_attempts CASCADE;
+DROP TABLE IF EXISTS resource_providers CASCADE;
+
+
 -- pr402 facilitator: consolidated PostgreSQL bootstrap (PostgreSQL 14+).
 -- Run once: psql "$DATABASE_URL" -f migrations/init.sql
 -- Idempotent: CREATE IF NOT EXISTS + parameter seeds use ON CONFLICT DO UPDATE.
@@ -41,6 +49,10 @@ CREATE TABLE IF NOT EXISTS payment_attempts (
     settle_ok            BOOLEAN,
     settle_error         TEXT,
     settlement_signature TEXT,
+    payer_wallet         TEXT,
+    scheme               TEXT,
+    amount               TEXT,
+    asset                TEXT,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -49,6 +61,36 @@ ALTER TABLE payment_attempts ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX IF NOT EXISTS idx_payment_attempts_provider
     ON payment_attempts (resource_provider_id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_payment_attempts_scheme
+    ON payment_attempts (scheme ASC);
+
+-- =============================================================================
+-- SLAEscrow: multi-step institutional audit
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS escrow_details (
+    id                   BIGSERIAL PRIMARY KEY,
+    payment_attempt_id   BIGINT NOT NULL REFERENCES payment_attempts (id) ON DELETE CASCADE,
+    escrow_pda           TEXT NOT NULL UNIQUE,
+    bank_pda             TEXT NOT NULL,
+    oracle_authority     TEXT NOT NULL,
+    fund_signature       TEXT,
+    delivery_signature   TEXT,
+    resolution_signature TEXT,
+    resolution_state     SMALLINT DEFAULT 0, -- 0: Pending, 1: Approved, 2: Denied
+    sla_hash             TEXT,
+    delivery_hash        TEXT,
+    completed_at         TIMESTAMPTZ,
+    refunded_at          TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE escrow_details ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_escrow_details_pda ON escrow_details (escrow_pda ASC);
+CREATE INDEX IF NOT EXISTS idx_escrow_details_oracle ON escrow_details (oracle_authority ASC);
 
 -- Application sets payment_attempts.updated_at on UPDATE (avoids PG trigger dialect drift).
 

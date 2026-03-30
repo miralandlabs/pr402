@@ -38,6 +38,7 @@ pub trait X402SchemeFacilitatorBuilder {
         &self,
         provider: ChainProvider,
         config: Option<serde_json::Value>,
+        db: Option<crate::db::Pr402Db>,
     ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn std::error::Error>>;
 }
 

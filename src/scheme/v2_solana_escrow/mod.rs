@@ -46,6 +46,7 @@ impl X402SchemeFacilitatorBuilder for V2SolanaSLAEscrow {
         &self,
         provider: ChainProvider,
         _config: Option<serde_json::Value>,
+        db: Option<crate::db::Pr402Db>,
     ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn Error>> {
         // SLAEscrow requires SLAEscrowConfig to be present
         if provider.solana.sla_escrow().is_none() {
@@ -53,12 +54,14 @@ impl X402SchemeFacilitatorBuilder for V2SolanaSLAEscrow {
         }
         Ok(Box::new(V2SolanaSLAEscrowFacilitator {
             provider: provider.solana,
+            db,
         }))
     }
 }
 
 pub struct V2SolanaSLAEscrowFacilitator {
     provider: Arc<SolanaChainProvider>,
+    db: Option<crate::db::Pr402Db>,
 }
 
 #[async_trait::async_trait]
@@ -67,8 +70,30 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         &self,
         request: &proto::VerifyRequest,
     ) -> Result<proto::VerifyResponse, X402SchemeFacilitatorError> {
-        let request = types::VerifyRequest::from_proto(request.clone())?;
-        let verification = verify_transfer(&self.provider, &request).await?;
+        let request_v2 = types::VerifyRequest::from_proto(request.clone())?;
+        let verification = verify_transfer(&self.provider, &request_v2).await?;
+
+        // 🛡️ High-Fidelity Enriched Logging
+        // If DB is enabled and correlation ID exists, persist escrow milestones.
+        if let (Some(db), Some(cid)) = (&self.db, request.correlation_id_for_persistence(None)) {
+            // We use the same verify_transfer logic to re-extract the exact PDA and terms
+            if let Ok(metadata) = extract_escrow_audit_metadata(&self.provider, &request_v2) {
+                if let Err(e) = db
+                    .upsert_escrow_detail(
+                        &cid,
+                        &metadata.escrow_pda,
+                        &metadata.bank_pda,
+                        &metadata.oracle,
+                        metadata.sla_hash.as_deref(),
+                        None, // Fund signature not yet in verify phase (simulation done)
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, correlation_id = %cid, "upsert_escrow_detail failed during verify");
+                }
+            }
+        }
+
         Ok(proto::v2::VerifyResponse::valid(verification.payer.to_string()).into())
     }
 
@@ -76,9 +101,30 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         &self,
         request: &proto::SettleRequest,
     ) -> Result<proto::SettleResponse, X402SchemeFacilitatorError> {
-        let request = types::SettleRequest::from_proto(request.clone())?;
-        let verification = verify_transfer(&self.provider, &request).await?;
+        let request_v2 = types::SettleRequest::from_proto(request.clone())?;
+        let verification = verify_transfer(&self.provider, &request_v2).await?;
         let payer = verification.payer.to_string();
+
+        // 🛡️ High-Fidelity Enriched Logging
+        if let (Some(db), Some(cid)) = (&self.db, request.correlation_id_for_persistence(None)) {
+            if let Ok(metadata) = extract_escrow_audit_metadata(&self.provider, &request_v2) {
+                // Settle correlates to Escrow RELEASE normally, but in facilitator it's often the re-verification.
+                // For now we ensure we have the fundamental escrow metadata.
+                if let Err(e) = db
+                    .upsert_escrow_detail(
+                        &cid,
+                        &metadata.escrow_pda,
+                        &metadata.bank_pda,
+                        &metadata.oracle,
+                        metadata.sla_hash.as_deref(),
+                        None,
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, correlation_id = %cid, "upsert_escrow_detail failed during settle");
+                }
+            }
+        }
 
         // Use the shared settle_transaction logic
         let tx_sig = settle_transaction(&self.provider, verification).await?;
@@ -333,5 +379,59 @@ pub async fn verify_transfer(
         payer,
         beneficiary,
         transaction,
+    })
+}
+
+/// Helper struct for DB auditing of escrows.
+struct EscrowAuditMetadata {
+    escrow_pda: String,
+    bank_pda: String,
+    oracle: String,
+    sla_hash: Option<String>,
+}
+
+/// Re-extract on-chain derivations and instruction details specifically for the audit log.
+fn extract_escrow_audit_metadata(
+    provider: &SolanaChainProvider,
+    request: &types::VerifyRequest,
+) -> Result<EscrowAuditMetadata, Box<dyn Error + Send + Sync>> {
+    let payload = &request.payment_payload;
+    let requirements = &request.payment_requirements;
+
+    // We assume the caller confirmed it's an SLAEscrow request
+    let escrow_config = provider.sla_escrow().ok_or("escrow config missing")?;
+    let bank_pda = escrow_config.bank_address.ok_or("bank not loaded")?;
+
+    // Derive Escrow PDA
+    let (escrow_pda, _) = provider.get_escrow_pda(*requirements.asset.pubkey(), bank_pda);
+
+    // Decode instruction to get Oracle
+    let bytes = Base64Bytes::from(payload.payload.transaction.as_bytes()).decode()?;
+    let transaction = bincode::deserialize::<VersionedTransaction>(bytes.as_slice())?;
+
+    // Find FundPayment instruction
+    let is_spl_token = requirements.asset.pubkey() != &Pubkey::default();
+    let num_instr = transaction.message.instructions().len();
+    let fund_idx = if num_instr == 3 {
+        2
+    } else if num_instr == 4 && is_spl_token {
+        3
+    } else {
+        0
+    };
+
+    let instructions = transaction.message.instructions();
+    if fund_idx >= instructions.len() {
+        return Err("FundPayment index out of bounds".into());
+    }
+
+    let instr_data = &instructions[fund_idx].data;
+    let fund_payment = FundPayment::try_from_bytes(instr_data)?;
+
+    Ok(EscrowAuditMetadata {
+        escrow_pda: escrow_pda.to_string(),
+        bank_pda: bank_pda.to_string(),
+        oracle: Pubkey::from(fund_payment.oracle_authority.to_bytes()).to_string(),
+        sla_hash: None, // Could be extracted if present in data, currently placeholder
     })
 }

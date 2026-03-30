@@ -12,8 +12,14 @@ This facilitator implements a tailored version of the [x402-rs](https://github.c
 ## 🛠️ Supported Schemes
 pr402 currently facilitates two core settlement patterns:
 
-1.  **`v2:solana:exact` (UniversalSettle)**: Used for immediate settlement (e.g., direct payments, subscriptions, one-time fees). Features the **Vault Triple** pattern with 0-data SOL storage.
-2.  **`v2:solana:sla-escrow` (SLA-Escrow)**: Used for conditional settlement where payment is released upon Service Level Agreement (SLA) fulfillment. Also uses 0-data SOL storage.
+pr402 currently facilitates two core settlement patterns in accordance with the x402 V2 standard:
+
+1.  **`exact` (UniversalSettle)**: Used for high-velocity, immediate settlement. 
+    - **Enriched Metadata**: Discloses `programId`, `configAddress`, and `feeBps`.
+2.  **`sla-escrow` (SLA-Escrow)**: Used for high-stakes or conditional settlement.
+    - **Enriched Metadata**: Discloses `escrowProgramId`, `bankAddress`, `configAddress`, `feeBps`, and `oracleAuthorities`.
+
+---
 
 ## 📁 Project Structure
 - [`src/bin/facilitator.rs`](src/bin/facilitator.rs) — Vercel serverless entrypoint handling HTTP requests.
@@ -25,20 +31,29 @@ pr402 currently facilitates two core settlement patterns:
 ## ⚙️ Environment Variables
 Required:
 - `SOLANA_RPC_URL`: Solana RPC endpoint.
-- `SOLANA_CHAIN_ID`: Chain ID in CAIP-2 format (e.g., `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`).
-- `FEE_PAYER_PRIVATE_KEY`: Base58-encoded private key for the facilitator's fee payer.
+- `SOLANA_CHAIN_ID`: Chain ID in CAIP-2 format.
+- `FEE_PAYER_PRIVATE_KEY`: Base58 private key for the facilitator.
 
-Optional:
-- `UNIVERSALSETTLE_PROGRAM_ID`: Program ID for UniversalSettle (activates `v2:solana:exact`).
-- `ESCROW_PROGRAM_ID`: Program ID for SLA-Escrow (activates `v2:solana:sla-escrow`).
-- `MAX_COMPUTE_UNIT_LIMIT`: Transaction compute limit (default: 400,000).
-- `MAX_COMPUTE_UNIT_PRICE`: Transaction compute price in micro-lamports (default: 1,000,000).
+Scheme Configuration:
+- `UNIVERSALSETTLE_PROGRAM_ID`: Program ID for UniversalSettle.
+- `ESCROW_PROGRAM_ID`: Program ID for SLAEscrow.
+- `ORACLE_AUTHORITIES`: Comma-separated list of trusted Oracle pubkeys advertised as candidates during discovery.
+
+---
+
+## 🛡️ Reliability & Security Standard
+To ensure the highest level of transparency for the Agentic Economy, the facilitator implements the following standards:
+
+- **Bit-Perfect Discovery**: On-chain state is extracted using **8-byte discriminators** (Anchor-compatible) and the authoritative protocol API structs. This ensures that the metadata advertised to agents matches the on-chain reality with 100% bit-level precision.
+- **Pluralistic Trust**: By advertising multiple `oracleAuthorities`, the facilitator allows buyer agents to autonomously select the most trusted candidate for their specific task.
+- **Fail-Fast Registration**: The facilitator strictly validates both scheme configurations at startup, returning explicit errors if on-chain properties cannot be loaded.
+
+---
 
 ## 🚀 API Endpoints (v1)
-When deployed, the facilitator exposes **only** `/api/v1/facilitator/*` (HTTP API version `X-API-Version: 1` on JSON responses):
-- `POST /api/v1/facilitator/verify` — Verify raw payment transactions against the protocol.
-- `POST /api/v1/facilitator/settle` — Sign and relay verified transactions to the Solana network.
-- `GET /api/v1/facilitator/supported` — List active schemes based on environment configuration.
+- `GET /api/v1/facilitator/supported`: Returns the **Enriched Metadata** for all active schemes. This is the primary discovery endpoint for AI Agents.
+- `POST /api/v1/facilitator/verify`: Validates transactions against the protocol requirements and the agent's selected oracle.
+- `POST /api/v1/facilitator/settle`: Relays the signed transaction to the blockchain.
 - `GET /api/v1/facilitator/health` — Same handler as `supported` (load balancer / uptime check).
 - `GET /api/v1/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags (UniversalSettle, escrow, unsigned tx build), and relative HTTP endpoint paths + x402 v2 spec link.
 - `POST /api/v1/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL payment transaction (compute budget + optional merchant ATA create + `TransferChecked`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"? }`. Response includes `transaction` (base64 bincode) and `verify_body_template` (replace `paymentPayload.payload.transaction` after the payer signs). Same layout as the local `x402_pr402_pay` helper in spl-token-balance-serverless; **native SOL** mint is rejected here (use a different path). **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/v1/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.

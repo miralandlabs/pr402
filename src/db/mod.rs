@@ -63,6 +63,28 @@ pub struct ResourceProviderRail<'a> {
     pub spl_mint: Option<&'a str>,
 }
 
+/// Enriched x402 V2 metadata for auditing.
+#[derive(Default)]
+pub struct PaymentAuditMetadata<'a> {
+    pub payer_wallet: Option<&'a str>,
+    pub scheme: Option<&'a str>,
+    pub amount: Option<&'a str>,
+    pub asset: Option<&'a str>,
+}
+
+/// Outcome of a payment step for auditing.
+pub struct PaymentOutcome<'a> {
+    pub ok: bool,
+    pub error: Option<&'a str>,
+    pub signature: Option<&'a str>,
+}
+
+/// Identifies the resource provider and their settlement configuration.
+pub struct ResourceProviderInfo<'a> {
+    pub wallet_pubkey: &'a str,
+    pub rail: ResourceProviderRail<'a>,
+}
+
 impl Pr402Db {
     const WAIT: Duration = Duration::from_secs(15);
     const CREATE: Duration = Duration::from_secs(10);
@@ -414,32 +436,39 @@ impl Pr402Db {
         }
     }
 
-    /// Record or merge `/verify` outcome for a correlation id.
+    /// Record or merge `/verify` outcome for a correlation id with enriched x402 V2 metadata.
     pub async fn record_payment_verify(
         &self,
         correlation_id: &str,
-        wallet_pubkey: &str,
-        settlement_mode: &str,
-        spl_mint: Option<&str>,
-        verify_ok: bool,
-        verify_error: Option<&str>,
+        provider: ResourceProviderInfo<'_>,
+        outcome: PaymentOutcome<'_>,
+        meta: PaymentAuditMetadata<'_>,
     ) -> Result<(), DbError> {
         let provider_id = self
-            .ensure_resource_provider(wallet_pubkey, settlement_mode, spl_mint)
+            .ensure_resource_provider(
+                provider.wallet_pubkey,
+                provider.rail.settlement_mode,
+                provider.rail.spl_mint,
+            )
             .await?;
 
         const SQL: &str = r#"
                 INSERT INTO payment_attempts (
                     correlation_id, resource_provider_id,
-                    verify_at, verify_ok, verify_error, updated_at
+                    verify_at, verify_ok, verify_error, updated_at,
+                    payer_wallet, scheme, amount, asset
                 )
-                VALUES ($1, $2, NOW(), $3, $4, NOW())
+                VALUES ($1, $2, NOW(), $3, $4, NOW(), $5, $6, $7, $8)
                 ON CONFLICT (correlation_id) DO UPDATE SET
                     resource_provider_id = COALESCE(EXCLUDED.resource_provider_id, payment_attempts.resource_provider_id),
                     verify_at = NOW(),
                     verify_ok = EXCLUDED.verify_ok,
                     verify_error = EXCLUDED.verify_error,
-                    updated_at = NOW()
+                    updated_at = NOW(),
+                    payer_wallet = COALESCE(EXCLUDED.payer_wallet, payment_attempts.payer_wallet),
+                    scheme       = COALESCE(EXCLUDED.scheme, payment_attempts.scheme),
+                    amount       = COALESCE(EXCLUDED.amount, payment_attempts.amount),
+                    asset        = COALESCE(EXCLUDED.asset, payment_attempts.asset)
                 "#;
 
         let mut client = self.conn().await?;
@@ -454,7 +483,16 @@ impl Pr402Db {
             Self::QUERY_TIMEOUT,
             tx.execute(
                 SQL,
-                &[&correlation_id, &provider_id, &verify_ok, &verify_error],
+                &[
+                    &correlation_id,
+                    &provider_id,
+                    &outcome.ok,
+                    &outcome.error,
+                    &meta.payer_wallet,
+                    &meta.scheme,
+                    &meta.amount,
+                    &meta.asset,
+                ],
             ),
         )
         .await
@@ -492,33 +530,39 @@ impl Pr402Db {
         }
     }
 
-    /// Record or merge `/settle` outcome (on-chain signature optional).
+    /// Record or merge `/settle` outcome with enriched x402 V2 metadata.
     pub async fn record_payment_settle(
         &self,
         correlation_id: &str,
-        wallet_pubkey: &str,
-        rail: ResourceProviderRail<'_>,
-        settle_ok: bool,
-        settle_error: Option<&str>,
-        settlement_signature: Option<&str>,
+        provider: ResourceProviderInfo<'_>,
+        outcome: PaymentOutcome<'_>,
+        meta: PaymentAuditMetadata<'_>,
     ) -> Result<(), DbError> {
         let provider_id = self
-            .ensure_resource_provider(wallet_pubkey, rail.settlement_mode, rail.spl_mint)
+            .ensure_resource_provider(
+                provider.wallet_pubkey,
+                provider.rail.settlement_mode,
+                provider.rail.spl_mint,
+            )
             .await?;
 
         const SQL: &str = r#"
                 INSERT INTO payment_attempts (
                     correlation_id, resource_provider_id,
-                    settle_at, settle_ok, settle_error, settlement_signature, updated_at
+                    settle_at, settle_ok, settle_error, settlement_signature, updated_at,
+                    scheme, amount, asset
                 )
-                VALUES ($1, $2, NOW(), $3, $4, $5, NOW())
+                VALUES ($1, $2, NOW(), $3, $4, $5, NOW(), $6, $7, $8)
                 ON CONFLICT (correlation_id) DO UPDATE SET
                     resource_provider_id = COALESCE(EXCLUDED.resource_provider_id, payment_attempts.resource_provider_id),
                     settle_at = NOW(),
                     settle_ok = EXCLUDED.settle_ok,
                     settle_error = EXCLUDED.settle_error,
                     settlement_signature = COALESCE(EXCLUDED.settlement_signature, payment_attempts.settlement_signature),
-                    updated_at = NOW()
+                    updated_at = NOW(),
+                    scheme = COALESCE(EXCLUDED.scheme, payment_attempts.scheme),
+                    amount = COALESCE(EXCLUDED.amount, payment_attempts.amount),
+                    asset = COALESCE(EXCLUDED.asset, payment_attempts.asset)
                 "#;
 
         let mut client = self.conn().await?;
@@ -536,9 +580,12 @@ impl Pr402Db {
                 &[
                     &correlation_id,
                     &provider_id,
-                    &settle_ok,
-                    &settle_error,
-                    &settlement_signature,
+                    &outcome.ok,
+                    &outcome.error,
+                    &outcome.signature,
+                    &meta.scheme,
+                    &meta.amount,
+                    &meta.asset,
                 ],
             ),
         )
@@ -572,6 +619,89 @@ impl Pr402Db {
                     error!(target: "server_log", error = %e, "Rollback failed");
                     DbError::TransactionFailed
                 })?;
+                Err(e)
+            }
+        }
+    }
+
+    /// Record or update specialized SLAEscrow state linked to a payment attempt.
+    pub async fn upsert_escrow_detail(
+        &self,
+        correlation_id: &str,
+        escrow_pda: &str,
+        bank_pda: &str,
+        oracle_authority: &str,
+        sla_hash: Option<&str>,
+        fund_signature: Option<&str>,
+    ) -> Result<(), DbError> {
+        const SELECT_ID: &str = r#"SELECT id FROM payment_attempts WHERE correlation_id = $1"#;
+        const SQL: &str = r#"
+                INSERT INTO escrow_details (
+                    payment_attempt_id, escrow_pda, bank_pda, oracle_authority, sla_hash, fund_signature, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                ON CONFLICT (escrow_pda) DO UPDATE SET
+                    payment_attempt_id = EXCLUDED.payment_attempt_id,
+                    bank_pda = EXCLUDED.bank_pda,
+                    oracle_authority = EXCLUDED.oracle_authority,
+                    sla_hash = COALESCE(EXCLUDED.sla_hash, escrow_details.sla_hash),
+                    fund_signature = COALESCE(EXCLUDED.fund_signature, escrow_details.fund_signature),
+                    updated_at = NOW()
+                "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        // 1. Resolve payment_attempt_id
+        let attempt_id = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query_opt(SELECT_ID, &[&correlation_id]),
+        )
+        .await
+        {
+            Ok(Ok(Some(row))) => row.get::<_, i64>("id"),
+            _ => {
+                tx.rollback().await.ok();
+                return Err(DbError::Query(
+                    "Parent payment attempt not found".to_string(),
+                ));
+            }
+        };
+
+        // 2. Upsert detail
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.execute(
+                SQL,
+                &[
+                    &attempt_id,
+                    &escrow_pda,
+                    &bank_pda,
+                    &oracle_authority,
+                    &sla_hash,
+                    &fund_signature,
+                ],
+            ),
+        )
+        .await
+        {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => Err(DbError::Query(format_err_chain(&e))),
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        match result {
+            Ok(()) => {
+                tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.ok();
                 Err(e)
             }
         }

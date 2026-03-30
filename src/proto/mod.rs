@@ -104,6 +104,35 @@ impl VerifyRequest {
         }
     }
 
+    /// Extract common x402 V2 metadata for database persistence.
+    pub fn v2_metadata(
+        &self,
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) {
+        let req = self.0.get("paymentRequirements");
+        let pay_to = req
+            .and_then(|r| r.get("payTo"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let scheme = req
+            .and_then(|r| r.get("scheme"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let amount = req
+            .and_then(|r| r.get("amount"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let asset = req
+            .and_then(|r| r.get("asset"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        (pay_to, scheme, amount, asset)
+    }
+
     pub fn scheme_handler_slug(&self) -> Option<SchemeHandlerSlug> {
         let x402_version = self.0.get("x402Version")?.as_u64()?;
         // Only support v2

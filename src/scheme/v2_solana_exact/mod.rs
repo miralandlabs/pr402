@@ -41,6 +41,7 @@ impl X402SchemeFacilitatorBuilder for V2SolanaExact {
         &self,
         provider: ChainProvider,
         _config: Option<serde_json::Value>,
+        _db: Option<crate::db::Pr402Db>,
     ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn Error>> {
         Ok(Box::new(V2SolanaExactFacilitator {
             provider: provider.solana,
