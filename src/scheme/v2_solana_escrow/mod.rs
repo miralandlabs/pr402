@@ -4,6 +4,7 @@ pub mod types;
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::Write as _;
 use std::mem;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -28,6 +29,7 @@ use sla_escrow_api::instruction::{EscrowInstruction, FundPayment};
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_commitment_config::CommitmentConfig;
 use solana_pubkey::Pubkey;
+use solana_signature::Signature;
 
 pub struct V2SolanaSLAEscrow;
 
@@ -89,8 +91,10 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         // `escrow_details` upsert runs after `record_payment_settle` in `bin/facilitator.rs`
         // so the parent `payment_attempts` row exists (same ordering bug as verify).
 
-        // Use the shared settle_transaction logic
-        let tx_sig = settle_transaction(&self.provider, verification).await?;
+        // Fund-payment txs are buyer fee-paid and fully signed before they reach the facilitator.
+        // [`SolanaChainProvider::sign`] overwrites signature slot 0 for UniversalSettle/exact shells
+        // where the fee payer is the facilitator — that would corrupt buyer-signed FundPayment txs.
+        let tx_sig = settle_sla_escrow_fund_payment(&self.provider, verification).await?;
 
         Ok(proto::v2::SettleResponse::Success {
             payer,
@@ -187,6 +191,77 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             fee_bps: fee_bps.into(),
             status: "Active".to_string(),
         })
+    }
+}
+
+/// Submit or acknowledge an SLA-Escrow **FundPayment** transaction for x402 `/settle`.
+///
+/// CLI / wallet flows usually **already broadcast** the fund tx before `/verify`. The shared
+/// [`settle_transaction`] path overwrites signature slot 0 with the facilitator fee payer (correct
+/// for `exact` shells, wrong for buyer-paid FundPayment). Here we either confirm the existing
+/// primary signature on-chain or submit the buyer-signed tx unchanged.
+async fn settle_sla_escrow_fund_payment(
+    provider: &SolanaChainProvider,
+    verification: VerifyTransferResult,
+) -> Result<Signature, X402SchemeFacilitatorError> {
+    let tx_int = TransactionInt::new(verification.transaction.clone());
+    if !tx_int.is_fully_signed() {
+        return settle_transaction(provider, verification).await.map_err(Into::into);
+    }
+
+    let primary = *verification
+        .transaction
+        .signatures
+        .first()
+        .ok_or_else(|| {
+            X402SchemeFacilitatorError::OnchainFailure(
+                "escrow settle: transaction has no signatures".to_string(),
+            )
+        })?;
+
+    if primary == Signature::default() {
+        return Err(X402SchemeFacilitatorError::OnchainFailure(
+            "escrow settle: primary signature is default".to_string(),
+        ));
+    }
+
+    match provider
+        .rpc_client()
+        .get_signature_status_with_commitment(&primary, CommitmentConfig::confirmed())
+        .await
+    {
+        Ok(Some(Ok(()))) => return Ok(primary),
+        Ok(Some(Err(e))) => {
+            return Err(X402SchemeFacilitatorError::OnchainFailure(format!(
+                "fund transaction failed on-chain: {:?}",
+                e
+            )));
+        }
+        Ok(None) | Err(_) => {}
+    }
+
+    match tx_int
+        .send_and_confirm(provider, CommitmentConfig::confirmed())
+        .await
+    {
+        Ok(sig) => Ok(sig),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("already been processed") {
+                return Ok(primary);
+            }
+            if matches!(
+                provider
+                    .rpc_client()
+                    .get_signature_status_with_commitment(&primary, CommitmentConfig::confirmed())
+                    .await,
+                Ok(Some(Ok(())))
+            ) {
+                Ok(primary)
+            } else {
+                Err(e.into())
+            }
+        }
     }
 }
 
@@ -415,11 +490,16 @@ fn extract_escrow_audit_metadata(
     }
     let fund_payment = FundPayment::try_from_bytes(&instr_data[1..])?;
 
+    let mut sla_hex = String::with_capacity(64);
+    for b in fund_payment.sla_hash {
+        write!(&mut sla_hex, "{b:02x}").unwrap();
+    }
+
     Ok(EscrowAuditMetadata {
         escrow_pda: escrow_pda.to_string(),
         bank_pda: bank_pda.to_string(),
         oracle: Pubkey::from(fund_payment.oracle_authority.to_bytes()).to_string(),
-        sla_hash: None, // Could be extracted if present in data, currently placeholder
+        sla_hash: Some(sla_hex),
     })
 }
 

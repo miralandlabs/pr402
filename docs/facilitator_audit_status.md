@@ -48,6 +48,9 @@ This document summarizes the current hardening status of the `pr402` Facilitator
 **Status**: Local database access is unreliable due to proxy/networking constraints.
 - **Requirement**: Institutional state capture must be verified via bit-perfect `curl` results or manual DB queries from a stable connection.
 
+### 4. 🛡️ SLA-Escrow fee payer vs `exact` / `/settle` (follow-up design)
+**Reference**: See [sla_escrow_fee_payer_and_settle.md](./sla_escrow_fee_payer_and_settle.md) for why **`exact`** uses **facilitator** as fee payer while **current `fund-payment` CLI** uses **buyer** as fee payer, why **`SolanaChainProvider::sign`** overwrites **signature slot 0**, and what to change if the product wants facilitator-sponsored gas on the escrow rail.
+
 ---
 
 ## 🛡️ Final Work Verification
