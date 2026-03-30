@@ -39,8 +39,8 @@ spl-token = { version = "9.0", features = ["no-entrypoint"] }
 # (`spl-token-2022` 10.0.0 does not compile on crates.io as of 2025-11).
 solana-client = "3.1"
 bs58 = "0.5"
-# universalsettle-api = { path = "../universalsettle/api" }
-universalsettle-api = "0.1.0"
+universalsettle-api = { path = "../universalsettle/api" }
+sla-escrow-api = { path = "../sla-escrow/api" }
 
 # Base64 encoding
 base64 = "0.22"

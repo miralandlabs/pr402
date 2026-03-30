@@ -166,27 +166,37 @@ impl UniversalSettleConfig {
             )
         })?;
 
-        // Deserialize Config (skip 1-byte discriminator)
-        // Config structure: discriminator (1) + authority (32) + fee_destination (32) + updated_at (8) + fee_bps (2) + padding (6)
-        if account.data.len() < 1 + 32 + 32 + 8 + 2 + 6 {
+        // Deserialize Config (using steel discriminators)
+        // SettlementAccount::Config = 0
+        // Config structure: discriminator (1) + authority (32) + fee_destination (32) + updated_at (8) + min_fee_amount (8) + fee_bps (2)
+        if account.data.len() < 1 + 32 + 32 + 8 + 8 + 2 {
             return Err(ConfigError::InvalidChainId(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
                 "Config account data too short".to_string(),
             ));
         }
 
-        // Extract fee_destination (bytes 33-65: after 1-byte discriminator + 32-byte authority)
+        if account.data[0] != 0 {
+            return Err(ConfigError::InvalidChainId(
+                "UNIVERSALSETTLE_CONFIG".to_string(),
+                format!(
+                    "Invalid Config discriminator: expected 0, got {}",
+                    account.data[0]
+                ),
+            ));
+        }
+
+        // Extract fee_destination (bytes 33-65: after 1 discriminator + 32 authority)
         let fee_destination_bytes: [u8; 32] = account.data[33..65].try_into().map_err(|_| {
             ConfigError::InvalidChainId(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
                 "Failed to extract fee_destination".to_string(),
             )
         })?;
-
         self.fee_destination = Some(Pubkey::from(fee_destination_bytes));
 
-        // Extract fee_bps (bytes 73-75: after 1 discriminator + 32 authority + 32 fee_dest + 8 updated_at)
-        let fee_bps_bytes: [u8; 2] = account.data[73..75].try_into().map_err(|_| {
+        // Extract fee_bps (bytes 81-83: after 1 discriminator + 32 authority + 32 fee_dest + 8 updated_at + 8 min_fee_amount)
+        let fee_bps_bytes: [u8; 2] = account.data[81..83].try_into().map_err(|_| {
             ConfigError::InvalidChainId(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
                 "Failed to extract fee_bps".to_string(),
@@ -208,8 +218,8 @@ impl SLAEscrowConfig {
         &mut self,
         rpc_client: &solana_client::nonblocking::rpc_client::RpcClient,
     ) -> Result<(), ConfigError> {
-        // Derive Bank PDA (assuming bank 0 for simplicity or configured)
-        let (bank_pda, _) = Pubkey::find_program_address(&[b"bank", &[0]], &self.program_id);
+        // Derive Bank PDA
+        let (bank_pda, _) = Pubkey::find_program_address(&[b"bank"], &self.program_id);
 
         // Read Bank account
         let account = rpc_client.get_account(&bank_pda).await.map_err(|e| {
@@ -219,17 +229,28 @@ impl SLAEscrowConfig {
             )
         })?;
 
-        // Deserialize Bank (skip 1-byte discriminator)
-        // Bank structure: discriminator (1) + authority (32) + bank_num (1) + fee_bps (2) + ...
-        if account.data.len() < 1 + 32 + 1 + 2 {
+        // Deserialize Bank (using steel discriminators)
+        // EscrowAccount::Bank = 100
+        // Bank structure: discriminator (1) + authority (32) + open_at (8) + fee_bps (2)
+        if account.data.len() < 1 + 32 + 8 + 2 {
             return Err(ConfigError::InvalidChainId(
                 "SLAESCROW_BANK".to_string(),
                 "Bank account data too short".to_string(),
             ));
         }
 
-        // Extract fee_bps (bytes 34-36: after 1 discriminator + 32 authority + 1 bank_num)
-        let fee_bps_bytes: [u8; 2] = account.data[34..36].try_into().map_err(|_| {
+        if account.data[0] != 100 {
+            return Err(ConfigError::InvalidChainId(
+                "SLAESCROW_BANK".to_string(),
+                format!(
+                    "Invalid Bank discriminator: expected 100, got {}",
+                    account.data[0]
+                ),
+            ));
+        }
+
+        // Extract fee_bps (bytes 41-43: after 1 discriminator + 32 authority + 8 open_at)
+        let fee_bps_bytes: [u8; 2] = account.data[41..43].try_into().map_err(|_| {
             ConfigError::InvalidChainId(
                 "SLAESCROW_BANK".to_string(),
                 "Failed to extract fee_bps from bank".to_string(),

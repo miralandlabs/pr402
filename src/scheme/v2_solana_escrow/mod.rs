@@ -22,13 +22,12 @@ use crate::scheme::v2_solana_exact::shared::{
     TransactionInt, VerifyTransferResult,
 };
 use crate::util::Base64Bytes;
+use sla_escrow_api::instruction::{EscrowInstruction, FundPayment};
 
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_commitment_config::CommitmentConfig;
 use solana_pubkey::Pubkey;
 use solana_transaction::versioned::VersionedTransaction;
-
-use crate::chain::solana_sla_escrow::SLAEscrowInstruction;
 
 pub struct V2SolanaSLAEscrow;
 
@@ -236,15 +235,28 @@ pub async fn verify_transfer(
     }
 
     let data = fund_instruction.data_slice();
-    if data.is_empty() || data[0] != SLAEscrowInstruction::FundPayment as u8 {
+    if data.is_empty() || data[0] != EscrowInstruction::FundPayment as u8 {
         return Err(PaymentVerificationError::TransactionSimulation(
             "Invalid SLAEscrow Instruction".into(),
         ));
     }
-    if data.len() < 177 {
-        // Minimal length for FundPayment (1 byte discriminator + 176 bytes data)
+
+    let fund_payment = FundPayment::try_from_bytes(data).map_err(|e| {
+        PaymentVerificationError::TransactionSimulation(format!("Invalid FundPayment Data: {}", e))
+    })?;
+
+    if Address::new(Pubkey::from(fund_payment.seller.to_bytes())) != requirements.pay_to {
+        return Err(PaymentVerificationError::RecipientMismatch);
+    }
+    if Address::new(Pubkey::from(fund_payment.mint.to_bytes())) != requirements.asset {
+        return Err(PaymentVerificationError::AssetMismatch);
+    }
+    if u64::from_le_bytes(fund_payment.amount) != requirements.amount.inner() {
+        return Err(PaymentVerificationError::InvalidPaymentAmount);
+    }
+    if u64::from_le_bytes(fund_payment.ttl_seconds) < 60 {
         return Err(PaymentVerificationError::TransactionSimulation(
-            "Invalid FundPayment Data Length".into(),
+            "TTL too short".into(),
         ));
     }
 
@@ -255,27 +267,9 @@ pub async fn verify_transfer(
             "Missing extra requirements".into(),
         ))?;
 
-    let seller = Pubkey::new_from_array(data[1..33].try_into().unwrap());
-    let mint = Pubkey::new_from_array(data[33..65].try_into().unwrap());
-    let amount = read_u64_le(&data[161..169]);
-    let ttl_seconds = read_u64_le(&data[169..177]);
-    let oracle_authority = Pubkey::new_from_array(data[65..97].try_into().unwrap());
-
-    if Address::new(seller) != requirements.pay_to {
-        return Err(PaymentVerificationError::RecipientMismatch);
-    }
-    if Address::new(mint) != requirements.asset {
-        return Err(PaymentVerificationError::AssetMismatch);
-    }
-    if amount != requirements.amount.inner() {
-        return Err(PaymentVerificationError::InvalidPaymentAmount);
-    }
-    if ttl_seconds < 60 {
-        return Err(PaymentVerificationError::TransactionSimulation(
-            "TTL too short".into(),
-        ));
-    }
-    if Address::new(oracle_authority) != extra.oracle_authority {
+    if Address::new(Pubkey::from(fund_payment.oracle_authority.to_bytes()))
+        != extra.oracle_authority
+    {
         return Err(PaymentVerificationError::TransactionSimulation(
             "Oracle authority mismatch".into(),
         ));
@@ -323,16 +317,10 @@ pub async fn verify_transfer(
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
 
     let payer = Address::new(buyer_pubkey);
-    let beneficiary = Address::new(seller);
+    let beneficiary = Address::new(Pubkey::from(fund_payment.seller.to_bytes()));
     Ok(VerifyTransferResult {
         payer,
         beneficiary,
         transaction,
     })
-}
-
-fn read_u64_le(data: &[u8]) -> u64 {
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(&data[..8]);
-    u64::from_le_bytes(buf)
 }
