@@ -2165,6 +2165,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "miraland-steel"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da4dc612f0cae0bc8086a3b7636ddfb60f7d920bc02d325cebb6977cd2d1483c"
+dependencies = [
+ "bytemuck",
+ "fixed",
+ "num_enum",
+ "serde",
+ "solana-program",
+ "spl-associated-token-account 6.0.0",
+ "spl-token 4.0.2",
+ "spl-token-2022 7.0.0",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "nix"
 version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3431,19 +3448,21 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 [[package]]
 name = "sla-escrow-api"
 version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b59cfbcd4df9eb6e57774c0349056131fe935a593b40de03dac4f2a064f2c3c"
 dependencies = [
  "bincode",
  "borsh 0.10.4",
  "bytemuck",
  "const-crypto",
  "hex",
+ "miraland-steel",
  "num_enum",
  "serde",
  "solana-program",
  "spl-associated-token-account 6.0.0",
  "spl-token 7.0.0",
  "static_assertions",
- "steel 4.0.3",
  "thiserror 1.0.69",
 ]
 
@@ -6779,22 +6798,6 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "steel"
-version = "4.0.3"
-source = "git+https://github.com/miraland-labs/steel?branch=master#ff127c47087cfb5ae6af26dc820a34b7e9fb287e"
-dependencies = [
- "bytemuck",
- "fixed",
- "num_enum",
- "serde",
- "solana-program",
- "spl-associated-token-account 6.0.0",
- "spl-token 4.0.2",
- "spl-token-2022 7.0.0",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "steel"
 version = "4.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06f847147777c6de11c51bfb24d5f2f15c91af013a2a8d2c44cfcbdc76848970"
@@ -7371,7 +7374,9 @@ dependencies = [
 
 [[package]]
 name = "universalsettle-api"
-version = "0.1.0"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2af392463ca06f0f7b9c4552c2468f3eed63f76fc563da1125b8a861a3cc3b5"
 dependencies = [
  "bytemuck",
  "const-crypto",
@@ -7380,7 +7385,7 @@ dependencies = [
  "spl-associated-token-account 7.0.0",
  "spl-token 4.0.2",
  "static_assertions",
- "steel 4.0.4",
+ "steel",
  "thiserror 1.0.69",
 ]
 
