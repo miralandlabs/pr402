@@ -21,13 +21,12 @@ use crate::scheme::v2_solana_exact::shared::{
     settle_transaction, verify_compute_limit_instruction, verify_compute_price_instruction,
     TransactionInt, VerifyTransferResult,
 };
-use crate::util::Base64Bytes;
+use crate::util::{decode_versioned_transaction_from_bincode, Base64Bytes};
 use sla_escrow_api::instruction::{EscrowInstruction, FundPayment};
 
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_commitment_config::CommitmentConfig;
 use solana_pubkey::Pubkey;
-use solana_transaction::versioned::VersionedTransaction;
 
 pub struct V2SolanaSLAEscrow;
 
@@ -214,8 +213,8 @@ pub async fn verify_transfer(
     let bytes = Base64Bytes::from(transaction_b64_string.as_bytes())
         .decode()
         .map_err(|e| PaymentVerificationError::InvalidFormat(e.to_string()))?;
-    let transaction = bincode::deserialize::<VersionedTransaction>(bytes.as_slice())
-        .map_err(|e| PaymentVerificationError::InvalidFormat(e.to_string()))?;
+    let transaction = decode_versioned_transaction_from_bincode(bytes.as_slice())
+        .map_err(PaymentVerificationError::InvalidFormat)?;
 
     let instructions = transaction.message.instructions();
     let compute_units = verify_compute_limit_instruction(&transaction, 0)?;
@@ -370,7 +369,8 @@ fn extract_escrow_audit_metadata(
 
     // Decode instruction to get Oracle
     let bytes = Base64Bytes::from(payload.payload.transaction.as_bytes()).decode()?;
-    let transaction = bincode::deserialize::<VersionedTransaction>(bytes.as_slice())?;
+    let transaction = decode_versioned_transaction_from_bincode(bytes.as_slice())
+        .map_err(|e| -> Box<dyn Error + Send + Sync> { e.into() })?;
 
     // Find FundPayment instruction
     let is_spl_token = requirements.asset.pubkey() != &Pubkey::default();

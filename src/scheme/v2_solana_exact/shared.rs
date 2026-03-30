@@ -11,7 +11,7 @@ use solana_transaction::TransactionError;
 
 use crate::chain::solana::{Address, SolanaChainProvider, SolanaChainProviderError};
 use crate::proto::PaymentVerificationError;
-use crate::util::Base64Bytes;
+use crate::util::{decode_versioned_transaction_from_bincode, Base64Bytes};
 
 pub const ATA_PROGRAM_PUBKEY: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
@@ -251,8 +251,8 @@ pub async fn verify_transaction(
     let bytes = Base64Bytes::from(transaction_b64_string.as_bytes())
         .decode()
         .map_err(|e| SolanaExactError::TransactionDecoding(e.to_string()))?;
-    let transaction = bincode::deserialize::<VersionedTransaction>(bytes.as_slice())
-        .map_err(|e| SolanaExactError::TransactionDecoding(e.to_string()))?;
+    let transaction = decode_versioned_transaction_from_bincode(bytes.as_slice())
+        .map_err(SolanaExactError::TransactionDecoding)?;
 
     // perform transaction introspection to validate the transaction structure and details
     let instructions = transaction.message.instructions();
