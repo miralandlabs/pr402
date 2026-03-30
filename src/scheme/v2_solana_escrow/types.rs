@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::chain::solana::Address;
-use crate::proto::util::U64String;
+use crate::proto::util::{U16String, U64String};
 use crate::proto::v2;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -62,8 +62,8 @@ pub struct SLAEscrowPaymentRequirementsExtra {
     pub escrow_program_id: Address,
     pub bank_address: Address,
     pub config_address: Address,
-    pub fee_bps: u16,
-    pub ttl_seconds: u64,
+    pub fee_bps: U16String,
+    pub ttl_seconds: U64String,
 }
 
 /// Verify request for v2:solana:escrow.

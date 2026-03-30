@@ -7,7 +7,9 @@
 use pr402::{
     chain::ChainProvider,
     config::Config,
-    db::{PaymentAuditMetadata, PaymentOutcome, Pr402Db, ResourceProviderInfo, ResourceProviderRail},
+    db::{
+        PaymentAuditMetadata, PaymentOutcome, Pr402Db, ResourceProviderInfo, ResourceProviderRail,
+    },
     facilitator::Facilitator,
 };
 use serde::Deserialize;

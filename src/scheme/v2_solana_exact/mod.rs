@@ -110,7 +110,7 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
                         fee_payer: fee_payer.into(),
                         program_id: us_config.program_id.into(),
                         config_address: config_address.into(),
-                        fee_bps,
+                        fee_bps: fee_bps.into(),
                     })
                     .unwrap(),
                 )
@@ -168,7 +168,7 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         Ok(crate::facilitator::SchemeOnboardInfo {
             vault_pda: vault_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
-            fee_bps,
+            fee_bps: fee_bps.into(),
             status: "Discovery".to_string(), // status indicates it is derived but not necessarily provisioned
         })
     }

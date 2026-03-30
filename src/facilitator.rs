@@ -44,7 +44,7 @@ pub trait Facilitator: Send + Sync {
 pub struct SchemeOnboardInfo {
     pub vault_pda: String,
     pub sol_storage_pda: String,
-    pub fee_bps: u16,
+    pub fee_bps: crate::proto::util::U16String,
     pub status: String,
 }
 

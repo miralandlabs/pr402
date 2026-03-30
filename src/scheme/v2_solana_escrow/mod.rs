@@ -163,8 +163,8 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                     escrow_program_id: escrow_config.program_id.into(),
                     bank_address: bank_address.into(),
                     config_address: config_address.into(),
-                    fee_bps,
-                    ttl_seconds: 3600, // Default 1 hour
+                    fee_bps: fee_bps.into(),
+                    ttl_seconds: 3600.into(), // Default 1 hour
                 })
                 .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?,
             );
@@ -221,7 +221,7 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         Ok(crate::facilitator::SchemeOnboardInfo {
             vault_pda: escrow_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
-            fee_bps,
+            fee_bps: fee_bps.into(),
             status: "Active".to_string(),
         })
     }

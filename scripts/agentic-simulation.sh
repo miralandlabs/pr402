@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # Configuration
-MINT="4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU" # USDC on Devnet
+MINT="4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU" # USDC (Official Circle) on Devnet
 RPC="https://devnet.helius-rpc.com/?api-key=5207c547-a878-46ef-892d-cae1446de8bf"
 CHAIN_ID="solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1" # Devnet
 

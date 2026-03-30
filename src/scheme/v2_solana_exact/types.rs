@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::chain::solana::Address;
-use crate::proto::util::U64String;
+use crate::proto::util::{U16String, U64String};
 use crate::proto::v2;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -60,7 +60,7 @@ pub struct SupportedPaymentKindExtra {
     pub fee_payer: Address,
     pub program_id: Address,
     pub config_address: Address,
-    pub fee_bps: u16,
+    pub fee_bps: U16String,
 }
 
 /// Verify request for v2:solana:exact.
