@@ -52,8 +52,13 @@ echo ">>> [1/4] open-escrow (USDC rail)"
 echo ""
 echo ">>> [2/4] fund-payment (onchain; captures AGENTIC_AUDIT_TX_B64)"
 set +e
+# Admin flags first: fund-payment.sh resets admin_args when parsing argv, so common-admin
+# default priority is lost unless we pass it here. Preview facilitator often uses MAX_COMPUTE_UNIT_PRICE=1.
 FUND_OUT=$(
   "$SLA_ESCROW_SCRIPTS/fund-payment.sh" \
+    --rpc "$RPC_URL" \
+    --keypair "$E2E_BUYER_KEYPAIR" \
+    --priority-fee "${E2E_PRIORITY_FEE_MICROLAMPORTS:-1}" \
     --seller "$SELLER" \
     --mint "$E2E_USDC_MINT" \
     --amount "$AMOUNT_HUMAN" \
@@ -62,8 +67,6 @@ FUND_OUT=$(
     --oracle-authority "$SELLER" \
     --ttl-seconds "$TTL_SEC" \
     --sla-hash "$SLA_HASH_ZERO" \
-    --rpc "$RPC_URL" \
-    --keypair "$E2E_BUYER_KEYPAIR" \
     --yes 2>&1
 )
 FUND_EC=$?

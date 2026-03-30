@@ -4,6 +4,7 @@ pub mod types;
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::mem;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -261,7 +262,18 @@ pub async fn verify_transfer(
         ));
     }
 
-    let fund_payment = FundPayment::try_from_bytes(data).map_err(|e| {
+    // Instruction data is [discriminator || FundPayment]; on-chain `parse_instruction` strips the
+    // byte before `FundPayment::try_from_bytes`; match that here.
+    let body_len = mem::size_of::<FundPayment>();
+    if data.len() != 1 + body_len {
+        return Err(PaymentVerificationError::TransactionSimulation(format!(
+            "Invalid FundPayment Data length: expected {}, got {}",
+            1 + body_len,
+            data.len()
+        )));
+    }
+
+    let fund_payment = FundPayment::try_from_bytes(&data[1..]).map_err(|e| {
         PaymentVerificationError::TransactionSimulation(format!("Invalid FundPayment Data: {}", e))
     })?;
 
@@ -388,8 +400,20 @@ fn extract_escrow_audit_metadata(
         return Err("FundPayment index out of bounds".into());
     }
 
-    let instr_data = &instructions[fund_idx].data;
-    let fund_payment = FundPayment::try_from_bytes(instr_data)?;
+    let instr_data = instructions[fund_idx].data.as_slice();
+    if instr_data.is_empty() || instr_data[0] != EscrowInstruction::FundPayment as u8 {
+        return Err("invalid or missing FundPayment discriminator".into());
+    }
+    let body_len = mem::size_of::<FundPayment>();
+    if instr_data.len() != 1 + body_len {
+        return Err(format!(
+            "invalid FundPayment data length: expected {}, got {}",
+            1 + body_len,
+            instr_data.len()
+        )
+        .into());
+    }
+    let fund_payment = FundPayment::try_from_bytes(&instr_data[1..])?;
 
     Ok(EscrowAuditMetadata {
         escrow_pda: escrow_pda.to_string(),
