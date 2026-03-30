@@ -11,6 +11,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::{info, warn};
 
 /// Trait defining the asynchronous interface for x402 payment facilitators.
 #[async_trait]
@@ -74,10 +75,23 @@ impl FacilitatorLocal {
         );
 
         // Register escrow scheme if configured
-        if chain_provider.solana.sla_escrow().is_some() {
+        if let Some(escrow_config) = chain_provider.solana.sla_escrow() {
             let escrow_scheme = V2SolanaSLAEscrow;
-            if let Ok(handler) = escrow_scheme.build(chain_provider.clone(), None) {
-                scheme_handlers.insert(escrow_scheme.scheme().to_string(), Arc::from(handler));
+            match escrow_scheme.build(chain_provider.clone(), None) {
+                Ok(handler) => {
+                    scheme_handlers.insert(escrow_scheme.scheme().to_string(), Arc::from(handler));
+                    info!(
+                        "Registered escrow scheme for program: {}",
+                        escrow_config.program_id
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to build escrow scheme: {}. Is ESCROW_PROGRAM_ID correct?",
+                        e
+                    );
+                    return Err(e);
+                }
             }
         }
 
