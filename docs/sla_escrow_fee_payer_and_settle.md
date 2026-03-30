@@ -49,7 +49,7 @@ Location: `pr402/src/scheme/v2_solana_escrow/mod.rs` (`settle_sla_escrow_fund_pa
    - Audit whether DB writes should store **on-chain fund tx signature** vs facilitator **settlement** acknowledgment consistently; align `persist_escrow_audit_after_settle` and HTTP response `transaction` field with product expectations.
 
 4. **Extended SLA lifecycle persistence**  
-   - Columns such as `delivery_signature`, `resolution_signature`, `delivery_hash` are not populated by verify/settle alone; wire them when `submit-delivery`, `confirm-oracle`, `release-payment`, etc. are integrated with the facilitator or a backend indexer.
+   - Columns such as `delivery_signature`, `resolution_signature`, `delivery_hash` are not populated by verify/settle alone; wire them when `submit-delivery`, `confirm-oracle`, `release-payment`, etc. are integrated with the facilitator or a backend indexer. **Planned work:** [sla_escrow_fullcycle_roadmap.md](./sla_escrow_fullcycle_roadmap.md).
 
 ## What’s next (suggested order)
 

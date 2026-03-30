@@ -13,6 +13,8 @@ pub mod parameters;
 pub mod payment_attempt;
 pub mod proto;
 pub mod scheme;
+pub mod sdk;
+pub mod sla_escrow_payment_build;
 pub mod util;
 pub mod vault_balance;
 

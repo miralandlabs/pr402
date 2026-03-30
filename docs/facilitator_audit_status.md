@@ -51,6 +51,9 @@ This document summarizes the current hardening status of the `pr402` Facilitator
 ### 4. 🛡️ SLA-Escrow fee payer vs `exact` / `/settle` (follow-up design)
 **Reference**: See [sla_escrow_fee_payer_and_settle.md](./sla_escrow_fee_payer_and_settle.md) for why **`exact`** uses **facilitator** as fee payer while **current `fund-payment` CLI** uses **buyer** as fee payer, why **`SolanaChainProvider::sign`** overwrites **signature slot 0**, and what to change if the product wants facilitator-sponsored gas on the escrow rail.
 
+### 5. 🛡️ SLA-Escrow full cycle beyond x402 fund (HTTP / SDK)
+**Reference**: [sla_escrow_fullcycle_roadmap.md](./sla_escrow_fullcycle_roadmap.md) — phased plan for **submit-delivery**, **confirm-oracle**, **release/refund**, DB per-payment audit, and fee-payer matrix for each step.
+
 ---
 
 ## 🛡️ Final Work Verification

@@ -48,7 +48,8 @@ type DynFacilitator =
 /// Set once from [`main`] so handlers can read optional DB the same way as before.
 static PR402_DB: OnceLock<Option<Pr402Db>> = OnceLock::new();
 
-/// Shared [`ChainProvider`] for transaction-build helpers (`build-exact-payment-tx`).
+/// Shared [`ChainProvider`] for transaction-build helpers (`build-exact-payment-tx`,
+/// `build-sla-escrow-payment-tx`).
 static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 
 /// Use an explicit target so `RUST_LOG=pr402=info` shows **`facilitator` bin** lines (default target is
@@ -79,7 +80,8 @@ fn payment_scheme_is_sla_escrow(scheme: Option<&str>) -> bool {
     scheme == Some(SLAEscrowScheme.as_ref())
 }
 
-/// Runs after `payment_attempts` insert so `escrow_details.upsert` can resolve `payment_attempt_id`.
+/// Runs after `payment_attempts` insert so `escrow_details` upsert can resolve `payment_attempt_id`
+/// (unique key for `escrow_details`; one audit row per attempt).
 async fn persist_escrow_audit_if_applicable_verify(
     db: &Pr402Db,
     verify_request: &pr402::proto::VerifyRequest,
@@ -257,6 +259,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 ("POST", "/api/v1/facilitator/build-exact-payment-tx") => {
                     handle_build_exact_payment_tx(body).await
+                }
+                ("POST", "/api/v1/facilitator/build-sla-escrow-payment-tx") => {
+                    handle_build_sla_escrow_payment_tx(body).await
                 }
                 _ => facilitator_response!()
                     .status(StatusCode::NOT_FOUND)
@@ -668,12 +673,14 @@ async fn handle_capabilities(
         "features": {
             "universalSettleExact": universal_settle,
             "slaEscrow": sla_escrow,
-            "unsignedExactPaymentTxBuild": true
+            "unsignedExactPaymentTxBuild": true,
+            "unsignedSlaEscrowPaymentTxBuild": sla_escrow
         },
         "httpEndpoints": {
             "verify": { "method": "POST", "path": "/api/v1/facilitator/verify" },
             "settle": { "method": "POST", "path": "/api/v1/facilitator/settle" },
             "buildExactPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-exact-payment-tx" },
+            "buildSlaEscrowPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-sla-escrow-payment-tx" },
             "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
             "health": { "method": "GET", "path": "/api/v1/facilitator/health" },
             "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" }
@@ -986,6 +993,57 @@ async fn handle_build_exact_payment_tx(body: Body) -> Response<Body> {
                     StatusCode::NOT_IMPLEMENTED
                 }
                 pr402::exact_payment_build::ExactPaymentBuildError::Rpc(_) => {
+                    StatusCode::BAD_GATEWAY
+                }
+            };
+            error_response(status, &e.to_string())
+        }
+    }
+}
+
+/// Build an unsigned `v2:solana:sla-escrow` [`FundPayment`] transaction for buyer signing.
+/// See [`pr402::sla_escrow_payment_build`].
+async fn handle_build_sla_escrow_payment_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+    };
+    let req: pr402::sla_escrow_payment_build::BuildSlaEscrowPaymentTxRequest =
+        match serde_json::from_str(&body_str) {
+            Ok(r) => r,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
+            }
+        };
+    match pr402::sla_escrow_payment_build::build_sla_escrow_fund_payment_tx(&cp.solana, req).await {
+        Ok(out) => facilitator_response!()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Body::Text(
+                serde_json::to_string(&out)
+                    .unwrap_or_else(|_| r#"{"error":"serialize failed"}"#.into()),
+            ))
+            .unwrap(),
+        Err(e) => {
+            let status = match e {
+                pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::NetworkMismatch {
+                    ..
+                }
+                | pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::InvalidRequest(_) => {
+                    StatusCode::BAD_REQUEST
+                }
+                pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::Unsupported(_) => {
+                    StatusCode::NOT_IMPLEMENTED
+                }
+                pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::NotConfigured => {
+                    StatusCode::NOT_IMPLEMENTED
+                }
+                pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::Rpc(_) => {
                     StatusCode::BAD_GATEWAY
                 }
             };

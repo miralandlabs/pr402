@@ -206,18 +206,16 @@ async fn settle_sla_escrow_fund_payment(
 ) -> Result<Signature, X402SchemeFacilitatorError> {
     let tx_int = TransactionInt::new(verification.transaction.clone());
     if !tx_int.is_fully_signed() {
-        return settle_transaction(provider, verification).await.map_err(Into::into);
+        return settle_transaction(provider, verification)
+            .await
+            .map_err(Into::into);
     }
 
-    let primary = *verification
-        .transaction
-        .signatures
-        .first()
-        .ok_or_else(|| {
-            X402SchemeFacilitatorError::OnchainFailure(
-                "escrow settle: transaction has no signatures".to_string(),
-            )
-        })?;
+    let primary = *verification.transaction.signatures.first().ok_or_else(|| {
+        X402SchemeFacilitatorError::OnchainFailure(
+            "escrow settle: transaction has no signatures".to_string(),
+        )
+    })?;
 
     if primary == Signature::default() {
         return Err(X402SchemeFacilitatorError::OnchainFailure(

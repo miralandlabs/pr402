@@ -618,7 +618,10 @@ impl Pr402Db {
         }
     }
 
-    /// Record or update specialized SLAEscrow state linked to a payment attempt.
+    /// Record or update specialized SLAEscrow state for one **payment attempt**.
+    ///
+    /// Matches `escrow_details.escrow_details_one_row_per_payment_attempt`: upsert conflict target is
+    /// **`payment_attempt_id`** (not `escrow_pda`; many payments share the same escrow PDA).
     pub async fn upsert_escrow_detail(
         &self,
         correlation_id: &str,
@@ -634,8 +637,8 @@ impl Pr402Db {
                     payment_attempt_id, escrow_pda, bank_pda, oracle_authority, sla_hash, fund_signature, updated_at
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, NOW())
-                ON CONFLICT (escrow_pda) DO UPDATE SET
-                    payment_attempt_id = EXCLUDED.payment_attempt_id,
+                ON CONFLICT (payment_attempt_id) DO UPDATE SET
+                    escrow_pda = EXCLUDED.escrow_pda,
                     bank_pda = EXCLUDED.bank_pda,
                     oracle_authority = EXCLUDED.oracle_authority,
                     sla_hash = COALESCE(EXCLUDED.sla_hash, escrow_details.sla_hash),

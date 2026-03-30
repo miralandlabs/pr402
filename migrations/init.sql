@@ -74,11 +74,14 @@ CREATE INDEX IF NOT EXISTS idx_payment_attempts_scheme
 -- =============================================================================
 -- SLAEscrow: multi-step institutional audit
 -- =============================================================================
+-- escrow_details: one row per payment_attempt (UNIQUE on payment_attempt_id).
+-- escrow_pda is NOT unique — many funded payments share the same escrow PDA (mint rail).
+-- Application upsert: ON CONFLICT (payment_attempt_id) (see Pr402Db::upsert_escrow_detail).
 
 CREATE TABLE IF NOT EXISTS escrow_details (
     id                   BIGSERIAL PRIMARY KEY,
     payment_attempt_id   BIGINT NOT NULL REFERENCES payment_attempts (id) ON DELETE CASCADE,
-    escrow_pda           TEXT NOT NULL UNIQUE,
+    escrow_pda           TEXT NOT NULL,
     bank_pda             TEXT NOT NULL,
     oracle_authority     TEXT NOT NULL,
     fund_signature       TEXT,
@@ -90,7 +93,8 @@ CREATE TABLE IF NOT EXISTS escrow_details (
     completed_at         TIMESTAMPTZ,
     refunded_at          TIMESTAMPTZ,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT escrow_details_one_row_per_payment_attempt UNIQUE (payment_attempt_id)
 );
 
 ALTER TABLE escrow_details ENABLE ROW LEVEL SECURITY;

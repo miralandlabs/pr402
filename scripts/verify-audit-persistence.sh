@@ -89,7 +89,7 @@ psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT correlatio
 
 echo ""
 echo "Step 4: Checking Escrow Details extension..."
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT * FROM escrow_details WHERE correlation_id = '$CORRELATION_ID';"
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT ed.* FROM escrow_details ed JOIN payment_attempts pa ON pa.id = ed.payment_attempt_id WHERE pa.correlation_id = '$CORRELATION_ID';"
 
 echo "=============================================="
 echo " 🎉 Audit Verification Finished."

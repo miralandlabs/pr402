@@ -57,6 +57,11 @@
       "src": "/api/v1/facilitator/build-exact-payment-tx",
       "dest": "/src/bin/facilitator",
       "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-payment-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
     }
   ]
 }
