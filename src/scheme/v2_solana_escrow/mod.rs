@@ -4,6 +4,8 @@ pub mod types;
 
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::Write as _;
+use std::mem;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -21,14 +23,13 @@ use crate::scheme::v2_solana_exact::shared::{
     settle_transaction, verify_compute_limit_instruction, verify_compute_price_instruction,
     TransactionInt, VerifyTransferResult,
 };
-use crate::util::Base64Bytes;
+use crate::util::{decode_versioned_transaction_from_bincode, Base64Bytes};
+use sla_escrow_api::instruction::{EscrowInstruction, FundPayment};
 
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_commitment_config::CommitmentConfig;
 use solana_pubkey::Pubkey;
-use solana_transaction::versioned::VersionedTransaction;
-
-use crate::chain::solana_sla_escrow::SLAEscrowInstruction;
+use solana_signature::Signature;
 
 pub struct V2SolanaSLAEscrow;
 
@@ -47,6 +48,7 @@ impl X402SchemeFacilitatorBuilder for V2SolanaSLAEscrow {
         &self,
         provider: ChainProvider,
         _config: Option<serde_json::Value>,
+        _db: Option<crate::db::Pr402Db>,
     ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn Error>> {
         // SLAEscrow requires SLAEscrowConfig to be present
         if provider.solana.sla_escrow().is_none() {
@@ -68,8 +70,13 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         &self,
         request: &proto::VerifyRequest,
     ) -> Result<proto::VerifyResponse, X402SchemeFacilitatorError> {
-        let request = types::VerifyRequest::from_proto(request.clone())?;
-        let verification = verify_transfer(&self.provider, &request).await?;
+        let request_v2 = types::VerifyRequest::from_proto(request.clone())?;
+        let verification = verify_transfer(&self.provider, &request_v2).await?;
+
+        // Escrow audit rows (`escrow_details`) are persisted in `bin/facilitator.rs` *after*
+        // `record_payment_verify` creates the parent `payment_attempts` row — this scheme runs
+        // before that insert, so upserting here always failed with "Parent payment attempt not found".
+
         Ok(proto::v2::VerifyResponse::valid(verification.payer.to_string()).into())
     }
 
@@ -77,12 +84,30 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         &self,
         request: &proto::SettleRequest,
     ) -> Result<proto::SettleResponse, X402SchemeFacilitatorError> {
-        let request = types::SettleRequest::from_proto(request.clone())?;
-        let verification = verify_transfer(&self.provider, &request).await?;
+        let request_v2 = types::SettleRequest::from_proto(request.clone())?;
+        let verification = verify_transfer(&self.provider, &request_v2).await?;
         let payer = verification.payer.to_string();
 
-        // Use the shared settle_transaction logic
-        let tx_sig = settle_transaction(&self.provider, verification).await?;
+        // `escrow_details` upsert runs after `record_payment_settle` in `bin/facilitator.rs`
+        // so the parent `payment_attempts` row exists (same ordering bug as verify).
+
+        // Facilitator-sponsored fund txs (fee payer = facilitator, buyer = 2nd signer): reuse the same
+        // `sign` + `send_and_confirm` path as `exact`. Legacy buyer-paid shells keep idempotent
+        // confirm/submit in [`settle_sla_escrow_fund_payment`].
+        let facilitator = self.provider.pubkey();
+        let sponsor_is_facilitator = verification
+            .transaction
+            .message
+            .static_account_keys()
+            .first()
+            .copied()
+            == Some(facilitator);
+
+        let tx_sig = if sponsor_is_facilitator {
+            settle_transaction(&self.provider, verification).await?
+        } else {
+            settle_sla_escrow_fund_payment(&self.provider, verification).await?
+        };
 
         Ok(proto::v2::SettleResponse::Success {
             payer,
@@ -100,14 +125,27 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                 .provider
                 .sla_escrow()
                 .expect("SLAEscrow config missing");
-            let oracle_authority = self.provider.fee_payer();
+
+            let (bank_address, _) = self.provider.get_bank_pda(&escrow_config.program_id);
+            let (config_address, _) = self.provider.get_config_pda(&escrow_config.program_id);
+            let fee_bps = escrow_config.fee_bps.unwrap_or(0);
+
+            let oracle_authorities = escrow_config
+                .oracle_authorities
+                .iter()
+                .map(|p| (*p).into())
+                .collect::<Vec<Address>>();
 
             let extra = Some(
                 serde_json::to_value(types::SLAEscrowPaymentRequirementsExtra {
                     fee_payer: fee_payer.into(),
-                    oracle_authority: oracle_authority.into(),
+                    oracle_authorities,
                     escrow_program_id: escrow_config.program_id.into(),
-                    ttl_seconds: 3600, // Default 1 hour
+                    bank_address: bank_address.into(),
+                    config_address: config_address.into(),
+                    fee_bps: fee_bps.into(),
+                    ttl_seconds: 3600.into(), // Default 1 hour
+                    sla_fund_tx_network_fee_payer: Some("facilitator".to_string()),
                 })
                 .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?,
             );
@@ -164,9 +202,81 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         Ok(crate::facilitator::SchemeOnboardInfo {
             vault_pda: escrow_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
-            fee_bps,
+            fee_bps: fee_bps.into(),
             status: "Active".to_string(),
         })
+    }
+}
+
+/// Submit or acknowledge an SLA-Escrow **FundPayment** transaction for x402 `/settle` (**buyer-paid**
+/// message layout only — facilitator-sponsored layouts use [`settle_transaction`] from [`settle`]).
+///
+/// The tx must be **fully signed** by the buyer (`!is_fully_signed` → error; never call
+/// [`settle_transaction`] here — it would overwrite slot 0 with the facilitator key). Then: confirm
+/// existing signature on-chain, submit unchanged if pending, or accept “already processed”.
+async fn settle_sla_escrow_fund_payment(
+    provider: &SolanaChainProvider,
+    verification: VerifyTransferResult,
+) -> Result<Signature, X402SchemeFacilitatorError> {
+    let tx_int = TransactionInt::new(verification.transaction.clone());
+    if !tx_int.is_fully_signed() {
+        // Only reached when message fee payer is **not** the facilitator (buyer-paid / CLI). Never
+        // call [`settle_transaction`] here — it overwrites signature slot 0 with the facilitator key.
+        return Err(X402SchemeFacilitatorError::OnchainFailure(
+            "escrow settle (buyer-paid): fund transaction must be fully signed by the buyer"
+                .to_string(),
+        ));
+    }
+
+    let primary = *verification.transaction.signatures.first().ok_or_else(|| {
+        X402SchemeFacilitatorError::OnchainFailure(
+            "escrow settle: transaction has no signatures".to_string(),
+        )
+    })?;
+
+    if primary == Signature::default() {
+        return Err(X402SchemeFacilitatorError::OnchainFailure(
+            "escrow settle: primary signature is default".to_string(),
+        ));
+    }
+
+    match provider
+        .rpc_client()
+        .get_signature_status_with_commitment(&primary, CommitmentConfig::confirmed())
+        .await
+    {
+        Ok(Some(Ok(()))) => return Ok(primary),
+        Ok(Some(Err(e))) => {
+            return Err(X402SchemeFacilitatorError::OnchainFailure(format!(
+                "fund transaction failed on-chain: {:?}",
+                e
+            )));
+        }
+        Ok(None) | Err(_) => {}
+    }
+
+    match tx_int
+        .send_and_confirm(provider, CommitmentConfig::confirmed())
+        .await
+    {
+        Ok(sig) => Ok(sig),
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("already been processed") {
+                return Ok(primary);
+            }
+            if matches!(
+                provider
+                    .rpc_client()
+                    .get_signature_status_with_commitment(&primary, CommitmentConfig::confirmed())
+                    .await,
+                Ok(Some(Ok(())))
+            ) {
+                Ok(primary)
+            } else {
+                Err(e.into())
+            }
+        }
     }
 }
 
@@ -194,8 +304,8 @@ pub async fn verify_transfer(
     let bytes = Base64Bytes::from(transaction_b64_string.as_bytes())
         .decode()
         .map_err(|e| PaymentVerificationError::InvalidFormat(e.to_string()))?;
-    let transaction = bincode::deserialize::<VersionedTransaction>(bytes.as_slice())
-        .map_err(|e| PaymentVerificationError::InvalidFormat(e.to_string()))?;
+    let transaction = decode_versioned_transaction_from_bincode(bytes.as_slice())
+        .map_err(PaymentVerificationError::InvalidFormat)?;
 
     let instructions = transaction.message.instructions();
     let compute_units = verify_compute_limit_instruction(&transaction, 0)?;
@@ -236,15 +346,39 @@ pub async fn verify_transfer(
     }
 
     let data = fund_instruction.data_slice();
-    if data.is_empty() || data[0] != SLAEscrowInstruction::FundPayment as u8 {
+    if data.is_empty() || data[0] != EscrowInstruction::FundPayment as u8 {
         return Err(PaymentVerificationError::TransactionSimulation(
             "Invalid SLAEscrow Instruction".into(),
         ));
     }
-    if data.len() < 209 {
-        // Minimal length for FundPayment
+
+    // Instruction data is [discriminator || FundPayment]; on-chain `parse_instruction` strips the
+    // byte before `FundPayment::try_from_bytes`; match that here.
+    let body_len = mem::size_of::<FundPayment>();
+    if data.len() != 1 + body_len {
+        return Err(PaymentVerificationError::TransactionSimulation(format!(
+            "Invalid FundPayment Data length: expected {}, got {}",
+            1 + body_len,
+            data.len()
+        )));
+    }
+
+    let fund_payment = FundPayment::try_from_bytes(&data[1..]).map_err(|e| {
+        PaymentVerificationError::TransactionSimulation(format!("Invalid FundPayment Data: {}", e))
+    })?;
+
+    if Address::new(Pubkey::from(fund_payment.seller.to_bytes())) != requirements.pay_to {
+        return Err(PaymentVerificationError::RecipientMismatch);
+    }
+    if Address::new(Pubkey::from(fund_payment.mint.to_bytes())) != requirements.asset {
+        return Err(PaymentVerificationError::AssetMismatch);
+    }
+    if u64::from_le_bytes(fund_payment.amount) != requirements.amount.inner() {
+        return Err(PaymentVerificationError::InvalidPaymentAmount);
+    }
+    if u64::from_le_bytes(fund_payment.ttl_seconds) < 60 {
         return Err(PaymentVerificationError::TransactionSimulation(
-            "Invalid FundPayment Data Length".into(),
+            "TTL too short".into(),
         ));
     }
 
@@ -255,29 +389,10 @@ pub async fn verify_transfer(
             "Missing extra requirements".into(),
         ))?;
 
-    let seller = Pubkey::new_from_array(data[1..33].try_into().unwrap());
-    let mint = Pubkey::new_from_array(data[33..65].try_into().unwrap());
-    let amount = read_u64_le(&data[65..73]);
-    let ttl_seconds = read_u64_le(&data[73..81]);
-    let oracle_authority = Pubkey::new_from_array(data[177..209].try_into().unwrap());
-
-    if Address::new(seller) != requirements.pay_to {
-        return Err(PaymentVerificationError::RecipientMismatch);
-    }
-    if Address::new(mint) != requirements.asset {
-        return Err(PaymentVerificationError::AssetMismatch);
-    }
-    if amount != requirements.amount.inner() {
-        return Err(PaymentVerificationError::InvalidPaymentAmount);
-    }
-    if ttl_seconds < 60 {
+    let selected_oracle = Address::new(Pubkey::from(fund_payment.oracle_authority.to_bytes()));
+    if !extra.oracle_authorities.contains(&selected_oracle) {
         return Err(PaymentVerificationError::TransactionSimulation(
-            "TTL too short".into(),
-        ));
-    }
-    if Address::new(oracle_authority) != extra.oracle_authority {
-        return Err(PaymentVerificationError::TransactionSimulation(
-            "Oracle authority mismatch".into(),
+            "Untrusted Oracle authority selected".into(),
         ));
     }
 
@@ -286,6 +401,16 @@ pub async fn verify_transfer(
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
 
     let fee_payer_pubkey = provider.pubkey();
+    let message_fee_payer = transaction
+        .message
+        .static_account_keys()
+        .first()
+        .copied()
+        .ok_or_else(|| {
+            PaymentVerificationError::TransactionSimulation("missing fee payer key".into())
+        })?;
+    let facilitator_sponsors_fees = message_fee_payer == fee_payer_pubkey;
+
     for instruction in transaction.message.instructions().iter() {
         for account_idx in instruction.accounts.iter() {
             let account = transaction
@@ -304,9 +429,25 @@ pub async fn verify_transfer(
         }
     }
 
-    let signed_tx = TransactionInt::new(transaction.clone())
-        .sign(provider)
-        .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
+    if facilitator_sponsors_fees && buyer_pubkey != message_fee_payer {
+        let need_sigs = transaction.message.header().num_required_signatures as usize;
+        if need_sigs < 2 {
+            return Err(PaymentVerificationError::TransactionSimulation(
+                "Facilitator-sponsored fund tx must list two signers (facilitator fee payer + buyer)"
+                    .into(),
+            ));
+        }
+    }
+
+    // Simulation: add facilitator signature only when the message fee payer is the facilitator
+    // (`exact`-aligned two-signer shell). Buyer-paid / CLI layouts must keep client signatures intact.
+    let signed_tx = if facilitator_sponsors_fees {
+        TransactionInt::new(transaction.clone())
+            .sign(provider)
+            .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?
+    } else {
+        TransactionInt::new(transaction.clone())
+    };
 
     let cfg = RpcSimulateTransactionConfig {
         sig_verify: false,
@@ -323,7 +464,7 @@ pub async fn verify_transfer(
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
 
     let payer = Address::new(buyer_pubkey);
-    let beneficiary = Address::new(seller);
+    let beneficiary = Address::new(Pubkey::from(fund_payment.seller.to_bytes()));
     Ok(VerifyTransferResult {
         payer,
         beneficiary,
@@ -331,8 +472,177 @@ pub async fn verify_transfer(
     })
 }
 
-fn read_u64_le(data: &[u8]) -> u64 {
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(&data[..8]);
-    u64::from_le_bytes(buf)
+/// Helper struct for DB auditing of escrows.
+struct EscrowAuditMetadata {
+    escrow_pda: String,
+    bank_pda: String,
+    oracle: String,
+    sla_hash: Option<String>,
+}
+
+/// Re-extract on-chain derivations and instruction details specifically for the audit log.
+fn extract_escrow_audit_metadata(
+    provider: &SolanaChainProvider,
+    request: &types::VerifyRequest,
+) -> Result<EscrowAuditMetadata, Box<dyn Error + Send + Sync>> {
+    let payload = &request.payment_payload;
+    let requirements = &request.payment_requirements;
+
+    // We assume the caller confirmed it's an SLAEscrow request
+    let escrow_config = provider.sla_escrow().ok_or("escrow config missing")?;
+    let bank_pda = escrow_config.bank_address.ok_or("bank not loaded")?;
+
+    // Derive Escrow PDA
+    let (escrow_pda, _) = provider.get_escrow_pda(*requirements.asset.pubkey(), bank_pda);
+
+    // Decode instruction to get Oracle
+    let bytes = Base64Bytes::from(payload.payload.transaction.as_bytes()).decode()?;
+    let transaction = decode_versioned_transaction_from_bincode(bytes.as_slice())
+        .map_err(|e| -> Box<dyn Error + Send + Sync> { e.into() })?;
+
+    // Find FundPayment instruction
+    let is_spl_token = requirements.asset.pubkey() != &Pubkey::default();
+    let num_instr = transaction.message.instructions().len();
+    let fund_idx = if num_instr == 3 {
+        2
+    } else if num_instr == 4 && is_spl_token {
+        3
+    } else {
+        0
+    };
+
+    let instructions = transaction.message.instructions();
+    if fund_idx >= instructions.len() {
+        return Err("FundPayment index out of bounds".into());
+    }
+
+    let instr_data = instructions[fund_idx].data.as_slice();
+    if instr_data.is_empty() || instr_data[0] != EscrowInstruction::FundPayment as u8 {
+        return Err("invalid or missing FundPayment discriminator".into());
+    }
+    let body_len = mem::size_of::<FundPayment>();
+    if instr_data.len() != 1 + body_len {
+        return Err(format!(
+            "invalid FundPayment data length: expected {}, got {}",
+            1 + body_len,
+            instr_data.len()
+        )
+        .into());
+    }
+    let fund_payment = FundPayment::try_from_bytes(&instr_data[1..])?;
+
+    let mut sla_hex = String::with_capacity(64);
+    for b in fund_payment.sla_hash {
+        write!(&mut sla_hex, "{b:02x}").unwrap();
+    }
+
+    Ok(EscrowAuditMetadata {
+        escrow_pda: escrow_pda.to_string(),
+        bank_pda: bank_pda.to_string(),
+        oracle: Pubkey::from(fund_payment.oracle_authority.to_bytes()).to_string(),
+        sla_hash: Some(sla_hex),
+    })
+}
+
+/// Persist [`crate::db::Pr402Db::upsert_escrow_detail`] **after** `record_payment_verify` created `payment_attempts`.
+pub async fn persist_escrow_audit_after_verify(
+    db: &crate::db::Pr402Db,
+    provider: &SolanaChainProvider,
+    request: &proto::VerifyRequest,
+    correlation_id: &str,
+) {
+    let request_v2 = match types::VerifyRequest::from_proto(request.clone()) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                target: "server_log",
+                error = %e,
+                correlation_id = %correlation_id,
+                "escrow audit after verify: from_proto failed"
+            );
+            return;
+        }
+    };
+    let metadata = match extract_escrow_audit_metadata(provider, &request_v2) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!(
+                target: "server_log",
+                error = %e,
+                correlation_id = %correlation_id,
+                "extract_escrow_audit_metadata failed"
+            );
+            return;
+        }
+    };
+    if let Err(e) = db
+        .upsert_escrow_detail(
+            correlation_id,
+            &metadata.escrow_pda,
+            &metadata.bank_pda,
+            &metadata.oracle,
+            metadata.sla_hash.as_deref(),
+            None,
+        )
+        .await
+    {
+        tracing::warn!(
+            target: "server_log",
+            error = %e,
+            correlation_id = %correlation_id,
+            "upsert_escrow_detail failed after verify"
+        );
+    }
+}
+
+/// Persist escrow audit row **after** `record_payment_settle` (optionally stores settlement tx id).
+pub async fn persist_escrow_audit_after_settle(
+    db: &crate::db::Pr402Db,
+    provider: &SolanaChainProvider,
+    request: &proto::SettleRequest,
+    correlation_id: &str,
+    fund_signature: Option<&str>,
+) {
+    let request_v2 = match types::SettleRequest::from_proto(request.clone()) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                target: "server_log",
+                error = %e,
+                correlation_id = %correlation_id,
+                "escrow audit after settle: from_proto failed"
+            );
+            return;
+        }
+    };
+    let metadata = match extract_escrow_audit_metadata(provider, &request_v2) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!(
+                target: "server_log",
+                error = %e,
+                correlation_id = %correlation_id,
+                "extract_escrow_audit_metadata failed (settle)"
+            );
+            return;
+        }
+    };
+    if let Err(e) = db
+        .upsert_escrow_detail(
+            correlation_id,
+            &metadata.escrow_pda,
+            &metadata.bank_pda,
+            &metadata.oracle,
+            metadata.sla_hash.as_deref(),
+            fund_signature,
+        )
+        .await
+    {
+        tracing::warn!(
+            target: "server_log",
+            error = %e,
+            correlation_id = %correlation_id,
+            "upsert_escrow_detail failed after settle"
+        );
+    }
 }

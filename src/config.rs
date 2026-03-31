@@ -6,7 +6,9 @@ use std::str::FromStr;
 use url::Url;
 
 use crate::chain::ChainId;
+use sla_escrow_api::state::Bank as EscrowBank;
 use solana_pubkey::Pubkey;
+use universalsettle_api::state::Config as USConfig;
 
 /// Facilitator configuration loaded from environment variables.
 #[derive(Debug, Clone)]
@@ -51,6 +53,8 @@ pub struct SLAEscrowConfig {
     pub bank_address: Option<Pubkey>,
     /// Fee basis points (read from on-chain Bank account)
     pub fee_bps: Option<u16>,
+    /// List of trusted oracle authorities as candidates for user selection
+    pub oracle_authorities: Vec<Pubkey>,
 }
 
 impl Config {
@@ -121,10 +125,26 @@ impl Config {
             let program_id = Pubkey::from_str(&program_id_str).map_err(|e| {
                 ConfigError::InvalidChainId("ESCROW_PROGRAM_ID".to_string(), e.to_string())
             })?;
+
+            // Oracle candidate list (comma-separated pubkeys)
+            let oracle_authorities = std::env::var("ORACLE_AUTHORITIES")
+                .unwrap_or_default()
+                .split(',')
+                .filter_map(|s| {
+                    let s = s.trim();
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Pubkey::from_str(s).ok()
+                    }
+                })
+                .collect::<Vec<Pubkey>>();
+
             Some(SLAEscrowConfig {
                 program_id,
-                bank_address: None, // Can be set or derived later
+                bank_address: None,
                 fee_bps: None,
+                oracle_authorities,
             })
         } else {
             None
@@ -166,33 +186,24 @@ impl UniversalSettleConfig {
             )
         })?;
 
-        // Deserialize Config (skip 1-byte discriminator)
-        // Config structure: discriminator (1) + authority (32) + fee_destination (32) + updated_at (8) + fee_bps (2) + padding (6)
-        if account.data.len() < 1 + 32 + 32 + 8 + 2 + 6 {
+        // Deserialize Config using bytemuck (skipping 8-byte discriminator)
+        if account.data.len() < 8 {
             return Err(ConfigError::InvalidChainId(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
                 "Config account data too short".to_string(),
             ));
         }
 
-        // Extract fee_destination (bytes 33-65: after 1-byte discriminator + 32-byte authority)
-        let fee_destination_bytes: [u8; 32] = account.data[33..65].try_into().map_err(|_| {
-            ConfigError::InvalidChainId(
-                "UNIVERSALSETTLE_CONFIG".to_string(),
-                "Failed to extract fee_destination".to_string(),
-            )
-        })?;
+        let config_state =
+            bytemuck::try_from_bytes::<USConfig>(&account.data[8..]).map_err(|e| {
+                ConfigError::InvalidChainId(
+                    "UNIVERSALSETTLE_CONFIG".to_string(),
+                    format!("Failed to deserialize UniversalSettle Config: {}", e),
+                )
+            })?;
 
-        self.fee_destination = Some(Pubkey::from(fee_destination_bytes));
-
-        // Extract fee_bps (bytes 73-75: after 1 discriminator + 32 authority + 32 fee_dest + 8 updated_at)
-        let fee_bps_bytes: [u8; 2] = account.data[73..75].try_into().map_err(|_| {
-            ConfigError::InvalidChainId(
-                "UNIVERSALSETTLE_CONFIG".to_string(),
-                "Failed to extract fee_bps".to_string(),
-            )
-        })?;
-        self.fee_bps = Some(u16::from_le_bytes(fee_bps_bytes));
+        self.fee_destination = Some(Pubkey::from(config_state.fee_destination.to_bytes()));
+        self.fee_bps = Some(config_state.fee_bps);
 
         Ok(())
     }
@@ -208,8 +219,8 @@ impl SLAEscrowConfig {
         &mut self,
         rpc_client: &solana_client::nonblocking::rpc_client::RpcClient,
     ) -> Result<(), ConfigError> {
-        // Derive Bank PDA (assuming bank 0 for simplicity or configured)
-        let (bank_pda, _) = Pubkey::find_program_address(&[b"bank", &[0]], &self.program_id);
+        // Derive Bank PDA
+        let (bank_pda, _) = Pubkey::find_program_address(&[b"bank"], &self.program_id);
 
         // Read Bank account
         let account = rpc_client.get_account(&bank_pda).await.map_err(|e| {
@@ -219,24 +230,23 @@ impl SLAEscrowConfig {
             )
         })?;
 
-        // Deserialize Bank (skip 1-byte discriminator)
-        // Bank structure: discriminator (1) + authority (32) + bank_num (1) + fee_bps (2) + ...
-        if account.data.len() < 1 + 32 + 1 + 2 {
+        // Deserialize Bank using bytemuck (skipping 8-byte discriminator)
+        if account.data.len() < 8 {
             return Err(ConfigError::InvalidChainId(
                 "SLAESCROW_BANK".to_string(),
                 "Bank account data too short".to_string(),
             ));
         }
 
-        // Extract fee_bps (bytes 34-36: after 1 discriminator + 32 authority + 1 bank_num)
-        let fee_bps_bytes: [u8; 2] = account.data[34..36].try_into().map_err(|_| {
-            ConfigError::InvalidChainId(
-                "SLAESCROW_BANK".to_string(),
-                "Failed to extract fee_bps from bank".to_string(),
-            )
-        })?;
+        let bank_state =
+            bytemuck::try_from_bytes::<EscrowBank>(&account.data[8..]).map_err(|e| {
+                ConfigError::InvalidChainId(
+                    "SLAESCROW_BANK".to_string(),
+                    format!("Failed to deserialize SLAEscrow Bank: {}", e),
+                )
+            })?;
 
-        self.fee_bps = Some(u16::from_le_bytes(fee_bps_bytes));
+        self.fee_bps = Some(bank_state.fee_bps);
         self.bank_address = Some(bank_pda);
 
         Ok(())

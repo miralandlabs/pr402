@@ -49,7 +49,7 @@ fn parse_nonce_hex(s: &str) -> bool {
     s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-/// Build the exact UTF-8 string the wallet must sign for POST `/api/facilitator/onboard`.
+/// Build the exact UTF-8 string the wallet must sign for POST `/api/v1/facilitator/onboard`.
 pub fn build_signed_onboard_message(
     hmac_secret: &[u8],
     wallet_b58: &str,

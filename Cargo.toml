@@ -8,9 +8,15 @@ repository = "https://github.com/miraland-labs/pr402"
 keywords = ["x402", "solana", "payments", "serverless", "vercel"]
 categories = ["cryptography", "finance", "stablecoins"]
 
+[features]
+default = []
+## Optional `reqwest` client mirroring `sdk/facilitator-build-tx.ts` for agents / CLIs. Omit on the Vercel `facilitator` binary (default features).
+facilitator-http = ["dep:reqwest"]
+
 [dependencies]
 # Vercel Runtime
 vercel_runtime = "1.1.4"
+http = "1"
 
 # Async runtime
 tokio = { version = "1.45", features = ["full", "rt-multi-thread"] }
@@ -22,6 +28,7 @@ serde_json = { version = "1.0", features = ["raw_value"] }
 # Error handling
 thiserror = "2.0"
 anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
 
 # Solana SDK
 solana-compute-budget-interface = "3.0"
@@ -39,7 +46,10 @@ spl-token = { version = "9.0", features = ["no-entrypoint"] }
 solana-client = "3.1"
 bs58 = "0.5"
 # universalsettle-api = { path = "../universalsettle/api" }
-universalsettle-api = "0.1.0"
+# sla-escrow-api = { path = "../sla-escrow/api" }
+universalsettle-api = "0.1.1"
+sla-escrow-api = "0.2.5"
+bytemuck = "1.16"
 
 # Base64 encoding
 base64 = "0.22"
@@ -56,16 +66,20 @@ async-trait = "0.1"
 # Futures utilities
 futures-util = "0.3"
 
-# Logging
+# Logging (mirror signer-payer `init_tracing`: tracing-log + tracing-subscriber env-filter)
 tracing = "0.1"
+tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # URL parsing
 url = { version = "2.5", features = ["serde"] }
 
-# Optional PostgreSQL (Vercel serverless + Neon/Supabase), same stack as horizon-serverless-copy
+# Optional: facilitator HTTPS client (`facilitator-http` feature)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+
+# Optional PostgreSQL: deadpool + openssl — same stack as signer-payer-serverless-copy/signer-payer/src/database.rs
 deadpool-postgres = { version = "0.14", features = ["serde"] }
-tokio-postgres = "0.7"
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
 postgres-openssl = "0.5"
 openssl = "0.10"
 
@@ -74,6 +88,17 @@ hmac = "0.12"
 sha2 = "0.10"
 subtle = "2.6"
 getrandom = "0.3.4"
+
+[dev-dependencies]
+solana-hash = "3.0"
+
+[[example]]
+name = "e2e_sign_exact_tx"
+path = "examples/e2e_sign_exact_tx.rs"
+
+[[example]]
+name = "e2e_sign_sla_escrow_tx"
+path = "examples/e2e_sign_sla_escrow_tx.rs"
 
 [profile.release]
 opt-level = "z"   # Optimize for size
@@ -84,3 +109,7 @@ strip = true      # Strip symbols
 [[bin]]
 name = "facilitator"
 path = "src/bin/facilitator.rs"
+
+[[bin]]
+name = "record_escrow_lifecycle"
+path = "src/bin/record_escrow_lifecycle.rs"

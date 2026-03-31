@@ -67,13 +67,17 @@ impl VerifyResponse {
 
 impl From<VerifyResponse> for proto::VerifyResponse {
     fn from(val: VerifyResponse) -> Self {
+        // x402 v2 spec §7.1: `isValid`, `invalidReason` (camelCase). Keep `valid`/`reason` for older clients.
         let json = match val {
             VerifyResponse::Valid { payer } => serde_json::json!({
+                "isValid": true,
                 "valid": true,
                 "payer": payer,
             }),
             VerifyResponse::Invalid { reason } => serde_json::json!({
+                "isValid": false,
                 "valid": false,
+                "invalidReason": reason,
                 "reason": reason,
             }),
         };
@@ -109,6 +113,7 @@ impl From<SettleResponse> for proto::SettleResponse {
             }),
             SettleResponse::Error { reason, network } => serde_json::json!({
                 "success": false,
+                "errorReason": reason,
                 "error_reason": reason,
                 "network": network,
             }),
@@ -120,9 +125,12 @@ impl From<SettleResponse> for proto::SettleResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceInfo {
-    pub description: String,
-    pub mime_type: String,
+    /// Spec §5.1 orders `url` first in examples.
     pub url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub mime_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,13 +153,21 @@ where
     }
 }
 
+fn default_payment_extensions() -> serde_json::Value {
+    serde_json::json!({})
+}
+
+/// x402 v2 §5.2 — field order matches spec examples where practical.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaymentPayload<TAccepted, TPayload> {
+    pub x402_version: X402Version2,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource: Option<ResourceInfo>,
     pub accepted: TAccepted,
     pub payload: TPayload,
-    pub resource: ResourceInfo,
-    pub x402_version: X402Version2,
+    #[serde(default = "default_payment_extensions")]
+    pub extensions: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]

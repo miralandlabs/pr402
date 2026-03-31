@@ -1,5 +1,22 @@
 {
   "version": 2,
+  "redirects": [
+    {
+      "source": "/openai.json",
+      "destination": "/openapi.json",
+      "permanent": true
+    },
+    {
+      "source": "/api/v1/facilitator/openapi.json",
+      "destination": "/openapi.json",
+      "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/agent-integration.md",
+      "destination": "/agent-integration.md",
+      "permanent": false
+    }
+  ],
   "builds": [
     {
       "src": "src/bin/facilitator.rs",
@@ -10,14 +27,70 @@
           "RUSTUP_HOME": "/tmp/rustup"
         }
       }
+    },
+    {
+      "src": "public/**/*",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/api/facilitator/(.*)",
+      "src": "/openapi.json",
+      "dest": "/public/openapi.json"
+    },
+    {
+      "src": "/agent-integration.md",
+      "dest": "/public/agent-integration.md"
+    },
+    {
+      "src": "/api/v1/facilitator/verify",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/settle",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/supported",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/health",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/capabilities",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/onboard/challenge",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/onboard",
       "dest": "/src/bin/facilitator",
       "methods": ["GET", "POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/vault-snapshot",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/build-exact-payment-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-payment-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
     }
   ]
 }
-

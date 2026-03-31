@@ -177,6 +177,14 @@ impl SolanaChainProvider {
         Pubkey::find_program_address(&[b"payment", &uid_bytes, bank.as_ref()], &program_id)
     }
 
+    pub fn get_bank_pda(&self, program_id: &Pubkey) -> (Pubkey, u8) {
+        Pubkey::find_program_address(&[b"bank"], program_id)
+    }
+
+    pub fn get_config_pda(&self, program_id: &Pubkey) -> (Pubkey, u8) {
+        Pubkey::find_program_address(&[b"config"], program_id)
+    }
+
     pub async fn ensure_sla_escrow_setup(
         &self,
         mint: Pubkey,

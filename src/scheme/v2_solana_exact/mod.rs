@@ -41,6 +41,7 @@ impl X402SchemeFacilitatorBuilder for V2SolanaExact {
         &self,
         provider: ChainProvider,
         _config: Option<serde_json::Value>,
+        _db: Option<crate::db::Pr402Db>,
     ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn Error>> {
         Ok(Box::new(V2SolanaExactFacilitator {
             provider: provider.solana,
@@ -100,12 +101,24 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         let chain_id = self.provider.chain_id();
         let kinds: Vec<proto::SupportedPaymentKind> = {
             let fee_payer = self.provider.fee_payer();
-            let extra = Some(
-                serde_json::to_value(SupportedPaymentKindExtra {
-                    fee_payer: fee_payer.into(),
-                })
-                .unwrap(),
-            );
+            let extra = if let Some(us_config) = self.provider.universalsettle() {
+                let (config_address, _) = self.provider.get_config_pda(&us_config.program_id);
+                let fee_bps = us_config.fee_bps.unwrap_or(0);
+
+                Some(
+                    serde_json::to_value(SupportedPaymentKindExtra {
+                        fee_payer: fee_payer.into(),
+                        program_id: us_config.program_id.into(),
+                        config_address: config_address.into(),
+                        fee_bps: fee_bps.into(),
+                    })
+                    .unwrap(),
+                )
+            } else {
+                // If UniversalSettle is not enabled, this scheme is technically legacy/direct transfer
+                None
+            };
+
             vec![proto::SupportedPaymentKind {
                 x402_version: 2,
                 scheme: ExactScheme.to_string(),
@@ -155,7 +168,7 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         Ok(crate::facilitator::SchemeOnboardInfo {
             vault_pda: vault_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
-            fee_bps,
+            fee_bps: fee_bps.into(),
             status: "Discovery".to_string(), // status indicates it is derived but not necessarily provisioned
         })
     }
