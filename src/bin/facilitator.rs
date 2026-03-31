@@ -68,6 +68,8 @@ struct HealthResponse {
     database: &'static str,
     solana_rpc: &'static str,
     solana_slot: Option<u64>,
+    environment: String,
+    solana_network: String,
 }
 
 fn with_api_version_v1(mut res: Response<Body>) -> Response<Body> {
@@ -727,7 +729,17 @@ async fn handle_health() -> Response<Body> {
 
     let mut rpc_status = "error";
     let mut slot = None;
+    let mut environment = "Production".to_string();
+    let mut network = "mainnet".to_string();
+
     if let Some(cp) = CHAIN_PROVIDER.get() {
+        // DETECT ENVIRONMENT: Match 'devnet' for Preview.
+        let rpc_url = cp.solana.rpc_url();
+        if rpc_url.contains("devnet") {
+            environment = "Preview".to_string();
+            network = "devnet".to_string();
+        }
+
         match cp.solana.get_health().await {
             Ok(s) => {
                 rpc_status = "connected";
@@ -747,6 +759,8 @@ async fn handle_health() -> Response<Body> {
         database: db_status,
         solana_rpc: rpc_status,
         solana_slot: slot,
+        environment,
+        solana_network: network,
     };
 
     facilitator_response!()

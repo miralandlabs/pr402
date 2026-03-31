@@ -64,6 +64,7 @@ pub struct SolanaChainProvider {
     pub(crate) rpc_client: RpcClient,
     pub(crate) keypair: Arc<Keypair>,
     pub(crate) chain_id: crate::chain::ChainId,
+    pub(crate) rpc_url: String,
     pub(crate) universalsettle: Option<crate::config::UniversalSettleConfig>,
     pub(crate) escrow: Option<crate::config::SLAEscrowConfig>,
     pub(crate) max_compute_unit_limit: u32,
@@ -84,11 +85,16 @@ impl SolanaChainProvider {
             rpc_client: RpcClient::new(rpc_url.to_string()),
             keypair: Arc::new(keypair),
             chain_id,
+            rpc_url: rpc_url.to_string(),
             universalsettle,
             escrow,
             max_compute_unit_limit,
             max_compute_unit_price,
         }
+    }
+
+    pub fn rpc_url(&self) -> &str {
+        &self.rpc_url
     }
 
     pub async fn get_health(&self) -> Result<u64, SolanaChainProviderError> {
