@@ -72,7 +72,7 @@ struct HealthResponse {
     solana_network: String,
 }
 
-fn with_api_version_v1(mut res: Response<Body>) -> Response<Body> {
+fn with_api_version_v1(mut res: Response<Body>, correlation_id: Option<&str>) -> Response<Body> {
     res.headers_mut().insert(
         http::HeaderName::from_static("x-api-version"),
         http::HeaderValue::from_static("1"),
@@ -81,6 +81,16 @@ fn with_api_version_v1(mut res: Response<Body>) -> Response<Body> {
         http::HeaderName::from_static("x-schema-version"),
         http::HeaderValue::from_static(SCHEMA_VERSION),
     );
+    if let Some(cid) = correlation_id {
+        if let Ok(hv) = http::HeaderValue::from_str(cid) {
+            res.headers_mut().insert(
+                http::HeaderName::from_static("x-correlation-id"),
+                hv.clone(),
+            );
+            res.headers_mut()
+                .insert(http::HeaderName::from_static("X-Correlation-ID"), hv);
+        }
+    }
     res
 }
 
@@ -284,6 +294,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             .header("Content-Type", "application/json")
                             .body(Body::Text(format!(r#"{{"error":"{}"}}"#, e)))
                             .unwrap(),
+                        correlation_hdr.as_deref(),
                     ));
                 }
             };
@@ -377,7 +388,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     "request completed"
                 );
             }
-            Ok(with_api_version_v1(response))
+            Ok(with_api_version_v1(response, correlation_hdr.as_deref()))
         })
     };
 
@@ -538,6 +549,7 @@ async fn handle_verify(
             error_response_with_optional_correlation(
                 StatusCode::BAD_REQUEST,
                 &format!("Verification failed: {}", e),
+                None,
                 persist_meta.as_deref(),
             )
         }
@@ -695,6 +707,7 @@ async fn handle_settle(
             error_response_with_optional_correlation(
                 StatusCode::BAD_REQUEST,
                 &format!("Settlement failed: {}", e),
+                None,
                 persist_meta.as_deref(),
             )
         }
@@ -827,12 +840,12 @@ async fn handle_capabilities(
             "buildSlaEscrowPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-sla-escrow-payment-tx" },
             "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
             "health": { "method": "GET", "path": "/api/v1/facilitator/health" },
-            "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" },
-            "openApi": { "method": "GET", "path": "/openapi.json" },
-            "agentIntegration": { "method": "GET", "path": "/agent-integration.md" }
+            "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" }
         },
-        "specification": {
-            "x402V2": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"
+        "agentManifest": {
+            "openApi": "/openapi.json",
+            "integrationGuide": "/agent-integration.md",
+            "x402Spec": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"
         }
     });
 
@@ -1206,51 +1219,59 @@ fn query_param(query: &str, key: &str) -> String {
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response<Body> {
-    error_response_with_optional_correlation(status, message, None)
+    error_response_with_optional_correlation(status, message, None, None)
 }
 
 fn error_response_with_optional_correlation(
     status: StatusCode,
     message: &str,
+    code: Option<&str>,
     correlation_id: Option<&str>,
 ) -> Response<Body> {
     const MAX_MSG_LOG: usize = 2048;
     let log_msg: String = message.chars().take(MAX_MSG_LOG).collect();
+
+    // Machine code defaults to status name if not provided
+    let machine_code = code
+        .unwrap_or_else(|| status.canonical_reason().unwrap_or("INTERNAL_ERROR"))
+        .to_uppercase()
+        .replace(" ", "_");
+
     if status.is_server_error() {
         error!(
             target: LOG_SERVER_LOG,
             status = %status.as_u16(),
+            code = %machine_code,
             correlation_id = ?correlation_id,
             message = %log_msg,
             "facilitator JSON error response"
         );
-    } else if status.is_client_error() {
+    } else {
         warn!(
             target: LOG_SERVER_LOG,
             status = %status.as_u16(),
+            code = %machine_code,
             correlation_id = ?correlation_id,
             message = %log_msg,
             "facilitator JSON error response"
         );
     }
 
-    let mut body = serde_json::Map::new();
-    body.insert(
-        "error".to_string(),
-        serde_json::Value::String(message.to_string()),
-    );
-    if let Some(cid) = correlation_id {
-        body.insert(
-            "correlationId".to_string(),
-            serde_json::Value::String(cid.to_string()),
-        );
-    }
-    let json = serde_json::Value::Object(body);
+    let json = serde_json::json!({
+        "error": message,
+        "message": message,
+        "code": machine_code,
+        "correlationId": correlation_id
+    });
+
     let mut res = facilitator_response!()
         .status(status)
         .header("Content-Type", "application/json");
+
     if let Some(cid) = correlation_id {
         res = res.header("X-Correlation-Id", cid);
+        res = res.header("X-Correlation-ID", cid);
     }
+
     res.body(Body::Text(json.to_string())).unwrap()
 }

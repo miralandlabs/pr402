@@ -429,10 +429,12 @@
       },
       "FacilitatorErrorBody": {
         "type": "object",
-        "description": "Typical error JSON from facilitator (shape may include error, message, correlationId)",
+        "description": "Typical error JSON from facilitator (shape includes error, message, code, and correlationId)",
+        "required": ["error", "message", "code"],
         "properties": {
           "error": { "type": "string" },
           "message": { "type": "string" },
+          "code": { "type": "string", "description": "Machine-readable error enum (e.g. BAD_REQUEST, INTERNAL_SERVER_ERROR)" },
           "correlationId": { "type": "string" }
         },
         "additionalProperties": true
