@@ -194,14 +194,18 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
 
         // In SLA-Escrow, the "Vault" is the Escrow account for a specific mint.
         // Onboarding returns the info for the native SOL escrow by default.
+        // Note: This is an idempotent singleton account per Mint/Bank, not per wallet.
         let (escrow_pda, _) = self.provider.get_escrow_pda(Pubkey::default(), bank_pda);
         let (sol_storage_pda, _) =
             self.provider
                 .get_sla_escrow_sol_storage_pda(Pubkey::default(), bank_pda, escrow_pda);
 
         Ok(crate::facilitator::SchemeOnboardInfo {
+            label: "Escrow Bank (Shared System)".to_string(),
+            role: "Protocol Core (Global)".to_string(),
             vault_pda: escrow_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
+            token_pda: None, // Unique to each SPL token Bank
             fee_bps: fee_bps.into(),
             status: "Active".to_string(),
         })

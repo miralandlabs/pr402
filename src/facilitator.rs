@@ -42,8 +42,11 @@ pub trait Facilitator: Send + Sync {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemeOnboardInfo {
+    pub label: String,
+    pub role: String,
     pub vault_pda: String,
     pub sol_storage_pda: String,
+    pub token_pda: Option<String>,
     pub fee_bps: crate::proto::util::U16String,
     pub status: String,
 }

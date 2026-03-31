@@ -154,11 +154,6 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         let us_config = self.provider.universalsettle().ok_or_else(|| {
             X402SchemeFacilitatorError::OnchainFailure("UniversalSettle not enabled".to_string())
         })?;
-        let _fee_dest = us_config.fee_destination.ok_or_else(|| {
-            X402SchemeFacilitatorError::OnchainFailure(
-                "UniversalSettle fee destination not configured".to_string(),
-            )
-        })?;
         let fee_bps = us_config.fee_bps.unwrap_or(0);
 
         // MATHEMATICAL DISCOVERY: Calculate PDAs without spending SOL on-chain.
@@ -166,10 +161,13 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         let (sol_storage_pda, _) = self.provider.get_sol_storage_pda(vault_pda);
 
         Ok(crate::facilitator::SchemeOnboardInfo {
+            label: "SplitVault (Provider State)".to_string(),
+            role: "Resource Provider (Seller)".to_string(),
             vault_pda: vault_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
+            token_pda: None, // Only provisioned for specific SPL mints during settlement
             fee_bps: fee_bps.into(),
-            status: "Discovery".to_string(), // status indicates it is derived but not necessarily provisioned
+            status: "Discovery".to_string(),
         })
     }
 }

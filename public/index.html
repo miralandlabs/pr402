@@ -580,15 +580,25 @@
                     const resultDiv = document.createElement('div');
                     resultDiv.className = 'output-row';
                     
-                    let html = `<div style="color:var(--accent); margin-bottom: 1rem; font-weight:700;">[STATUS] RESOLVED DETERMINISTIC PDAs</div>`;
+                    let html = `<div style="color:var(--accent); margin-bottom: 1rem; font-weight:700;">[STATUS] RESOLUTION COMPLETE</div>`;
                     
                     for (const [name, info] of Object.entries(data.schemes || {})) {
+                        const roleStyle = info.role.includes("Seller") ? "color:#f59e0b;" : "color:#a78bfa;";
                         html += `
-                            <div style="margin-top: 1rem; color: var(--primary); font-weight: 700; font-size: 0.75rem;">// PROTOCOL: ${name.toUpperCase()}</div>
-                            <div><span class="output-label">Logic (PDA)</span><span class="output-val">${info.vaultPda}</span></div>
-                            <div><span class="output-label">SOL Storage</span><span class="output-val">${info.solStoragePda}</span></div>
-                            <div><span class="output-label">Fee (BPS)</span><span class="output-val">${info.feeBps}</span></div>
-                            <div><span class="output-label">State</span><span class="output-val">${info.status}</span></div>
+                            <div style="margin-top: 1.5rem; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 1rem;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
+                                    <span style="color: var(--primary); font-weight: 700; font-size: 0.75rem;">PROTOCOL: ${name.toUpperCase()}</span>
+                                    <span style="${roleStyle} font-size: 0.65rem; font-family: var(--font-mono); text-transform: uppercase;">[ROLE: ${info.role}]</span>
+                                </div>
+                                <div><span class="output-label">${info.label}</span><span class="output-val">${info.vault_pda}</span></div>
+                                <div><span class="output-label">SOL Storage</span><span class="output-val">${info.sol_storage_pda}</span></div>
+                                ${info.token_pda ? `<div><span class="output-label">Token ATA</span><span class="output-val">${info.token_pda}</span></div>` : ''}
+                                <div><span class="output-label">Fee (BPS)</span><span class="output-val">${info.fee_bps}</span></div>
+                                <div><span class="output-label">Deployment</span><span class="output-val">${info.status}</span></div>
+                                <div style="margin-top: 0.5rem; color: #475569; font-size: 0.7rem; font-style: italic;">
+                                    ${name === 'exact' ? "* Seller-centric: This vault is owned by the provider to bridge liquidity." : "* Protocol-centric: This is a shared system bank for the specific mint."}
+                                </div>
+                            </div>
                         `;
                     }
                     resultDiv.innerHTML = html;
