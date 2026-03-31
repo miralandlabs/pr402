@@ -19,7 +19,7 @@ Thumbs.db
 # Documentation
 README.md
 *.md
-+!public/*.md
+!public/*.md
 
 # Test files
 tests/
