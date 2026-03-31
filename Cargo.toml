@@ -8,6 +8,11 @@ repository = "https://github.com/miraland-labs/pr402"
 keywords = ["x402", "solana", "payments", "serverless", "vercel"]
 categories = ["cryptography", "finance", "stablecoins"]
 
+[features]
+default = []
+## Optional `reqwest` client mirroring `sdk/facilitator-build-tx.ts` for agents / CLIs. Omit on the Vercel `facilitator` binary (default features).
+facilitator-http = ["dep:reqwest"]
+
 [dependencies]
 # Vercel Runtime
 vercel_runtime = "1.1.4"
@@ -68,6 +73,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # URL parsing
 url = { version = "2.5", features = ["serde"] }
+
+# Optional: facilitator HTTPS client (`facilitator-http` feature)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
 
 # Optional PostgreSQL: deadpool + openssl — same stack as signer-payer-serverless-copy/signer-payer/src/database.rs
 deadpool-postgres = { version = "0.14", features = ["serde"] }

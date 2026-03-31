@@ -22,6 +22,7 @@ pr402 currently facilitates two core settlement patterns in accordance with the 
 ---
 
 ## 📁 Project Structure
+- **Rust HTTPS client (optional):** enable feature **`facilitator-http`** on the `pr402` crate for [`pr402::sdk::http`](src/sdk/http.rs) — `reqwest` + Rustls, same endpoints as [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts). Free functions and [`FacilitatorHttpClient`](src/sdk/http.rs) (repeated calls reuse one HTTP client + normalized base URL). The **`facilitator`** serverless binary uses **default** features only.
 - [`src/bin/facilitator.rs`](src/bin/facilitator.rs) — Vercel serverless entrypoint handling HTTP requests.
 - [`src/chain/`](src/chain/) — Solana-specific chain provider and instruction builders for UniversalSettle and SLA-Escrow.
 - [`src/scheme/`](src/scheme/) — Protocol verification logic for Exact and Escrow schemes.

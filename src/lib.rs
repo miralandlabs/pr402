@@ -2,6 +2,9 @@
 //!
 //! This is a minimal implementation of the x402 protocol facilitator,
 //! supporting only Solana chain and designed for Vercel Serverless Functions.
+//!
+//! **Agents / CLIs:** enable optional feature **`facilitator-http`** for [`sdk::http`] (HTTPS client
+//! mirroring `sdk/facilitator-build-tx.ts`). The `facilitator` binary builds without it.
 
 pub mod chain;
 pub mod config;

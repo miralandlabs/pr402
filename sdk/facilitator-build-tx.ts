@@ -2,6 +2,9 @@
  * Thin HTTP helpers for pr402 facilitator APIs (discovery, build, verify, settle).
  *
  * Paths match [public/openapi.json](../public/openapi.json). Zero heavy dependencies (`fetch` only).
+ *
+ * **Rust:** same contract in `pr402::sdk::http` behind Cargo feature `facilitator-http`
+ * (`FacilitatorHttpClient` + free async functions).
  */
 
 export const BUILD_EXACT_PAYMENT_TX_PATH =

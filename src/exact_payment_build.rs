@@ -28,7 +28,7 @@ use crate::chain::solana::{
 use spl_token::solana_program::program_pack::Pack;
 
 /// Request body for `POST /api/v1/facilitator/build-exact-payment-tx` (facilitator serverless binary).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildExactPaymentTxRequest {
     /// Payer authority (buyer) pubkey; must sign the transaction before verify.
@@ -42,7 +42,7 @@ pub struct BuildExactPaymentTxRequest {
     pub skip_source_balance_check: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildExactPaymentTxResponse {
     pub x402_version: u8,

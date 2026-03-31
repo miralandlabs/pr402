@@ -2795,6 +2795,7 @@ dependencies = [
  "http 1.4.0",
  "openssl",
  "postgres-openssl",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",

@@ -29,7 +29,7 @@ use sla_escrow_api::consts::{MAX_TTL_SECONDS, MIN_TTL_SECONDS};
 use spl_token::solana_program::program_pack::Pack;
 
 /// Request body for `POST /api/v1/facilitator/build-sla-escrow-payment-tx`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildSlaEscrowPaymentTxRequest {
     /// Buyer pubkey; signs `FundPayment` (second signer when the facilitator is fee payer).
@@ -54,7 +54,7 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     pub buyer_pays_transaction_fees: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildSlaEscrowPaymentTxResponse {
     pub x402_version: u8,

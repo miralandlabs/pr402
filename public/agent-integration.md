@@ -52,6 +52,16 @@ Some flows (e.g. SLA **buyer-paid** CLI `fund-payment`) already have a fully sig
 
 Repo-local thin **`fetch`** wrappers: [`sdk/facilitator-build-tx.ts`](../sdk/facilitator-build-tx.ts) — `getCapabilities`, `getSupported`, `verifyPayment`, `settlePayment`, `buildExactPaymentTx`, `buildSlaEscrowPaymentTx`, `fetchFacilitatorOpenApi`.
 
+## Rust helpers
+
+Enable Cargo feature **`facilitator-http`** on the **`pr402`** library dependency, then use **`pr402::sdk::http`**:
+
+- **Typed client:** `FacilitatorHttpClient::new(base_url)?` → `.capabilities()`, `.build_exact_payment_tx(&req)`, `.verify_payment(&json, correlation_id)`, etc.
+- **Free functions** (TS parity): `fetch_facilitator_openapi`, `get_supported`, `verify_payment`, `build_exact_payment_tx`, …
+- **Extras:** `fetch_agent_integration_markdown` (`GET /agent-integration.md`), `normalize_base_url`.
+
+Paths and JSON shapes match [`sdk/facilitator-build-tx.ts`](../sdk/facilitator-build-tx.ts); **`facilitator`** stays on default features (no `reqwest` in the serverless binary).
+
 ## Specs
 
 - x402 v2: [x402-specification-v2.md](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md)
