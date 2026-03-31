@@ -59,9 +59,10 @@ static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 /// Institutional audit log category (mirrors signer-payer baseline).
 const LOG_SERVER_LOG: &str = "server_log";
 
-/// Buyer runbook (same as `docs/AGENT_INTEGRATION.md`); served at `GET /agent-integration.md`
-/// so Vercel does not rely on a separate static artifact for this path.
-const AGENT_INTEGRATION_MD: &str = include_str!("../../docs/AGENT_INTEGRATION.md");
+/// Buyer runbook; served at `GET /agent-integration.md`.
+/// Path must stay under `src/` so `vercel-rust` / release builds see the file (`docs/` may be absent).
+const AGENT_INTEGRATION_MD: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/agent_integration.md"));
 
 fn agent_integration_markdown_response() -> Response<Body> {
     facilitator_response!()
