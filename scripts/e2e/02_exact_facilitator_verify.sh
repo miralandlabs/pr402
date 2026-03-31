@@ -6,6 +6,7 @@
 # Env:
 #   E2E_SCENARIO_A_AMOUNT_RAW — raw USDC amount (6 decimals), default 50_000 (0.05 USDC)
 #   E2E_EXACT_AMOUNT_RAW — if set, overrides scenario A amount (backward compat)
+#   E2E_EXACT_SETTLE_ATTEMPTS — full build→sign→verify→settle retries on stale blockhash (default 4)
 #   Same keypairs / RPC / FACILITATOR_URL as common.sh
 #
 set -euo pipefail
@@ -15,6 +16,16 @@ require_cmd solana
 require_cmd curl
 require_cmd jq
 require_cmd python3
+
+E2E_EXACT_SETTLE_ATTEMPTS="${E2E_EXACT_SETTLE_ATTEMPTS:-4}"
+
+exact_settle_error_retryable() {
+  local f="$1"
+  [[ -f "$f" ]] || return 1
+  local err
+  err="$(jq -r '.error // empty' "$f")"
+  echo "$err" | grep -qiE 'blockhash|BlockhashNotFound|-32002'
+}
 
 E2E_EXACT_AMOUNT_RAW="${E2E_EXACT_AMOUNT_RAW:-$E2E_SCENARIO_A_AMOUNT_RAW}"
 PAYER_PK="$(buyer_pubkey)"
@@ -63,53 +74,77 @@ BUILD_BODY="$(jq -n \
      skipSourceBalanceCheck: true
    }')"
 
-echo ">>> [1/4] POST build-exact-payment-tx"
-BUILD_RES="$(curl -sS \
-  -X POST "$FACILITATOR_URL/api/v1/facilitator/build-exact-payment-tx" \
-  -H "Content-Type: application/json" \
-  -d "$BUILD_BODY")"
+SETTLE_CODE=""
+CORRELATION_ID=""
+attempt=0
+while [[ "$attempt" -lt "$E2E_EXACT_SETTLE_ATTEMPTS" ]]; do
+  attempt=$((attempt + 1))
+  if [[ "$attempt" -gt 1 ]]; then
+    echo ""
+    echo ">>> Retry $attempt/$E2E_EXACT_SETTLE_ATTEMPTS: fresh build-exact-payment-tx + sign + verify + settle"
+    sleep 1
+  fi
 
-echo "$BUILD_RES" | jq .
+  echo ">>> [$attempt/$E2E_EXACT_SETTLE_ATTEMPTS] [1/4] POST build-exact-payment-tx"
+  BUILD_RES="$(curl -sS \
+    -X POST "$FACILITATOR_URL/api/v1/facilitator/build-exact-payment-tx" \
+    -H "Content-Type: application/json" \
+    -d "$BUILD_BODY")"
 
-TX_UNSIGNED_B64="$(echo "$BUILD_RES" | jq -r '.transaction // empty')"
-BLOCKHASH="$(echo "$BUILD_RES" | jq -r '.recentBlockhash // empty')"
-[[ -n "$TX_UNSIGNED_B64" && -n "$BLOCKHASH" ]] || {
-  echo "❌ build-exact failed or missing transaction / recentBlockhash"
+  echo "$BUILD_RES" | jq .
+
+  TX_UNSIGNED_B64="$(echo "$BUILD_RES" | jq -r '.transaction // empty')"
+  BLOCKHASH="$(echo "$BUILD_RES" | jq -r '.recentBlockhash // empty')"
+  [[ -n "$TX_UNSIGNED_B64" && -n "$BLOCKHASH" ]] || {
+    echo "❌ build-exact failed or missing transaction / recentBlockhash"
+    exit 1
+  }
+
+  echo ""
+  echo ">>> [$attempt/$E2E_EXACT_SETTLE_ATTEMPTS] [2/4] Sign with cargo example e2e_sign_exact_tx"
+  cd "$PR402_ROOT"
+  SIGNED_B64="$(printf '%s' "$TX_UNSIGNED_B64" | cargo run -q --example e2e_sign_exact_tx -- "$E2E_BUYER_KEYPAIR" "$BLOCKHASH")"
+
+  VERIFY_TEMPLATE="$(echo "$BUILD_RES" | jq '.verifyBodyTemplate')"
+  VERIFY_BODY="$(echo "$VERIFY_TEMPLATE" | jq --arg t "$SIGNED_B64" '.paymentPayload.payload.transaction = $t')"
+
+  CORRELATION_ID="${E2E_CORRELATION_PREFIX:-e2e-exact}-$(date +%s)-a${attempt}"
+  VERIFY_BODY="$(echo "$VERIFY_BODY" | jq --arg c "$CORRELATION_ID" '. + {correlationId: $c}')"
+
+  echo ""
+  echo ">>> [$attempt/$E2E_EXACT_SETTLE_ATTEMPTS] [3/4] POST /verify"
+  HTTP_CODE="$(curl -sS -o /tmp/e2e_exact_verify.json -w "%{http_code}" \
+    -X POST "$FACILITATOR_URL/api/v1/facilitator/verify" \
+    -H "Content-Type: application/json" \
+    -H "X-Correlation-Id: $CORRELATION_ID" \
+    -d "$VERIFY_BODY")"
+
+  cat /tmp/e2e_exact_verify.json | jq .
+  echo "HTTP $HTTP_CODE"
+
+  if [[ "$HTTP_CODE" != "200" ]]; then
+    echo "❌ exact verify HTTP $HTTP_CODE (funded payer ATA + vault for payTo may be required)"
+    exit 1
+  fi
+
+  echo ""
+  echo ">>> [$attempt/$E2E_EXACT_SETTLE_ATTEMPTS] [4/4] POST /settle (same body as verify)"
+  SETTLE_CODE="$(facilitator_settle "$VERIFY_BODY" "$CORRELATION_ID" /tmp/e2e_exact_settle.json)"
+  cat /tmp/e2e_exact_settle.json | jq .
+  echo "HTTP $SETTLE_CODE"
+
+  if [[ "$SETTLE_CODE" == "200" ]]; then
+    break
+  fi
+
+  if [[ "$attempt" -lt "$E2E_EXACT_SETTLE_ATTEMPTS" ]] && exact_settle_error_retryable /tmp/e2e_exact_settle.json; then
+    echo "⚠️ Settle failed with retryable RPC/blockhash error; will rebuild signed tx."
+    continue
+  fi
+
+  echo "❌ exact settle HTTP $SETTLE_CODE"
   exit 1
-}
-
-echo ""
-echo ">>> [2/4] Sign with cargo example e2e_sign_exact_tx"
-cd "$PR402_ROOT"
-SIGNED_B64="$(printf '%s' "$TX_UNSIGNED_B64" | cargo run -q --example e2e_sign_exact_tx -- "$E2E_BUYER_KEYPAIR" "$BLOCKHASH")"
-
-VERIFY_TEMPLATE="$(echo "$BUILD_RES" | jq '.verifyBodyTemplate')"
-VERIFY_BODY="$(echo "$VERIFY_TEMPLATE" | jq --arg t "$SIGNED_B64" '.paymentPayload.payload.transaction = $t')"
-
-CORRELATION_ID="${E2E_CORRELATION_PREFIX:-e2e-exact}-$(date +%s)"
-VERIFY_BODY="$(echo "$VERIFY_BODY" | jq --arg c "$CORRELATION_ID" '. + {correlationId: $c}')"
-
-echo ""
-echo ">>> [3/4] POST /verify"
-HTTP_CODE="$(curl -sS -o /tmp/e2e_exact_verify.json -w "%{http_code}" \
-  -X POST "$FACILITATOR_URL/api/v1/facilitator/verify" \
-  -H "Content-Type: application/json" \
-  -H "X-Correlation-Id: $CORRELATION_ID" \
-  -d "$VERIFY_BODY")"
-
-cat /tmp/e2e_exact_verify.json | jq .
-echo "HTTP $HTTP_CODE"
-
-if [[ "$HTTP_CODE" != "200" ]]; then
-  echo "❌ exact verify HTTP $HTTP_CODE (funded payer ATA + vault for payTo may be required)"
-  exit 1
-fi
-
-echo ""
-echo ">>> [4/4] POST /settle (same body as verify)"
-SETTLE_CODE="$(facilitator_settle "$VERIFY_BODY" "$CORRELATION_ID" /tmp/e2e_exact_settle.json)"
-cat /tmp/e2e_exact_settle.json | jq .
-echo "HTTP $SETTLE_CODE"
+done
 
 load_database_url_from_env_file
 if [[ -n "${DATABASE_URL:-}" ]]; then
@@ -121,7 +156,7 @@ WHERE correlation_id = '${CORRELATION_ID//\'/\'\'}';
 fi
 
 if [[ "$SETTLE_CODE" != "200" ]]; then
-  echo "❌ exact settle HTTP $SETTLE_CODE"
+  echo "❌ exact settle HTTP $SETTLE_CODE after $E2E_EXACT_SETTLE_ATTEMPTS attempt(s)"
   exit 1
 fi
 

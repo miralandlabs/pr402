@@ -229,6 +229,24 @@ pub async fn build_exact_spl_payment_tx(
     })?;
     let decimals = mint_state.decimals;
 
+    // UniversalSettle: provision vault + vault ATA **before** embedding `recentBlockhash` in the
+    // unsigned payment shell. Otherwise `/settle` runs JIT setup (slow `send_and_confirm`) after
+    // `/verify` and the payer-signed tx often hits BlockhashNotFound when the facilitator submits.
+    if let Some(us_config) = provider.universalsettle() {
+        let fee_dest = us_config.fee_destination.ok_or_else(|| {
+            ExactPaymentBuildError::InvalidRequest(
+                "UniversalSettle fee destination not configured".into(),
+            )
+        })?;
+        let fee_bps = us_config.fee_bps.unwrap_or(100);
+        provider
+            .ensure_vault_setup(&pay_to, &fee_dest, fee_bps, Some(pay_mint))
+            .await
+            .map_err(|e| {
+                ExactPaymentBuildError::Rpc(format!("ensure_vault_setup (pre-build): {e}"))
+            })?;
+    }
+
     let blockhash = provider
         .rpc_client()
         .get_latest_blockhash()
@@ -317,7 +335,7 @@ pub async fn build_exact_spl_payment_tx(
 
     let notes = vec![
         "Transaction is unsigned: sign with the payer keypair, then replace paymentPayload.payload.transaction with base64(bincode(VersionedTransaction)) of the signed tx.".into(),
-        "Blockhashes expire: if verification fails with BlockhashNotFound, request a fresh build.".into(),
+        "Blockhashes expire: if verify/settle fails with BlockhashNotFound, request a fresh build.".into(),
     ];
 
     Ok(BuildExactPaymentTxResponse {
