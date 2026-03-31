@@ -15,6 +15,7 @@
 #   SKIP_SLA=1         — both SLA scenarios (B1 + B2) off
 #   SKIP_SLA_HTTP=1    — skip B2 (facilitator fees / HTTP build only)
 #   SKIP_SLA_CLI=1     — skip B1 (CLI fund-payment / buyer-paid only)
+#   RUN_SLA_LIFECYCLE=1 — after B1, run post-fund lifecycle (sets E2E_SLA_FULL_LIFECYCLE; needs oracle key + DB migration 003)
 #
 set -euo pipefail
 HERE="$(dirname "$0")"
@@ -25,6 +26,9 @@ echo "================================================================"
 echo ""
 
 if [[ "${SKIP_SLA:-}" != "1" ]]; then
+  if [[ "${RUN_SLA_LIFECYCLE:-}" == "1" ]]; then
+    export E2E_SLA_FULL_LIFECYCLE=1
+  fi
   if [[ "${SKIP_SLA_HTTP:-}" != "1" ]]; then
     echo ">>> Scenario B2: SLA-Escrow facilitator fees (build-sla-escrow-payment-tx)"
     "$HERE/03_sla_escrow_http_facilitator_fees.sh"

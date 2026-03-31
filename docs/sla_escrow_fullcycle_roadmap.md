@@ -88,14 +88,15 @@ Deliver in order:
 
 ### Phase 3 — Persistence & observability
 
-- [ ] Extend `upsert_escrow_detail` **or** add `escrow_lifecycle_events` (append-only) keyed by `payment_attempt_id`.
-- [ ] `server_log` / tracing: correlation id, instruction type, simulation errors.
+- [x] Append-only **`escrow_lifecycle_events`** keyed by `payment_attempt_id` (migration [`003_escrow_lifecycle_events.sql`](../migrations/003_escrow_lifecycle_events.sql); mirrored in [`init.sql`](../migrations/init.sql)).
+- [x] **`Pr402Db::apply_escrow_lifecycle_step`** merges lifecycle fields on `escrow_details` + inserts an event row (single transaction); CLI helper **`record_escrow_lifecycle`** for ops / E2E.
+- [x] `server_log` tracing on apply path (correlation id, step, tx signature).
 - [ ] Optional: webhook or polling hook for RP dashboards.
 
 ### Phase 4 — E2E & policy
 
 - [x] Dual SLA fund E2E on devnet: **`03_sla_escrow_http_facilitator_fees.sh`** (facilitator fees) + **`01_sla_escrow_facilitator_verify.sh`** (CLI buyer-paid); orchestrated by **`run_all_devnet.sh`** (`SKIP_SLA_HTTP` / `SKIP_SLA_CLI`).
-- [ ] Shell or Rust E2E: fund → submit-delivery → confirm-oracle → release (devnet), with `psql` asserts on new columns.
+- [x] Shell E2E: [`scripts/e2e/04_sla_escrow_post_fund_lifecycle.sh`](../scripts/e2e/04_sla_escrow_post_fund_lifecycle.sh) after B1/B2 (submit-delivery → confirm-oracle → release or refund) + DB audit (`psql_audit_escrow_lifecycle`). Optional: `E2E_SLA_FULL_LIFECYCLE=1` on **B1** or `RUN_SLA_LIFECYCLE=1` in `run_all_devnet.sh` (chains after B1). Requires DB migration **003**, **`E2E_ORACLE_KEYPAIR`** matching fund-time oracle, and `DATABASE_URL`.
 - [ ] Document security: never accept oracle calls without checking on-chain payment state + pubkey.
 
 ### Phase 5 — FundPayment fee payer (optional product alignment)

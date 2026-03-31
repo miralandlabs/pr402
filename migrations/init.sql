@@ -1,6 +1,7 @@
 
 -- Drop all existing tables (clean slate)
 DROP TABLE IF EXISTS parameters CASCADE;
+DROP TABLE IF EXISTS escrow_lifecycle_events CASCADE;
 DROP TABLE IF EXISTS escrow_details CASCADE;
 DROP TABLE IF EXISTS payment_attempts CASCADE;
 DROP TABLE IF EXISTS resource_providers CASCADE;
@@ -101,6 +102,25 @@ ALTER TABLE escrow_details ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX IF NOT EXISTS idx_escrow_details_pda ON escrow_details (escrow_pda ASC);
 CREATE INDEX IF NOT EXISTS idx_escrow_details_oracle ON escrow_details (oracle_authority ASC);
+
+-- Append-only lifecycle steps after FundPayment (see Pr402Db::apply_escrow_lifecycle_step).
+
+CREATE TABLE IF NOT EXISTS escrow_lifecycle_events (
+    id                   BIGSERIAL PRIMARY KEY,
+    payment_attempt_id   BIGINT NOT NULL REFERENCES payment_attempts (id) ON DELETE CASCADE,
+    step                 TEXT NOT NULL,
+    tx_signature         TEXT,
+    payload              JSONB,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE escrow_lifecycle_events ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_escrow_lifecycle_events_attempt
+    ON escrow_lifecycle_events (payment_attempt_id ASC, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_escrow_lifecycle_events_step
+    ON escrow_lifecycle_events (step ASC);
 
 -- Application sets payment_attempts.updated_at on UPDATE (avoids PG trigger dialect drift).
 

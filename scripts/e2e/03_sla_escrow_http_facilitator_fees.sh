@@ -165,3 +165,5 @@ fi
 echo ""
 echo "✅ Scenario B2: SLA-Escrow (facilitator fee payer via HTTP) verify + settle finished."
 echo "   Response feePayer from build: $FEE_PAYER_OUT"
+
+echo "$CORRELATION_ID" >/tmp/pr402_e2e_last_sla_correlation_id

@@ -9,6 +9,7 @@
 use deadpool_postgres::{Client, Config, Pool, PoolConfig, Runtime};
 use openssl::ssl::{SslConnector, SslMethod};
 use postgres_openssl::MakeTlsConnector;
+use serde_json::json;
 use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
@@ -727,5 +728,236 @@ impl Pr402Db {
                 Err(e)
             }
         }
+    }
+
+    fn normalize_escrow_lifecycle_step(step: &str) -> Option<&'static str> {
+        match step {
+            "submit_delivery" | "submit-delivery" => Some("submit_delivery"),
+            "confirm_oracle" | "confirm-oracle" => Some("confirm_oracle"),
+            "release_payment" | "release-payment" => Some("release_payment"),
+            "refund_payment" | "refund-payment" => Some("refund_payment"),
+            _ => None,
+        }
+    }
+
+    /// Append one `escrow_lifecycle_events` row and update `escrow_details` for that payment attempt (single transaction).
+    ///
+    /// `step`: `submit_delivery`, `confirm_oracle`, `release_payment`, or `refund_payment` (hyphen forms accepted).
+    /// Matches sla-escrow CLI resolution: **1** = Approved, **2** = Rejected.
+    pub async fn apply_escrow_lifecycle_step(
+        &self,
+        correlation_id: &str,
+        step: &str,
+        tx_signature: &str,
+        delivery_hash_hex: Option<&str>,
+        resolution_state: Option<i16>,
+    ) -> Result<(), DbError> {
+        let Some(step_norm) = Self::normalize_escrow_lifecycle_step(step) else {
+            return Err(DbError::Query(format!(
+                "unknown escrow lifecycle step: {}",
+                step
+            )));
+        };
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        const SELECT_ID: &str = r#"SELECT id FROM payment_attempts WHERE correlation_id = $1"#;
+        let attempt_id = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query_opt(SELECT_ID, &[&correlation_id]),
+        )
+        .await
+        {
+            Ok(Ok(Some(row))) => row.get::<_, i64>("id"),
+            Ok(Ok(None)) => {
+                error!(
+                    target: "server_log",
+                    correlation_id = %correlation_id,
+                    "payment_attempts row missing for escrow lifecycle"
+                );
+                tx.rollback().await.ok();
+                return Err(DbError::Query("payment_attempts row not found".into()));
+            }
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "lifecycle payment_attempts lookup failed");
+                tx.rollback().await.ok();
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Timeout);
+            }
+        };
+
+        let require_hash = matches!(step_norm, "submit_delivery" | "confirm_oracle");
+        if require_hash && delivery_hash_hex.is_none() {
+            tx.rollback().await.ok();
+            return Err(DbError::Query(format!(
+                "step {} requires delivery_hash_hex",
+                step_norm
+            )));
+        }
+        if matches!(step_norm, "confirm_oracle") && resolution_state.is_none() {
+            tx.rollback().await.ok();
+            return Err(DbError::Query(format!(
+                "step {} requires resolution_state (1 approved, 2 rejected)",
+                step_norm
+            )));
+        }
+        let h = delivery_hash_hex.unwrap_or("");
+        if require_hash && (h.len() != 64 || !h.chars().all(|c| c.is_ascii_hexdigit())) {
+            tx.rollback().await.ok();
+            return Err(DbError::Query(
+                "delivery_hash_hex must be 64 hex characters".into(),
+            ));
+        }
+
+        let payload_value = match step_norm {
+            "submit_delivery" => json!({ "delivery_hash": h }),
+            "confirm_oracle" => json!({
+                "delivery_hash": h,
+                "resolution_state": resolution_state.unwrap(),
+            }),
+            "release_payment" => json!({}),
+            "refund_payment" => json!({}),
+            _ => json!({}),
+        };
+        let payload_str = payload_value.to_string();
+
+        const INSERT_EV: &str = r#"
+            INSERT INTO escrow_lifecycle_events (payment_attempt_id, step, tx_signature, payload)
+            VALUES ($1, $2, $3, $4::jsonb)
+            "#;
+
+        let ins = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.execute(
+                INSERT_EV,
+                &[&attempt_id, &step_norm, &tx_signature, &payload_str],
+            ),
+        )
+        .await
+        {
+            Ok(Ok(n)) if n > 0 => Ok(()),
+            Ok(Ok(_)) => Err(DbError::Query(
+                "escrow_lifecycle_events insert failed".into(),
+            )),
+            Ok(Err(e)) => Err(DbError::Query(format_err_chain(&e))),
+            Err(_) => Err(DbError::Timeout),
+        };
+        if let Err(e) = ins {
+            tx.rollback().await.ok();
+            error!(
+                target: "server_log",
+                correlation_id = %correlation_id,
+                step = %step_norm,
+                error = %e,
+                "escrow lifecycle event insert failed"
+            );
+            return Err(e);
+        }
+
+        let upd = match step_norm {
+            "submit_delivery" => {
+                const SQL: &str = r#"
+                    UPDATE escrow_details
+                    SET delivery_hash = $2,
+                        delivery_signature = $3,
+                        updated_at = NOW()
+                    WHERE payment_attempt_id = $1
+                    "#;
+                timeout(
+                    Self::QUERY_TIMEOUT,
+                    tx.execute(SQL, &[&attempt_id, &h, &tx_signature]),
+                )
+                .await
+            }
+            "confirm_oracle" => {
+                let rs = resolution_state.unwrap();
+                const SQL: &str = r#"
+                    UPDATE escrow_details
+                    SET delivery_hash = $2,
+                        resolution_signature = $3,
+                        resolution_state = $4,
+                        updated_at = NOW()
+                    WHERE payment_attempt_id = $1
+                    "#;
+                timeout(
+                    Self::QUERY_TIMEOUT,
+                    tx.execute(SQL, &[&attempt_id, &h, &tx_signature, &rs]),
+                )
+                .await
+            }
+            "release_payment" => {
+                const SQL: &str = r#"
+                    UPDATE escrow_details
+                    SET completed_at = NOW(),
+                        updated_at = NOW()
+                    WHERE payment_attempt_id = $1
+                    "#;
+                timeout(Self::QUERY_TIMEOUT, tx.execute(SQL, &[&attempt_id])).await
+            }
+            "refund_payment" => {
+                const SQL: &str = r#"
+                    UPDATE escrow_details
+                    SET refunded_at = NOW(),
+                        updated_at = NOW()
+                    WHERE payment_attempt_id = $1
+                    "#;
+                timeout(Self::QUERY_TIMEOUT, tx.execute(SQL, &[&attempt_id])).await
+            }
+            _ => unreachable!(),
+        };
+
+        match upd {
+            Ok(Ok(n)) if n > 0 => {}
+            Ok(Ok(_)) => {
+                tx.rollback().await.ok();
+                error!(
+                    target: "server_log",
+                    correlation_id = %correlation_id,
+                    step = %step_norm,
+                    "escrow_details lifecycle update matched no row (fund/verify may not have created escrow_details)"
+                );
+                return Err(DbError::Query(
+                    "escrow_details row not found for this payment_attempt".into(),
+                ));
+            }
+            Ok(Err(e)) => {
+                tx.rollback().await.ok();
+                error!(
+                    target: "server_log",
+                    correlation_id = %correlation_id,
+                    error = %format_err_chain(&e),
+                    "escrow_details lifecycle update failed"
+                );
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Timeout);
+            }
+        }
+
+        tx.commit().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "apply_escrow_lifecycle_step commit failed");
+            DbError::TransactionFailed
+        })?;
+
+        info!(
+            target: "server_log",
+            correlation_id = %correlation_id,
+            step = %step_norm,
+            tx_signature = %tx_signature,
+            "escrow lifecycle step recorded"
+        );
+
+        Ok(())
     }
 }

@@ -14,6 +14,7 @@
 #   E2E_SCENARIO_B_AMOUNT_HUMAN — USDC amount (human), default 1
 #   E2E_SLA_AMOUNT_HUMAN — overrides scenario B amount if set (backward compat)
 #   E2E_ORACLE_AUTHORITY — optional; default /supported .oracleAuthorities[0]
+#   E2E_SLA_FULL_LIFECYCLE=1 — after success, run 04_sla_escrow_post_fund_lifecycle.sh (needs E2E_ORACLE_KEYPAIR, DATABASE_URL, migration 003).
 #
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
@@ -181,3 +182,11 @@ fi
 echo ""
 echo "✅ Scenario B1: SLA-Escrow (CLI / buyer-paid) verify + settle E2E finished."
 echo "   On-chain escrow lifecycle after settlement (delivery / oracle / release): use sla-escrow CLI if needed."
+
+echo "$CORRELATION_ID" >/tmp/pr402_e2e_last_sla_correlation_id
+if [[ "${E2E_SLA_FULL_LIFECYCLE:-}" == "1" ]]; then
+  export E2E_LIFECYCLE_CORRELATION_ID="$CORRELATION_ID"
+  echo ""
+  echo ">>> E2E_SLA_FULL_LIFECYCLE=1 — running 04_sla_escrow_post_fund_lifecycle.sh"
+  "$E2E_ROOT/04_sla_escrow_post_fund_lifecycle.sh"
+fi

@@ -84,6 +84,33 @@ WHERE pa.correlation_id = '${cid//\'/\'\'}';
 "
 }
 
+# Extract Solana tx signature line from sla-escrow CLI stdout (fund, submit-delivery, confirm-oracle, …).
+parse_sla_escrow_tx_sig() {
+  echo "$1" | grep "📝 Transaction signature:" | sed 's/.*📝 Transaction signature: //' | head -1 | tr -d '\r' | tr -d ' '
+}
+
+# Lifecycle columns + last event (needs migration 003_escrow_lifecycle_events.sql on the DB).
+psql_audit_escrow_lifecycle() {
+  local cid="$1"
+  [[ -n "${DATABASE_URL:-}" ]] || {
+    echo ">>> DATABASE_URL unset; skip lifecycle DB audit"
+    return 0
+  }
+  echo ">>> DB: escrow_details lifecycle + events for $cid"
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+SELECT ed.delivery_hash, ed.delivery_signature, ed.resolution_signature, ed.resolution_state,
+       ed.completed_at, ed.refunded_at
+FROM payment_attempts pa
+JOIN escrow_details ed ON ed.payment_attempt_id = pa.id
+WHERE pa.correlation_id = '${cid//\'/\'\'}';
+SELECT e.step, e.tx_signature, e.payload, e.created_at
+FROM payment_attempts pa
+JOIN escrow_lifecycle_events e ON e.payment_attempt_id = pa.id
+WHERE pa.correlation_id = '${cid//\'/\'\'}'
+ORDER BY e.id ASC;
+"
+}
+
 # x402 v2: SettleRequest uses the same JSON shape as VerifyRequest (see pr402 `proto::SettleRequest`).
 # Usage: facilitator_settle "$VERIFY_BODY_JSON" "$CORRELATION_ID" /tmp/out.json → prints HTTP code, body in file
 facilitator_settle() {

@@ -19,6 +19,7 @@ Airdrop / mint **devnet USDC** for **`E2E_USDC_MINT`** (Circle devnet USDC in `c
 | **A** | **0.05 USDC** (`E2E_SCENARIO_A_AMOUNT_RAW=50000`) | UniversalSettle (`exact`) | `02_exact_facilitator_verify.sh` | `build-exact-payment-tx` → payer signs → **`/verify`** → **`/settle`** |
 | **B2** | **1 USDC** | SLA-Escrow (facilitator pays Solana fees) | `03_sla_escrow_http_facilitator_fees.sh` | `build-sla-escrow-payment-tx` → buyer partial sign → **`/verify`** → **`/settle`** |
 | **B1** | **1 USDC** | SLA-Escrow (buyer pays fees; CLI) | `01_sla_escrow_facilitator_verify.sh` | on-chain `fund-payment` → **`/verify`** → **`/settle`** |
+| **B+** | (same fund as B1/B2) | SLA post-fund lifecycle + DB | `04_sla_escrow_post_fund_lifecycle.sh` | `submit-delivery` → `confirm-oracle` → `release-payment` (or refund); writes **`escrow_lifecycle_events`** + **`escrow_details`** via `record_escrow_lifecycle` |
 
 **Production reference** (not enforced by these small defaults): `USDC_POLICY_THRESHOLD_WHOLE` (default 10) — below → prefer `exact`, at or above → prefer `sla-escrow`. Override amounts with env vars anytime.
 
@@ -26,7 +27,7 @@ x402 v2 expects a facilitator to support **verification** and **settlement** ([f
 
 ## SLA-Escrow “multiple steps” after x402
 
-`delivery_signature`, `resolution_signature`, etc. in `escrow_details` cover **post-funding** on-chain steps (submit delivery, oracle confirmation, release/refund). Those are **not** the same as `/verify` and `/settle`; they are handled by the **sla-escrow program + CLI** after the buyer’s fund transaction. Run them separately when you need a full institutional lifecycle (see `sla-escrow` CLI: `submit-delivery`, `confirm-oracle`, `release-payment`, …).
+`delivery_signature`, `resolution_signature`, etc. in `escrow_details` cover **post-funding** on-chain steps (submit delivery, oracle confirmation, release/refund). Those are **not** the same as `/verify` and `/settle`; they are handled by the **sla-escrow program + CLI** after the buyer’s fund transaction. Script **`04_sla_escrow_post_fund_lifecycle.sh`** runs those CLI steps and persists to Postgres (**`escrow_lifecycle_events`** + updated **`escrow_details`**), provided migration **`003_escrow_lifecycle_events.sql`** is applied and **`E2E_ORACLE_KEYPAIR`** matches the oracle used at fund time (your dev stack, not preview’s oracle, unless you control that key).
 
 ## Prerequisites
 
@@ -51,8 +52,9 @@ chmod +x *.sh
 ./02_exact_facilitator_verify.sh              # Scenario A (small exact amount)
 ./03_sla_escrow_http_facilitator_fees.sh      # Scenario B2 (SLA, facilitator fees)
 ./01_sla_escrow_facilitator_verify.sh         # Scenario B1 (SLA, CLI buyer-paid)
+./04_sla_escrow_post_fund_lifecycle.sh       # After B1/B2: delivery / oracle / release + DB (see script header)
 # or
-./run_all_devnet.sh                           # B2 → B1 → A (see SKIP_* flags in script)
+./run_all_devnet.sh                           # B2 → B1 → A (see SKIP_* flags; RUN_SLA_LIFECYCLE=1 chains 04 after B1)
 ```
 
 **Facilitator build:** B1 (**buyer-paid**) `/settle` expects a **fully signed** fund tx (often already on-chain). B2 (**facilitator-paid**) matches **A**: partial buyer sign, facilitator completes at `/settle`. See `docs/sla_escrow_fee_payer_and_settle.md`.
