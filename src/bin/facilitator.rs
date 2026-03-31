@@ -739,7 +739,8 @@ async fn handle_capabilities(
             "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
             "health": { "method": "GET", "path": "/api/v1/facilitator/health" },
             "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" },
-            "openApi": { "method": "GET", "path": "/openapi.json" }
+            "openApi": { "method": "GET", "path": "/openapi.json" },
+            "agentIntegration": { "method": "GET", "path": "/agent-integration.md" }
         },
         "specification": {
             "x402V2": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"

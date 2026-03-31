@@ -17,6 +17,8 @@ export const FACILITATOR_VERIFY_PATH = "/api/v1/facilitator/verify";
 export const FACILITATOR_SETTLE_PATH = "/api/v1/facilitator/settle";
 /** Static OpenAPI 3.1 document (same origin as facilitator). */
 export const FACILITATOR_OPENAPI_PATH = "/openapi.json";
+/** Markdown agent runbook (`docs/AGENT_INTEGRATION.md`), served statically. */
+export const FACILITATOR_AGENT_INTEGRATION_PATH = "/agent-integration.md";
 
 export type BuildExactPaymentTxRequest = {
   payer: string;

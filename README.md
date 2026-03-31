@@ -51,7 +51,8 @@ To ensure the highest level of transparency for the Agentic Economy, the facilit
 ---
 
 ## 🚀 API Endpoints (v1)
-- **OpenAPI 3.1:** [`public/openapi.json`](public/openapi.json) — served at **`GET /openapi.json`** on the deployed host (and `GET /api/v1/facilitator/openapi.json` redirects there). Use it for agents, codegen, and contract tests. `GET /api/v1/facilitator/capabilities` includes `httpEndpoints.openApi` pointing to this path. **Agent runbook:** [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md).
+- **OpenAPI 3.1:** [`public/openapi.json`](public/openapi.json) — served at **`GET /openapi.json`** on the deployed host (and `GET /api/v1/facilitator/openapi.json` redirects there). Use it for agents, codegen, and contract tests. `GET /api/v1/facilitator/capabilities` includes `httpEndpoints.openApi` pointing to this path.
+- **Agent runbook:** edit [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md), then run [`scripts/sync-agent-integration-doc.sh`](scripts/sync-agent-integration-doc.sh) so [`public/agent-integration.md`](public/agent-integration.md) matches (static deploy). Served at **`GET /agent-integration.md`**, listed under `capabilities.httpEndpoints.agentIntegration`.
 - `GET /api/v1/facilitator/supported`: Returns the **Enriched Metadata** for all active schemes. This is the primary discovery endpoint for AI Agents.
 - `POST /api/v1/facilitator/verify`: Validates transactions against the protocol requirements and the agent's selected oracle.
 - `POST /api/v1/facilitator/settle`: Relays the signed transaction to the blockchain.
