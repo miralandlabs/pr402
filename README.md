@@ -2,6 +2,30 @@
 
 **A minimal, x402-compliant facilitator for Solana, optimized for Vercel Serverless Functions. It bridges human/agent requests with on-chain settlement engines like `UniversalSettle` and `SLA-Escrow`.**
 
+## For buyer agents (payers)
+
+This section is for **buyer-side** code: wallets, automation, and agents that **pay** after a resource returns **HTTP 402** with `accepts[]`. Resource providers only return the challenge; they do not normally call the build endpoints below.
+
+### End-to-end flow
+
+1. **Receive** the `402` body from the resource: keep `paymentRequirements` and pick one matching `accepts[]` line.
+2. **Discover** your facilitator (same host the RP referenced, if any): `GET /api/v1/facilitator/capabilities` or `GET /api/v1/facilitator/supported`. Use `httpEndpoints` + `GET /openapi.json` for the machine-readable contract.
+3. **Build** (optional): if the RP relies on this facilitator for tx assembly, call **`POST .../build-exact-payment-tx`** when `scheme` is `exact`, or **`POST .../build-sla-escrow-payment-tx`** when `scheme` is `sla-escrow` — not both. You send `payer`, `accepted`, `resource`, and (escrow only) `slaHash` + `oracleAuthority`.
+4. **Sign** the unsigned `transaction` (base64 bincode) with the payer’s Solana signer, then put the signed bytes back into `paymentPayload.payload.transaction` inside the `verifyBodyTemplate` from the build response (see OpenAPI / runbook).
+5. **Verify** then **settle**: `POST .../verify` and `POST .../settle` with the **same** JSON body; reuse `correlationId` / `X-Correlation-Id` if the facilitator returned one on verify.
+
+If **BlockhashNotFound** appears on settle, repeat build → sign → verify → settle. If the RP already gave a fully built fund tx (some escrow CLI flows), skip step 3 and still use steps 4–5.
+
+### SDKs and docs
+
+| Integration | What to use |
+|-------------|-------------|
+| **Step-by-step** | **[`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md)** (also **`GET /agent-integration.md`** on a deployed host). |
+| **Schema / codegen** | **`GET /openapi.json`** on the facilitator base URL (see `capabilities.httpEndpoints.openApi`). |
+| **TypeScript** | Copy or import [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts): `getCapabilities`, `buildExactPaymentTx`, `verifyPayment`, `settlePayment`, etc. (`fetch` only). |
+| **Rust** | Add **`pr402`** with feature **`facilitator-http`**, then use **`pr402::sdk::http`**: [`FacilitatorHttpClient`](src/sdk/http.rs) or the free async functions (same paths as the TS file). Omit this feature when **deploying** the `facilitator` binary. |
+| **Other stacks** | Call the same HTTPS paths; bodies match OpenAPI (`BuildExactPaymentTxRequest`, `X402V2VerifySettleBody`, …). |
+
 ## 🧩 Protocol Overview
 This facilitator implements a tailored version of the [x402-rs](https://github.com/x402-rs/x402-rs) protocol, supporting:
 - ✅ **Solana-Only**: High-performance, lightweight implementation with no dependencies on multi-chain libraries.
@@ -10,9 +34,7 @@ This facilitator implements a tailored version of the [x402-rs](https://github.c
 - ✅ **Vercel Serverless Functions**: Optimized for low-latency, stateless API endpoints.
 
 ## 🛠️ Supported Schemes
-pr402 currently facilitates two core settlement patterns:
-
-pr402 currently facilitates two core settlement patterns in accordance with the x402 V2 standard:
+Two settlement patterns (x402 v2):
 
 1.  **`exact` (UniversalSettle)**: Used for high-velocity, immediate settlement. 
     - **Enriched Metadata**: Discloses `programId`, `configAddress`, and `feeBps`.
@@ -22,7 +44,7 @@ pr402 currently facilitates two core settlement patterns in accordance with the 
 ---
 
 ## 📁 Project Structure
-- **Rust HTTPS client (optional):** enable feature **`facilitator-http`** on the `pr402` crate for [`pr402::sdk::http`](src/sdk/http.rs) — `reqwest` + Rustls, same endpoints as [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts). Free functions and [`FacilitatorHttpClient`](src/sdk/http.rs) (repeated calls reuse one HTTP client + normalized base URL). The **`facilitator`** serverless binary uses **default** features only.
+- **Buyer SDKs:** see [For buyer agents](#for-buyer-agents-payers); TS [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts), Rust [`src/sdk/http.rs`](src/sdk/http.rs) (`facilitator-http` feature).
 - [`src/bin/facilitator.rs`](src/bin/facilitator.rs) — Vercel serverless entrypoint handling HTTP requests.
 - [`src/chain/`](src/chain/) — Solana-specific chain provider and instruction builders for UniversalSettle and SLA-Escrow.
 - [`src/scheme/`](src/scheme/) — Protocol verification logic for Exact and Escrow schemes.
