@@ -14,6 +14,7 @@ use pr402::{
     scheme::v2_solana_escrow::types::SLAEscrowScheme,
 };
 use serde::Deserialize;
+use std::io::LineWriter;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use tracing::{info, warn};
@@ -152,12 +153,17 @@ fn init_pr402_db_from_env() -> Option<Pr402Db> {
     }
 }
 
-/// Institutional baseline: mirrors `signer-payer-serverless-copy` `signer-payer/src/init.rs`
-/// `init_tracing` (`LogTracer` + compact fmt + `EnvFilter::try_from_default_env` /
-/// default `server_log=info`).
+/// Baseline: `signer-payer-serverless-copy/signer-payer/src/init.rs` (`LogTracer` + compact fmt).
 ///
-/// If you set `RUST_LOG` on Vercel, include `server_log=info` when you rely on `target: "server_log"`
-/// audit lines (same consideration as signer-payer when overriding the default filter).
+/// **Vercel:** `EnvFilter::try_from_default_env()` succeeds when `RUST_LOG` is **unset or empty**, but
+/// the resulting filter often defaults to **ERROR-only**, so `info!(target: "server_log", …)` never
+/// prints — the dashboard “Messages” column looks empty. We treat empty/missing `RUST_LOG` like
+/// signer-payer’s fallback (`server_log=info`). When `RUST_LOG` is non-empty, we **merge**
+/// `server_log=info` so `target: "server_log"` is not dropped (e.g. `RUST_LOG=info` alone does not
+/// match that custom target).
+///
+/// **Stdout + [`LineWriter`]:** Vercel’s log sink is line-oriented; unbuffered/newline-flushed stdout
+/// improves capture vs default stderr buffering on `provided.al2023`.
 fn init_tracing() {
     if let Err(e) = LogTracer::init() {
         eprintln!(
@@ -171,10 +177,22 @@ fn init_tracing() {
         .with_target(true)
         .with_level(true)
         .with_span_events(FmtSpan::NONE)
-        .compact();
+        .compact()
+        .with_writer(|| LineWriter::new(std::io::stdout()));
 
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("server_log=info"));
+    let rust_log = std::env::var("RUST_LOG").unwrap_or_default();
+    let env_filter = if rust_log.trim().is_empty() {
+        tracing_subscriber::EnvFilter::new("server_log=info")
+    } else {
+        tracing_subscriber::EnvFilter::from_str(rust_log.trim()).unwrap_or_else(|e| {
+            eprintln!("Invalid RUST_LOG (using server_log=info): {e}");
+            tracing_subscriber::EnvFilter::new("server_log=info")
+        })
+    };
+    let server_log_directive = "server_log=info"
+        .parse()
+        .expect("static EnvFilter directive");
+    let env_filter = env_filter.add_directive(server_log_directive);
 
     if let Err(e) = tracing_subscriber::registry()
         .with(fmt_layer)
@@ -191,6 +209,10 @@ fn init_tracing() {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     init_tracing();
+    info!(
+        target: LOG_SERVER_LOG,
+        "pr402 facilitator process started (tracing initialized)"
+    );
 
     let db = init_pr402_db_from_env();
     if PR402_DB.set(db.clone()).is_err() {
@@ -280,6 +302,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
                     .unwrap(),
             };
+            let status = response.status().as_u16();
+            info!(
+                target: LOG_SERVER_LOG,
+                method = %method,
+                path = %path,
+                status = status,
+                correlation_id = correlation_hdr.as_deref(),
+                "request completed"
+            );
             Ok(with_api_version_v1(response))
         })
     };
