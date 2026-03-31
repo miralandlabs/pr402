@@ -2,6 +2,8 @@
 
 Scripts drive **Solana devnet** from your machine, hit a deployed **pr402** facilitator (default [preview.pr402.signer-payer.me](https://preview.pr402.signer-payer.me)), and optionally print **`payment_attempts` / `escrow_details`** via `DATABASE_URL` from `pr402/.env`.
 
+**HTTP contract:** canonical **OpenAPI 3.1** for the facilitator is at **`https://<host>/openapi.json`** (see [public/openapi.json](../public/openapi.json) in-repo).
+
 ## Test buyer wallet (fund this ATA)
 
 Default **buyer** is whoever owns **`E2E_BUYER_KEYPAIR`** (default `~/.config/solana/id.json`). On this machine that resolves to:

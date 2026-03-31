@@ -738,7 +738,8 @@ async fn handle_capabilities(
             "buildSlaEscrowPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-sla-escrow-payment-tx" },
             "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
             "health": { "method": "GET", "path": "/api/v1/facilitator/health" },
-            "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" }
+            "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" },
+            "openApi": { "method": "GET", "path": "/openapi.json" }
         },
         "specification": {
             "x402V2": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"

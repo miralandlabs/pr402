@@ -15,3 +15,6 @@ pub const BUILD_EXACT_PAYMENT_TX_PATH: &str = "/api/v1/facilitator/build-exact-p
 /// `POST /api/v1/facilitator/build-sla-escrow-payment-tx`
 pub const BUILD_SLA_ESCROW_PAYMENT_TX_PATH: &str =
     "/api/v1/facilitator/build-sla-escrow-payment-tx";
+
+/// `GET /openapi.json` — OpenAPI 3.1 document (static); also linked from `capabilities.httpEndpoints.openApi`.
+pub const FACILITATOR_OPENAPI_PATH: &str = "/openapi.json";

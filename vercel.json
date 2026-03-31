@@ -1,5 +1,17 @@
 {
   "version": 2,
+  "redirects": [
+    {
+      "source": "/openai.json",
+      "destination": "/openapi.json",
+      "permanent": true
+    },
+    {
+      "source": "/api/v1/facilitator/openapi.json",
+      "destination": "/openapi.json",
+      "permanent": false
+    }
+  ],
   "builds": [
     {
       "src": "src/bin/facilitator.rs",
@@ -10,9 +22,17 @@
           "RUSTUP_HOME": "/tmp/rustup"
         }
       }
+    },
+    {
+      "src": "public/**/*",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/openapi.json",
+      "dest": "/public/openapi.json"
+    },
     {
       "src": "/api/v1/facilitator/verify",
       "dest": "/src/bin/facilitator",
