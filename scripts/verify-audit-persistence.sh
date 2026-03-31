@@ -44,7 +44,7 @@ CORRELATION_ID="audit-test-$(date +%s)"
 
 curl -s -X POST "$FACILITATOR_URL/api/v1/facilitator/verify" \
   -H "Content-Type: application/json" \
-  -H "X-Correlation-Id: $CORRELATION_ID" \
+  -H ": $CORRELATION_ID" \
   -d '{
     "correlationId": "'$CORRELATION_ID'",
     "intent": {

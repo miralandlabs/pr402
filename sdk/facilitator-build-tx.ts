@@ -120,14 +120,14 @@ export function getCapabilities(facilitatorBaseUrl: string): Promise<unknown> {
   return getJson(facilitatorBaseUrl, FACILITATOR_CAPABILITIES_PATH);
 }
 
-/** `POST .../verify` — optional `X-Correlation-Id` header. */
+/** `POST .../verify` — optional `` header. */
 export function verifyPayment(
   facilitatorBaseUrl: string,
   body: X402V2VerifySettleBody,
   correlationId?: string,
 ): Promise<unknown> {
   const headers: Record<string, string> = {};
-  if (correlationId) headers["X-Correlation-Id"] = correlationId;
+  if (correlationId) headers[""] = correlationId;
   return postJson(facilitatorBaseUrl, FACILITATOR_VERIFY_PATH, body, headers);
 }
 
@@ -138,7 +138,7 @@ export function settlePayment(
   correlationId?: string,
 ): Promise<unknown> {
   const headers: Record<string, string> = {};
-  if (correlationId) headers["X-Correlation-Id"] = correlationId;
+  if (correlationId) headers[""] = correlationId;
   return postJson(facilitatorBaseUrl, FACILITATOR_SETTLE_PATH, body, headers);
 }
 

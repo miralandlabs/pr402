@@ -30,7 +30,7 @@ macro_rules! facilitator_response {
             .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             .header(
                 "Access-Control-Allow-Headers",
-                "Content-Type, Authorization, X-Correlation-Id, X-Correlation-ID, X-API-Version",
+                "Content-Type, Authorization, X-Correlation-ID, X-API-Version",
             )
     };
 }
@@ -83,10 +83,6 @@ fn with_api_version_v1(mut res: Response<Body>, correlation_id: Option<&str>) ->
     );
     if let Some(cid) = correlation_id {
         if let Ok(hv) = http::HeaderValue::from_str(cid) {
-            res.headers_mut().insert(
-                http::HeaderName::from_static("x-correlation-id"),
-                hv.clone(),
-            );
             res.headers_mut()
                 .insert(http::HeaderName::from_static("X-Correlation-ID"), hv);
         }
@@ -270,8 +266,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let query = req.uri().query().unwrap_or_default().to_string();
             let correlation_hdr: Option<String> = req
                 .headers()
-                .get("X-Correlation-Id")
-                .or_else(|| req.headers().get("X-Correlation-ID"))
+                .get("X-Correlation-ID")
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_string);
 
@@ -503,7 +498,7 @@ async fn handle_verify(
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json");
             if let Some(ref cid) = effective_cid {
-                res = res.header("X-Correlation-Id", cid);
+                res = res.header("X-Correlation-ID", cid);
             }
             res.body(Body::Text(serde_json::to_string(&json).unwrap_or_else(
                 |_| r#"{"error":"serialization failed"}"#.to_string(),
@@ -661,7 +656,7 @@ async fn handle_settle(
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json");
             if let Some(cid) = persist_meta.as_deref() {
-                res = res.header("X-Correlation-Id", cid);
+                res = res.header("X-Correlation-ID", cid);
             }
             res.body(Body::Text(serde_json::to_string(&json).unwrap_or_else(
                 |_| r#"{"error":"serialization failed"}"#.to_string(),
@@ -1269,7 +1264,6 @@ fn error_response_with_optional_correlation(
         .header("Content-Type", "application/json");
 
     if let Some(cid) = correlation_id {
-        res = res.header("X-Correlation-Id", cid);
         res = res.header("X-Correlation-ID", cid);
     }
 

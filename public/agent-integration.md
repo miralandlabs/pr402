@@ -32,7 +32,7 @@ If **BlockhashNotFound** appears on settle, call **build** again, re-sign, then 
 
 ## 4. Verify and settle
 
-Use the **same** JSON body for both calls. Optional: set **`correlationId`** in the body and/or **`X-Correlation-Id`** header so Postgres audit merges one row.
+Use the **same** JSON body for both calls. Optional: set **`correlationId`** in the body and/or **``** header so Postgres audit merges one row.
 
 ```bash
 curl -sS -X POST "$BASE/api/v1/facilitator/verify" \

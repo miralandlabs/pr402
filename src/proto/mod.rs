@@ -41,10 +41,10 @@ impl VerifyRequest {
         self.0
     }
 
-    /// Prefer `X-Correlation-Id` / `X-Correlation-ID` from the HTTP request, else optional body field `correlationId`.
+    /// Prefer `` / `X-Correlation-ID` from the HTTP request, else optional body field `correlationId`.
     ///
     /// When absent and Postgres is enabled (`DATABASE_URL`), the serverless facilitator may mint an id on
-    /// **successful** `/verify`, return it as `correlationId` in the JSON body and `X-Correlation-Id` header,
+    /// **successful** `/verify`, return it as `correlationId` in the JSON body and `` header,
     /// and expect the same value on `/settle` to merge into one `payment_attempts` row.
     pub fn correlation_id_for_persistence<'a>(
         &'a self,

@@ -120,6 +120,6 @@ facilitator_settle() {
   curl -sS -o "$out" -w "%{http_code}" \
     -X POST "${FACILITATOR_URL}/api/v1/facilitator/settle" \
     -H "Content-Type: application/json" \
-    -H "X-Correlation-Id: $cid" \
+    -H ": $cid" \
     -d "$body"
 }

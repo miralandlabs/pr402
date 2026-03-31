@@ -123,7 +123,7 @@ while [[ "$attempt" -lt "$E2E_EXACT_SETTLE_ATTEMPTS" ]]; do
   HTTP_CODE="$(curl -sS -o /tmp/e2e_exact_verify.json -w "%{http_code}" \
     -X POST "$FACILITATOR_URL/api/v1/facilitator/verify" \
     -H "Content-Type: application/json" \
-    -H "X-Correlation-Id: $CORRELATION_ID" \
+    -H ": $CORRELATION_ID" \
     -d "$VERIFY_BODY")"
 
   cat /tmp/e2e_exact_verify.json | jq .

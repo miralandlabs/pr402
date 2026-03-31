@@ -95,11 +95,11 @@
     "/api/v1/facilitator/verify": {
       "post": {
         "summary": "Verify payment payload",
-        "description": "Validates the x402 v2 proof against `paymentRequirements`. Optional `X-Correlation-Id` or body `correlationId` for DB audit linking.",
+        "description": "Validates the x402 v2 proof against `paymentRequirements`. Optional `X-Correlation-ID` or body `correlationId` for DB audit linking.",
         "operationId": "facilitatorVerify",
         "parameters": [
           {
-            "name": "X-Correlation-Id",
+            "name": "X-Correlation-ID",
             "in": "header",
             "required": false,
             "schema": { "type": "string" }
@@ -140,7 +140,7 @@
         "operationId": "facilitatorSettle",
         "parameters": [
           {
-            "name": "X-Correlation-Id",
+            "name": "X-Correlation-ID",
             "in": "header",
             "required": false,
             "schema": { "type": "string" }

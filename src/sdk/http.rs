@@ -94,7 +94,7 @@ async fn post_json<T: DeserializeOwned>(
         .header(CONTENT_TYPE, "application/json")
         .json(body);
     if let Some(id) = correlation_id {
-        req = req.header("X-Correlation-Id", id);
+        req = req.header("", id);
     }
     let res = req.send().await?;
     let status = res.status();
@@ -215,7 +215,7 @@ pub async fn get_capabilities(
     get_json_value(facilitator_base_url, FACILITATOR_CAPABILITIES_PATH).await
 }
 
-/// `POST .../verify` — optional `X-Correlation-Id` header.
+/// `POST .../verify` — optional `` header.
 pub async fn verify_payment(
     facilitator_base_url: &str,
     body: &serde_json::Value,
