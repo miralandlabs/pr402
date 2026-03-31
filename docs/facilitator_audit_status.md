@@ -27,14 +27,8 @@ This document summarizes the current hardening status of the `pr402` Facilitator
 ## ⚠️ Remaining Issues & Next Steps
 
 ### 1. 🛡️ Telemetry Target Alignment (`server_log`)
-**BLOCKER**: The user is currently dissatisfied with my implementation of the `server_log` telemetry target.
-- **Current State**: I am using `info!(target: "server_log", ...)` in the code but the user believes the subscriber configuration in `bin/facilitator.rs` is incorrect.
-- **Requirement**: "YOU EITHER USE TARGET setting in tracing OR remove the target (just use default)."
-- **Guidance for Next Agent**:
-    - Review the **`references/`** folder (specifically `signer-payer-serverless-copy/signer-payer/src/init.rs`).
-    - The reference uses `tracing_subscriber::fmt::layer().with_target(true)` and `EnvFilter::new("server_log=info")`.
-    - Ensure the Facilitator's `main` entry point sets up the tracing subscriber **exactly** as the institutional baseline requires to correctly capture the `server_log` target.
-    - **Do NOT** just modify log levels; focus on the **target setting** logic.
+- **Baseline**: `src/bin/facilitator.rs` `init_tracing` matches **`references/signer-payer-serverless-copy/signer-payer/src/init.rs`**: `LogTracer::init()`, compact fmt with `with_target(true)`, and `EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("server_log=info"))`.
+- **Overriding `RUST_LOG`**: If Vercel sets e.g. `RUST_LOG=info` only, custom target `server_log` may still need an explicit directive — use e.g. `RUST_LOG=server_log=info,info` (same as you would for signer-payer when not using the default).
 
 ### 2. 🛡️ End-to-End Simulation Proof
 **BLOCKER**: The final bit-perfect verification loop via `curl` and `psql` never completed during this turn due to persistent local proxy and database connection timeouts.

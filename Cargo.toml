@@ -61,8 +61,9 @@ async-trait = "0.1"
 # Futures utilities
 futures-util = "0.3"
 
-# Logging
+# Logging (mirror signer-payer `init_tracing`: tracing-log + tracing-subscriber env-filter)
 tracing = "0.1"
+tracing-log = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # URL parsing

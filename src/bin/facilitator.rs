@@ -17,6 +17,7 @@ use serde::Deserialize;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use tracing::{info, warn};
+use tracing_log::LogTracer;
 use tracing_subscriber::{fmt::format::FmtSpan, prelude::*};
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
 
@@ -151,10 +152,20 @@ fn init_pr402_db_from_env() -> Option<Pr402Db> {
     }
 }
 
-/// Institutional baseline: `signer-payer-serverless-copy/signer-payer/src/init.rs` `init_tracing`.
-/// Registry + compact fmt layer with explicit `with_target(true)` so `target: "server_log"` lines
-/// filter and print correctly; default `RUST_LOG` unset → `server_log=info` (honor `RUST_LOG` when set).
+/// Institutional baseline: mirrors `signer-payer-serverless-copy` `signer-payer/src/init.rs`
+/// `init_tracing` (`LogTracer` + compact fmt + `EnvFilter::try_from_default_env` /
+/// default `server_log=info`).
+///
+/// If you set `RUST_LOG` on Vercel, include `server_log=info` when you rely on `target: "server_log"`
+/// audit lines (same consideration as signer-payer when overriding the default filter).
 fn init_tracing() {
+    if let Err(e) = LogTracer::init() {
+        eprintln!(
+            "Failed to initialize LogTracer: {}. Continuing without log bridging.",
+            e
+        );
+    }
+
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
         .with_target(true)
