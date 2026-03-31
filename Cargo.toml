@@ -10,7 +10,7 @@ categories = ["cryptography", "finance", "stablecoins"]
 
 [features]
 default = []
-## Optional `reqwest` client mirroring `sdk/facilitator-build-tx.ts` for agents / CLIs. Omit on the Vercel `facilitator` binary (default features).
+## Optional `reqwest` client (`sdk::http`); release `facilitator` binary size unchanged with/without—entrypoint never uses it, LTO strips `reqwest`.
 facilitator-http = ["dep:reqwest"]
 
 [dependencies]
