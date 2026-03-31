@@ -17,7 +17,7 @@ use serde::Deserialize;
 use std::io::LineWriter;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt::format::FmtSpan, prelude::*};
 use vercel_runtime::{run, Body, Request, Response, StatusCode};
@@ -296,21 +296,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("POST", "/api/v1/facilitator/build-sla-escrow-payment-tx") => {
                     handle_build_sla_escrow_payment_tx(body).await
                 }
-                _ => facilitator_response!()
-                    .status(StatusCode::NOT_FOUND)
-                    .header("Content-Type", "application/json")
-                    .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
-                    .unwrap(),
+                _ => {
+                    warn!(
+                        target: LOG_SERVER_LOG,
+                        method = %method,
+                        path = %path,
+                        "no route matched (404)"
+                    );
+                    facilitator_response!()
+                        .status(StatusCode::NOT_FOUND)
+                        .header("Content-Type", "application/json")
+                        .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
+                        .unwrap()
+                }
             };
-            let status = response.status().as_u16();
-            info!(
-                target: LOG_SERVER_LOG,
-                method = %method,
-                path = %path,
-                status = status,
-                correlation_id = correlation_hdr.as_deref(),
-                "request completed"
-            );
+            let status = response.status();
+            let code = status.as_u16();
+            if status.is_server_error() {
+                error!(
+                    target: LOG_SERVER_LOG,
+                    method = %method,
+                    path = %path,
+                    status = code,
+                    correlation_id = correlation_hdr.as_deref(),
+                    "request completed"
+                );
+            } else if status.is_client_error() {
+                warn!(
+                    target: LOG_SERVER_LOG,
+                    method = %method,
+                    path = %path,
+                    status = code,
+                    correlation_id = correlation_hdr.as_deref(),
+                    "request completed"
+                );
+            } else {
+                info!(
+                    target: LOG_SERVER_LOG,
+                    method = %method,
+                    path = %path,
+                    status = code,
+                    correlation_id = correlation_hdr.as_deref(),
+                    "request completed"
+                );
+            }
             Ok(with_api_version_v1(response))
         })
     };
@@ -469,14 +498,6 @@ async fn handle_verify(
                     );
                 }
             }
-            if let Some(ref cid) = persist_meta {
-                info!(
-                    target: LOG_SERVER_LOG,
-                    correlation_id = %cid,
-                    payee = %payee.unwrap_or("(none)"),
-                    "verify failed (client correlation id)"
-                );
-            }
             error_response_with_optional_correlation(
                 StatusCode::BAD_REQUEST,
                 &format!("Verification failed: {}", e),
@@ -633,14 +654,6 @@ async fn handle_settle(
                         "record_payment_settle skipped"
                     );
                 }
-            }
-            if let Some(cid) = persist_meta.as_deref() {
-                info!(
-                    target: LOG_SERVER_LOG,
-                    correlation_id = %cid,
-                    payee = %payee.unwrap_or("(none)"),
-                    "settle failed (client correlation id)"
-                );
             }
             error_response_with_optional_correlation(
                 StatusCode::BAD_REQUEST,
@@ -1110,6 +1123,26 @@ fn error_response_with_optional_correlation(
     message: &str,
     correlation_id: Option<&str>,
 ) -> Response<Body> {
+    const MAX_MSG_LOG: usize = 2048;
+    let log_msg: String = message.chars().take(MAX_MSG_LOG).collect();
+    if status.is_server_error() {
+        error!(
+            target: LOG_SERVER_LOG,
+            status = %status.as_u16(),
+            correlation_id = ?correlation_id,
+            message = %log_msg,
+            "facilitator JSON error response"
+        );
+    } else if status.is_client_error() {
+        warn!(
+            target: LOG_SERVER_LOG,
+            status = %status.as_u16(),
+            correlation_id = ?correlation_id,
+            message = %log_msg,
+            "facilitator JSON error response"
+        );
+    }
+
     let mut body = serde_json::Map::new();
     body.insert(
         "error".to_string(),

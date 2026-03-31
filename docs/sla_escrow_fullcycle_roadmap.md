@@ -97,6 +97,7 @@ Deliver in order:
 
 - [x] Dual SLA fund E2E on devnet: **`03_sla_escrow_http_facilitator_fees.sh`** (facilitator fees) + **`01_sla_escrow_facilitator_verify.sh`** (CLI buyer-paid); orchestrated by **`run_all_devnet.sh`** (`SKIP_SLA_HTTP` / `SKIP_SLA_CLI`).
 - [x] Shell E2E: [`scripts/e2e/04_sla_escrow_post_fund_lifecycle.sh`](../scripts/e2e/04_sla_escrow_post_fund_lifecycle.sh) after B1/B2 (submit-delivery → confirm-oracle → release or refund) + DB audit (`psql_audit_escrow_lifecycle`). Optional: `E2E_SLA_FULL_LIFECYCLE=1` on **B1** or `RUN_SLA_LIFECYCLE=1` in `run_all_devnet.sh` (chains after B1). Requires DB migration **003**, **`E2E_ORACLE_KEYPAIR`** matching fund-time oracle, and `DATABASE_URL`.
+- [x] **Single-shot full cycle:** [`scripts/e2e/05_sla_escrow_full_cycle_devnet.sh`](../scripts/e2e/05_sla_escrow_full_cycle_devnet.sh) sets `E2E_ORACLE_AUTHORITY` from `E2E_ORACLE_KEYPAIR` (default buyer), patches B1 `extra.oracleAuthorities` for `/verify`, runs B1 + chained **04**. **`RUN_FULL_SLA_LIFECYCLE=1`** in `run_all_devnet.sh` runs **05** instead of B2+B1.
 - [ ] Document security: never accept oracle calls without checking on-chain payment state + pubkey.
 
 ### Phase 5 — FundPayment fee payer (optional product alignment)

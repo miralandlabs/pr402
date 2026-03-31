@@ -20,6 +20,7 @@ Airdrop / mint **devnet USDC** for **`E2E_USDC_MINT`** (Circle devnet USDC in `c
 | **B2** | **1 USDC** | SLA-Escrow (facilitator pays Solana fees) | `03_sla_escrow_http_facilitator_fees.sh` | `build-sla-escrow-payment-tx` → buyer partial sign → **`/verify`** → **`/settle`** |
 | **B1** | **1 USDC** | SLA-Escrow (buyer pays fees; CLI) | `01_sla_escrow_facilitator_verify.sh` | on-chain `fund-payment` → **`/verify`** → **`/settle`** |
 | **B+** | (same fund as B1/B2) | SLA post-fund lifecycle + DB | `04_sla_escrow_post_fund_lifecycle.sh` | `submit-delivery` → `confirm-oracle` → `release-payment` (or refund); writes **`escrow_lifecycle_events`** + **`escrow_details`** via `record_escrow_lifecycle` |
+| **B★** | **1 USDC** (default) | **Full SLA** one script | **`05_sla_escrow_full_cycle_devnet.sh`** | B1 fund + `/verify` + `/settle` + delivery + oracle + **release** (or refund); uses **`E2E_ORACLE_KEYPAIR`** (defaults to buyer) so confirm-oracle is signable; needs **`DATABASE_URL`** + migration **003** |
 
 **Production reference** (not enforced by these small defaults): `USDC_POLICY_THRESHOLD_WHOLE` (default 10) — below → prefer `exact`, at or above → prefer `sla-escrow`. Override amounts with env vars anytime.
 
@@ -53,8 +54,9 @@ chmod +x *.sh
 ./03_sla_escrow_http_facilitator_fees.sh      # Scenario B2 (SLA, facilitator fees)
 ./01_sla_escrow_facilitator_verify.sh         # Scenario B1 (SLA, CLI buyer-paid)
 ./04_sla_escrow_post_fund_lifecycle.sh       # After B1/B2: delivery / oracle / release + DB (see script header)
+./05_sla_escrow_full_cycle_devnet.sh         # **Full** SLA in one go (fund…release + DB); or: RUN_FULL_SLA_LIFECYCLE=1 ./run_all_devnet.sh
 # or
-./run_all_devnet.sh                           # B2 → B1 → A (see SKIP_* flags; RUN_SLA_LIFECYCLE=1 chains 04 after B1)
+./run_all_devnet.sh                           # B2 → B1 → A (see SKIP_*; RUN_SLA_LIFECYCLE=1 chains 04 after B1; RUN_FULL_SLA_LIFECYCLE=1 runs 05 only for SLA)
 ```
 
 **Facilitator build:** B1 (**buyer-paid**) `/settle` expects a **fully signed** fund tx (often already on-chain). B2 (**facilitator-paid**) matches **A**: partial buyer sign, facilitator completes at `/settle`. See `docs/sla_escrow_fee_payer_and_settle.md`.

@@ -13,7 +13,7 @@
 #   E2E_ADMIN_KEYPAIR, SLA_ESCROW_CLI, DATABASE_URL (optional; or read from pr402/.env)
 #   E2E_SCENARIO_B_AMOUNT_HUMAN — USDC amount (human), default 1
 #   E2E_SLA_AMOUNT_HUMAN — overrides scenario B amount if set (backward compat)
-#   E2E_ORACLE_AUTHORITY — optional; default /supported .oracleAuthorities[0]
+#   E2E_ORACLE_AUTHORITY — optional; default /supported .oracleAuthorities[0]. When set, `/supported` extra is patched so /verify matches fund-time oracle (required for full-cycle E2E).
 #   E2E_SLA_FULL_LIFECYCLE=1 — after success, run 04_sla_escrow_post_fund_lifecycle.sh (needs E2E_ORACLE_KEYPAIR, DATABASE_URL, migration 003).
 #
 set -euo pipefail
@@ -61,6 +61,11 @@ ORACLE_AUTH="${E2E_ORACLE_AUTHORITY:-$(echo "$EXTRA_JSON" | jq -r '.oracleAuthor
   exit 1
 }
 echo " Oracle authority: $ORACLE_AUTH"
+# When overriding oracle (full-lifecycle E2E), /verify body extra must list the same pubkey as fund-payment.
+if [[ -n "${E2E_ORACLE_AUTHORITY:-}" ]]; then
+  EXTRA_JSON="$(echo "$EXTRA_JSON" | jq --arg o "$ORACLE_AUTH" '.oracleAuthorities = [$o]')"
+  echo " (patched extra.oracleAuthorities for E2E_ORACLE_AUTHORITY)"
+fi
 echo ""
 
 echo ">>> [2/6] open-escrow (USDC rail)"
