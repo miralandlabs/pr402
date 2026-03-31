@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pr402 Facilitator | Semantic Payment Infrastructure</title>
+    <meta name="description" content="REST-to-Solana gateway for AI-to-AI resource settlement. Seamless UniversalSettle and SLA-Escrow bridging.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-glow: rgba(79, 70, 229, 0.4);
+            --bg: #09090b;
+            --card-bg: rgba(24, 24, 27, 0.8);
+            --text: #f4f4f5;
+            --text-dim: #a1a1aa;
+            --accent: #10b981;
+            --border: rgba(39, 39, 42, 0.5);
+            --surface: rgba(18, 18, 18, 0.95);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Ambient Background */
+        .ambient-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background: 
+                radial-gradient(circle at 20% 30%, var(--primary-glow) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+            filter: blur(80px);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 5rem;
+        }
+
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            padding: 0.5rem 1rem;
+            background: var(--card-bg);
+            border-radius: 100px;
+            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo-dot {
+            width: 10px;
+            height: 10px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .logo-text {
+            font-weight: 600;
+            font-size: 0.9rem;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+        }
+
+        h1 {
+            font-size: clamp(2.5rem, 8vw, 4.5rem);
+            font-weight: 800;
+            background: linear-gradient(to bottom right, #fff 40%, var(--text-dim));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        p.tagline {
+            font-size: 1.25rem;
+            color: var(--text-dim);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Dashboard Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-top: 4rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 2.5rem;
+            border-radius: 24px;
+            backdrop-filter: blur(20px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card:hover {
+            border-color: var(--primary);
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+
+        .card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card p {
+            color: var(--text-dim);
+            font-size: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            background: #5a52ff;
+            transform: scale(1.02);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Endpoints section */
+        .discovery-docs {
+            margin-top: 6rem;
+            padding: 3rem;
+            background: rgba(0,0,0,0.3);
+            border-radius: 32px;
+            border: 1px solid var(--border);
+        }
+
+        .discovery-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .discovery-header h2 {
+            font-size: 1.75rem;
+        }
+
+        .endpoint-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .endpoint {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .method {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .method.get { background: rgba(16, 185, 129, 0.1); color: var(--accent); }
+        .method.post { background: rgba(79, 70, 229, 0.1); color: var(--primary); }
+
+        .path {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text);
+        }
+
+        .description {
+            margin-left: auto;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        footer {
+            margin-top: 8rem;
+            padding-bottom: 4rem;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.6rem;
+            background: rgba(255,255,255,0.08);
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 2rem 1rem; }
+            .grid { grid-template-columns: 1fr; }
+            .discovery-docs { padding: 1.5rem; }
+            .endpoint { flex-direction: column; align-items: flex-start; }
+            .description { margin-left: 0; margin-top: 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-bg"></div>
+    <div class="container" id="main">
+        <header>
+            <div class="logo-container">
+                <div class="logo-dot"></div>
+                <span class="logo-text">ACTIVE FACILITATOR</span>
+            </div>
+            <h1>The Bridge to<br>Agentic Liquidity</h1>
+            <p class="tagline">Providing an effortless REST gateway to the Solana economic stack. One API for all agentic payments.</p>
+        </header>
+
+        <div class="grid">
+            <!-- Documentation Card -->
+            <div class="card">
+                <span class="badge">Developer Docs</span>
+                <h3>Agent Integration</h3>
+                <p>Complete guide on how to implement the x402 headers and verify settlements in your own agents.</p>
+                <div class="btn-group">
+                    <a href="/agent-integration.md" class="btn btn-primary" id="btn-docs">Read Spec</a>
+                    <a href="/openapi.json" class="btn btn-secondary" id="btn-openapi">OpenAPI</a>
+                </div>
+            </div>
+
+            <!-- Discovery Card -->
+            <div class="card">
+                <span class="badge">Machine Discovery</span>
+                <h3>System Capabilities</h3>
+                <p>Real-time configuration of the facilitator, including supported schemes, fee structures, and oracle candidates.</p>
+                <div class="btn-group">
+                    <a href="/api/v1/facilitator/capabilities" class="btn btn-primary" id="btn-capabilities">View JSON</a>
+                    <a href="/api/v1/facilitator/supported" class="btn btn-secondary" id="btn-supported">Supported</a>
+                </div>
+            </div>
+        </div>
+
+        <section class="discovery-docs">
+            <div class="discovery-header">
+                <h2>API Inventory</h2>
+                <p class="tagline" style="font-size: 0.9rem;">Discovery version 2.1 • Solana Mainnet/Devnet</p>
+            </div>
+            
+            <div class="endpoint-list">
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/supported</span>
+                    <span class="description">List schemes and on-chain terms</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/verify</span>
+                    <span class="description">Cryptographic validation of proposed terms</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/settle</span>
+                    <span class="description">Execute JIT vault provisioning & settlement</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/onboard</span>
+                    <span class="description">Preview vault addresses for any wallet</span>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <p>© 2026 Miraland Labs • Built for the Autonomous Future</p>
+        </footer>
+    </div>
+</body>
+</html>

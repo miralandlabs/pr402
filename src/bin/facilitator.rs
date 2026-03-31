@@ -247,6 +247,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .or_else(|| req.headers().get("X-Correlation-ID"))
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_string);
+
+            let accept = req
+                .headers()
+                .get("Accept")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
+
             let body = req.into_body();
 
             // Get facilitator instance
@@ -277,6 +285,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 ("GET", "/api/v1/facilitator/capabilities") => {
                     handle_capabilities(facilitator.clone()).await
+                }
+                ("GET", "/") => {
+                    if accept.contains("text/html") {
+                        Response::builder()
+                            .header("Content-Type", "text/html")
+                            .body(Body::Text(
+                                include_str!("../../public/index.html").to_string(),
+                            ))
+                            .unwrap()
+                    } else {
+                        handle_capabilities(facilitator.clone()).await
+                    }
                 }
                 ("GET", "/api/v1/facilitator/onboard/challenge") => {
                     handle_onboard_challenge(&query).await

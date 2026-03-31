@@ -35,6 +35,11 @@
   ],
   "routes": [
     {
+      "src": "/",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
       "src": "/openapi.json",
       "dest": "/public/openapi.json"
     },
