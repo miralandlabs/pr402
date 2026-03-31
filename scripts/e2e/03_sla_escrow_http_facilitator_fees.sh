@@ -32,6 +32,13 @@ AMOUNT_HUMAN="${E2E_SLA_AMOUNT_HUMAN:-$E2E_SCENARIO_B_AMOUNT_HUMAN}"
 TTL_SEC="${E2E_SLA_TTL:-3600}"
 SLA_HASH_ZERO="0000000000000000000000000000000000000000000000000000000000000000"
 
+echo ""
+echo "################################################################################"
+echo "# E2E START | B2 | SLA-Escrow | FACILITATOR pays Solana network fees (fee payer)"
+echo "#           |    | HTTP: build-sla-escrow-payment-tx → buyer partial sign → /verify → /settle"
+echo "#           |    | (Paired with B1: buyer-paid fees via CLI fund-payment.)"
+echo "################################################################################"
+echo ""
 echo "=============================================="
 echo " E2E Scenario B2: SLA-Escrow (HTTP build, facilitator fees)"
 echo "  → build-sla-escrow-payment-tx → sign → /verify → /settle"
@@ -165,5 +172,9 @@ fi
 echo ""
 echo "✅ Scenario B2: SLA-Escrow (facilitator fee payer via HTTP) verify + settle finished."
 echo "   Response feePayer from build: $FEE_PAYER_OUT"
+echo ""
+echo "################################################################################"
+echo "# E2E END   | B2 | SLA-Escrow | facilitator fee payer (HTTP) — completed OK"
+echo "################################################################################"
 
 echo "$CORRELATION_ID" >/tmp/pr402_e2e_last_sla_correlation_id

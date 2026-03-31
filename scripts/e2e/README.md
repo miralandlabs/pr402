@@ -12,6 +12,17 @@ solana address -k "${E2E_BUYER_KEYPAIR:-$HOME/.config/solana/id.json}"
 
 Airdrop / mint **devnet USDC** for **`E2E_USDC_MINT`** (Circle devnet USDC in `common.sh`) to that wallet’s **USDC ATA** so both scenarios can pass **`/settle`** / `fund-payment`.
 
+## Facilitator as Solana fee payer (two schemes)
+
+Default **`run_all_devnet.sh`** exercises **both** rails where the **facilitator** is the transaction **fee payer** (slot 0), not only `exact`:
+
+| | Scheme | Script | Flow |
+|--|--------|--------|------|
+| 1 | **`exact`** (UniversalSettle) | `02_exact_facilitator_verify.sh` | `build-exact-payment-tx` → payer signs → `/verify` → `/settle` |
+| 2 | **`sla-escrow`** | `03_sla_escrow_http_facilitator_fees.sh` | `build-sla-escrow-payment-tx` → buyer partial sign → `/verify` → `/settle` |
+
+**B1** (`01_...sh`) is the **buyer-paid** SLA counterexample (CLI `fund-payment`). Search logs for `E2E START | B2`, `E2E START | A`, `E2E START | B1`.
+
 ## Scenarios (devnet amounts)
 
 | Scenario | Default amount | Rail | Script | x402 facilitator steps |
@@ -56,7 +67,7 @@ chmod +x *.sh
 ./04_sla_escrow_post_fund_lifecycle.sh       # After B1/B2: delivery / oracle / release + DB (see script header)
 ./05_sla_escrow_full_cycle_devnet.sh         # **Full** SLA in one go (fund…release + DB); or: RUN_FULL_SLA_LIFECYCLE=1 ./run_all_devnet.sh
 # or
-./run_all_devnet.sh                           # B2 → B1 → A (see SKIP_*; RUN_SLA_LIFECYCLE=1 chains 04 after B1; RUN_FULL_SLA_LIFECYCLE=1 runs 05 only for SLA)
+./run_all_devnet.sh                           # B2 → B1 → A. RUN_FULL_SLA_LIFECYCLE=1 → B2 → 05 → A. RUN_SLA_LIFECYCLE=1 chains 04 after B1.
 ```
 
 **Facilitator build:** B1 (**buyer-paid**) `/settle` expects a **fully signed** fund tx (often already on-chain). B2 (**facilitator-paid**) matches **A**: partial buyer sign, facilitator completes at `/settle`. See `docs/sla_escrow_fee_payer_and_settle.md`.

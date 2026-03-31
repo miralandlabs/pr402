@@ -39,6 +39,13 @@ AMOUNT_HUMAN="${E2E_SLA_AMOUNT_HUMAN:-$E2E_SCENARIO_B_AMOUNT_HUMAN}"
 TTL_SEC="${E2E_SLA_TTL:-3600}"
 SLA_HASH_ZERO="0000000000000000000000000000000000000000000000000000000000000000"
 
+echo ""
+echo "################################################################################"
+echo "# E2E START | B1 | SLA-Escrow | BUYER pays Solana network fees (CLI fund-payment)"
+echo "#           |    | On-chain fund → /verify → /settle (x402 ack of funded payment)"
+echo "#           |    | (Paired with B2: facilitator fee payer via HTTP build+settle.)"
+echo "################################################################################"
+echo ""
 echo "=============================================="
 echo " E2E Scenario B1: SLA-Escrow CLI (buyer-paid fees)"
 echo "  → fund-payment → /verify + /settle (devnet)"
@@ -187,6 +194,10 @@ fi
 echo ""
 echo "✅ Scenario B1: SLA-Escrow (CLI / buyer-paid) verify + settle E2E finished."
 echo "   On-chain escrow lifecycle after settlement (delivery / oracle / release): use sla-escrow CLI if needed."
+echo ""
+echo "################################################################################"
+echo "# E2E END   | B1 | SLA-Escrow | buyer-paid fees (CLI) — verify+settle completed OK"
+echo "################################################################################"
 
 echo "$CORRELATION_ID" >/tmp/pr402_e2e_last_sla_correlation_id
 if [[ "${E2E_SLA_FULL_LIFECYCLE:-}" == "1" ]]; then

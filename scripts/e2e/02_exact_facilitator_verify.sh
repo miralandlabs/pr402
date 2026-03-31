@@ -31,6 +31,13 @@ E2E_EXACT_AMOUNT_RAW="${E2E_EXACT_AMOUNT_RAW:-$E2E_SCENARIO_A_AMOUNT_RAW}"
 PAYER_PK="$(buyer_pubkey)"
 SELLER_PK="$(seller_pubkey)"
 
+echo ""
+echo "################################################################################"
+echo "# E2E START | A  | exact (UniversalSettle) | FACILITATOR pays Solana network fees"
+echo "#           |    | build-exact-payment-tx: feePayer slot 0 = facilitator; payer signs token ix"
+echo "#           |    | (Other facilitator-fee SLA rail: B2 = sla-escrow HTTP build in 03_*.sh.)"
+echo "################################################################################"
+echo ""
 echo "=============================================="
 echo " E2E Scenario A: exact (UniversalSettle, devnet test amount)"
 echo "  → /verify + /settle (devnet)"
@@ -85,7 +92,7 @@ while [[ "$attempt" -lt "$E2E_EXACT_SETTLE_ATTEMPTS" ]]; do
     sleep 1
   fi
 
-  echo ">>> [$attempt/$E2E_EXACT_SETTLE_ATTEMPTS] [1/4] POST build-exact-payment-tx"
+  echo ">>> (attempt $attempt/$E2E_EXACT_SETTLE_ATTEMPTS) [1/4] POST build-exact-payment-tx"
   BUILD_RES="$(curl -sS \
     -X POST "$FACILITATOR_URL/api/v1/facilitator/build-exact-payment-tx" \
     -H "Content-Type: application/json" \
@@ -101,7 +108,7 @@ while [[ "$attempt" -lt "$E2E_EXACT_SETTLE_ATTEMPTS" ]]; do
   }
 
   echo ""
-  echo ">>> [$attempt/$E2E_EXACT_SETTLE_ATTEMPTS] [2/4] Sign with cargo example e2e_sign_exact_tx"
+  echo ">>> (attempt $attempt/$E2E_EXACT_SETTLE_ATTEMPTS) [2/4] Sign with cargo example e2e_sign_exact_tx"
   cd "$PR402_ROOT"
   SIGNED_B64="$(printf '%s' "$TX_UNSIGNED_B64" | cargo run -q --example e2e_sign_exact_tx -- "$E2E_BUYER_KEYPAIR" "$BLOCKHASH")"
 
@@ -112,7 +119,7 @@ while [[ "$attempt" -lt "$E2E_EXACT_SETTLE_ATTEMPTS" ]]; do
   VERIFY_BODY="$(echo "$VERIFY_BODY" | jq --arg c "$CORRELATION_ID" '. + {correlationId: $c}')"
 
   echo ""
-  echo ">>> [$attempt/$E2E_EXACT_SETTLE_ATTEMPTS] [3/4] POST /verify"
+  echo ">>> (attempt $attempt/$E2E_EXACT_SETTLE_ATTEMPTS) [3/4] POST /verify"
   HTTP_CODE="$(curl -sS -o /tmp/e2e_exact_verify.json -w "%{http_code}" \
     -X POST "$FACILITATOR_URL/api/v1/facilitator/verify" \
     -H "Content-Type: application/json" \
@@ -128,7 +135,7 @@ while [[ "$attempt" -lt "$E2E_EXACT_SETTLE_ATTEMPTS" ]]; do
   fi
 
   echo ""
-  echo ">>> [$attempt/$E2E_EXACT_SETTLE_ATTEMPTS] [4/4] POST /settle (same body as verify)"
+  echo ">>> (attempt $attempt/$E2E_EXACT_SETTLE_ATTEMPTS) [4/4] POST /settle (same body as verify)"
   SETTLE_CODE="$(facilitator_settle "$VERIFY_BODY" "$CORRELATION_ID" /tmp/e2e_exact_settle.json)"
   cat /tmp/e2e_exact_settle.json | jq .
   echo "HTTP $SETTLE_CODE"
@@ -162,3 +169,7 @@ fi
 
 echo ""
 echo "✅ Scenario A: UniversalSettle (exact) verify + settle E2E finished."
+echo ""
+echo "################################################################################"
+echo "# E2E END   | A  | exact | facilitator fee payer — verify+settle completed OK"
+echo "################################################################################"
