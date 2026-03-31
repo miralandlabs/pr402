@@ -213,6 +213,35 @@ impl Pr402Db {
         }
     }
 
+    pub async fn ping(&self) -> Result<(), DbError> {
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Ping transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let res = match timeout(Duration::from_secs(5), tx.execute("SELECT 1", &[])).await {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "Ping query failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(target: "server_log", "Ping query timed out");
+                Err(DbError::Timeout)
+            }
+        };
+
+        if res.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        res
+    }
+
     /// Ensure a row exists for `wallet_pubkey`; return `id`.
     async fn ensure_resource_provider(
         &self,

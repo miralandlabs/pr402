@@ -91,6 +91,11 @@ impl SolanaChainProvider {
         }
     }
 
+    pub async fn get_health(&self) -> Result<u64, SolanaChainProviderError> {
+        // We use get_slot as a proxy for 'active/responsive' health.
+        self.rpc_client.get_slot().await.map_err(|e| e.into())
+    }
+
     pub fn chain_id(&self) -> crate::chain::ChainId {
         self.chain_id.clone()
     }

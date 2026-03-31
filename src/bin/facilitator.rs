@@ -58,11 +58,26 @@ static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 /// `facilitator`, which does not match the `pr402` filter and hides verify/settle logs).
 /// Institutional audit log category (mirrors signer-payer baseline).
 const LOG_SERVER_LOG: &str = "server_log";
+const SCHEMA_VERSION: &str = "1.0.0";
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HealthResponse {
+    status: &'static str,
+    schema_version: &'static str,
+    database: &'static str,
+    solana_rpc: &'static str,
+    solana_slot: Option<u64>,
+}
 
 fn with_api_version_v1(mut res: Response<Body>) -> Response<Body> {
     res.headers_mut().insert(
         http::HeaderName::from_static("x-api-version"),
         http::HeaderValue::from_static("1"),
+    );
+    res.headers_mut().insert(
+        http::HeaderName::from_static("x-schema-version"),
+        http::HeaderValue::from_static(SCHEMA_VERSION),
     );
     res
 }
@@ -279,10 +294,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("POST", "/api/v1/facilitator/settle") => {
                     handle_settle(facilitator.clone(), body, correlation_hdr.as_deref()).await
                 }
-                ("GET", "/api/v1/facilitator/supported")
-                | ("GET", "/api/v1/facilitator/health") => {
+                ("GET", "/api/v1/facilitator/supported") => {
                     handle_supported(facilitator.clone()).await
                 }
+                ("GET", "/api/v1/facilitator/health") => handle_health().await,
                 ("GET", "/api/v1/facilitator/capabilities") => {
                     handle_capabilities(facilitator.clone()).await
                 }
@@ -701,6 +716,46 @@ async fn handle_supported(
     }
 }
 
+async fn handle_health() -> Response<Body> {
+    let mut db_status = "disabled";
+    if let Some(db) = pr402_db() {
+        db_status = match db.ping().await {
+            Ok(_) => "connected",
+            Err(_) => "error",
+        };
+    }
+
+    let mut rpc_status = "error";
+    let mut slot = None;
+    if let Some(cp) = CHAIN_PROVIDER.get() {
+        match cp.solana.get_health().await {
+            Ok(s) => {
+                rpc_status = "connected";
+                slot = Some(s);
+            }
+            Err(_) => rpc_status = "error",
+        }
+    }
+
+    let res = HealthResponse {
+        status: if rpc_status == "connected" {
+            "ok"
+        } else {
+            "warning"
+        },
+        schema_version: SCHEMA_VERSION,
+        database: db_status,
+        solana_rpc: rpc_status,
+        solana_slot: slot,
+    };
+
+    facilitator_response!()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Body::Text(serde_json::to_string(&res).unwrap_or_default()))
+        .unwrap()
+}
+
 /// Stable discovery document for agents / dashboards (machine-readable complement to `/supported`).
 async fn handle_capabilities(
     facilitator: Arc<
@@ -739,7 +794,7 @@ async fn handle_capabilities(
     };
 
     let body = serde_json::json!({
-        "schemaVersion": "1",
+        "schemaVersion": SCHEMA_VERSION,
         "x402Version": 2,
         "name": "pr402 facilitator",
         "chainId": chain_id,

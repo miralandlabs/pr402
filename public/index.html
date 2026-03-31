@@ -324,12 +324,96 @@
             margin-bottom: 1rem;
         }
 
+        /* Vault Explorer */
+        .vault-explorer {
+            margin-top: 4rem;
+            background: #0a0a0f;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            border-left: 4px solid var(--primary);
+        }
+
+        .terminal-header {
+            background: #111118;
+            padding: 0.75rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .terminal-dots { display: flex; gap: 6px; }
+        .terminal-dots span { width: 8px; height: 8px; border-radius: 50%; background: #1e293b; }
+        .terminal-title { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
+
+        .terminal-body {
+            padding: 1.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            min-height: 240px;
+            max-height: 500px;
+            overflow-y: auto;
+            background: linear-gradient(to bottom, transparent, rgba(99, 102, 241, 0.02));
+        }
+
+        .terminal-line { margin-bottom: 0.5rem; color: var(--text-dim); }
+        .prompt { color: var(--primary); margin-right: 0.75rem; font-weight: 700; }
+
+        .terminal-input-line { display: flex; align-items: center; margin-bottom: 1.5rem; }
+        #wallet-input {
+            background: transparent;
+            border: none;
+            color: var(--accent);
+            outline: none;
+            width: 100%;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            padding: 0;
+            caret-color: var(--primary);
+        }
+
+        .output-row { margin-bottom: 1.5rem; padding-left: 1rem; border-left: 1px solid rgba(255,255,255,0.1); }
+        .output-label { color: var(--text-dim); width: 130px; display: inline-block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .output-val { color: var(--text); word-break: break-all; font-weight: 400; }
+
+        /* System Pulse */
+        .system-pulse {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(2, 6, 23, 0.95);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid var(--border);
+            padding: 0.6rem 2rem;
+            display: flex;
+            justify-content: center;
+            gap: 4rem;
+            z-index: 100;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            letter-spacing: 0.12em;
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+        }
+
+        .pulse-item { display: flex; align-items: center; gap: 0.6rem; }
+        .pulse-dot { width: 5px; height: 5px; border-radius: 1px; background: #64748b; transition: all 0.3s; }
+        .pulse-dot.online { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+        .pulse-dot.error { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+        .pulse-dot.warning { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+        .pulse-label { color: var(--text-dim); text-transform: uppercase; }
+        .pulse-value { color: var(--text); }
+
         @media (max-width: 768px) {
             .container { padding: 2rem 1rem; }
             .grid { grid-template-columns: 1fr; }
             .discovery-docs { padding: 1.5rem; }
             .endpoint { flex-direction: column; align-items: flex-start; }
             .description { margin-left: 0; margin-top: 0.5rem; }
+            .system-pulse { gap: 1.5rem; padding: 0.6rem 1rem; }
+            .pulse-label { display: none; }
         }
     </style>
 </head>
@@ -369,6 +453,29 @@
             </div>
         </div>
 
+        <!-- New: Vault Explorer -->
+        <section class="vault-explorer">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="terminal-title">VAULT EXPLORER v1.0.0</div>
+            </div>
+            <div class="terminal-body" id="terminal">
+                <div class="terminal-line">
+                    <span class="prompt">></span> Welcome to pr402 Facilitator.
+                </div>
+                <div class="terminal-line">
+                    <span class="prompt">></span> Enter a Solana wallet address to resolve deterministic vault PDAs.
+                </div>
+                <div class="terminal-input-line">
+                    <span class="prompt">></span>
+                    <input type="text" id="wallet-input" placeholder="Paste Pubkey..." autocomplete="off">
+                </div>
+                <div id="terminal-output"></div>
+            </div>
+        </section>
+
         <section class="discovery-docs">
             <div class="discovery-header">
                 <h2>API Inventory</h2>
@@ -399,9 +506,109 @@
             </div>
         </section>
 
-        <footer>
+        <footer style="margin-bottom: 4rem;">
             <p>© 2026 Miraland Labs • Built for the Autonomous Future</p>
         </footer>
+
+        <!-- New: System Pulse -->
+        <div class="system-pulse">
+            <div class="pulse-item">
+                <div class="pulse-dot" id="dot-rpc"></div>
+                <span class="pulse-label">SOLANA RPC:</span>
+                <span class="pulse-value" id="val-rpc">CONNECTING...</span>
+            </div>
+            <div class="pulse-item">
+                <div class="pulse-dot" id="dot-db"></div>
+                <span class="pulse-label">DATABASE:</span>
+                <span class="pulse-value" id="val-db">CONNECTING...</span>
+            </div>
+            <div class="pulse-item">
+                <span class="pulse-label">SCHEMA:</span>
+                <span class="pulse-value">v1.0.0</span>
+            </div>
+        </div>
     </div>
+
+    <script>
+        async function updateHealth() {
+            try {
+                const res = await fetch('/api/v1/facilitator/health');
+                const data = await res.json();
+                
+                const rpcDot = document.getElementById('dot-rpc');
+                const rpcVal = document.getElementById('val-rpc');
+                const isRpcOk = data.solanaRpc === 'connected';
+                rpcDot.className = `pulse-dot ${isRpcOk ? 'online' : 'error'}`;
+                rpcVal.innerText = isRpcOk ? `SLOT ${data.solanaSlot || 'OK'}` : 'OFFLINE';
+
+                const dbDot = document.getElementById('dot-db');
+                const dbVal = document.getElementById('val-db');
+                const isDbOk = data.database === 'connected';
+                dbDot.className = `pulse-dot ${isDbOk ? 'online' : data.database === 'disabled' ? 'pulse-dot' : 'error'}`;
+                dbVal.innerText = data.database.toUpperCase();
+            } catch (e) {
+                console.warn("Health telemetry interrupted.");
+            }
+        }
+
+        const walletInput = document.getElementById('wallet-input');
+        const output = document.getElementById('terminal-output');
+        const terminal = document.getElementById('terminal');
+
+        walletInput.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                const wallet = walletInput.value.trim();
+                if (!wallet) return;
+                
+                // Print command
+                const cmdLine = document.createElement('div');
+                cmdLine.className = 'terminal-line';
+                cmdLine.style.marginTop = '1rem';
+                cmdLine.style.borderTop = '1px solid rgba(255,255,255,0.05)';
+                cmdLine.style.paddingTop = '1rem';
+                cmdLine.innerHTML = `<span class="prompt">></span> onboard ${wallet}`;
+                output.appendChild(cmdLine);
+                walletInput.value = '';
+
+                try {
+                    const res = await fetch(`/api/v1/facilitator/onboard?wallet=${wallet}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error);
+
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'output-row';
+                    
+                    let html = `<div style="color:var(--accent); margin-bottom: 1rem; font-weight:700;">[STATUS] RESOLVED DETERMINISTIC PDAs</div>`;
+                    
+                    for (const [name, info] of Object.entries(data.schemes || {})) {
+                        html += `
+                            <div style="margin-top: 1rem; color: var(--primary); font-weight: 700; font-size: 0.75rem;">// PROTOCOL: ${name.toUpperCase()}</div>
+                            <div><span class="output-label">Logic (PDA)</span><span class="output-val">${info.vaultPda}</span></div>
+                            <div><span class="output-label">SOL Storage</span><span class="output-val">${info.solStoragePda}</span></div>
+                            <div><span class="output-label">Fee (BPS)</span><span class="output-val">${info.feeBps}</span></div>
+                            <div><span class="output-label">State</span><span class="output-val">${info.status}</span></div>
+                        `;
+                    }
+                    resultDiv.innerHTML = html;
+                    output.appendChild(resultDiv);
+                } catch (err) {
+                    const errDiv = document.createElement('div');
+                    errDiv.style.color = '#ef4444';
+                    errDiv.style.marginTop = '0.5rem';
+                    errDiv.innerText = `[FAILURE] ${err.message}`;
+                    output.appendChild(errDiv);
+                }
+                
+                // Auto-scroll
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        });
+
+        // Telemetry loop
+        updateHealth();
+        setInterval(updateHealth, 15000);
+    </script>
 </body>
 </html>
