@@ -47,7 +47,7 @@ pub const BUILD_SLA_ESCROW_PAYMENT_TX_PATH: &str =
 /// `GET /openapi.json` — OpenAPI 3.1 document (static); also linked from `capabilities.httpEndpoints.openApi`.
 pub const FACILITATOR_OPENAPI_PATH: &str = "/openapi.json";
 
-/// `GET /agent-integration.md` — Markdown agent runbook (served by the facilitator binary); linked from `capabilities.httpEndpoints.agentIntegration`.
+/// `GET /agent-integration.md` — Markdown agent runbook (static `public/agent-integration.md`, like `openapi.json`); linked from `capabilities.httpEndpoints.agentIntegration`.
 pub const FACILITATOR_AGENT_INTEGRATION_PATH: &str = "/agent-integration.md";
 
 #[cfg(feature = "facilitator-http")]

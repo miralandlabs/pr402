@@ -10,6 +10,11 @@
       "source": "/api/v1/facilitator/openapi.json",
       "destination": "/openapi.json",
       "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/agent-integration.md",
+      "destination": "/agent-integration.md",
+      "permanent": false
     }
   ],
   "builds": [
@@ -35,8 +40,7 @@
     },
     {
       "src": "/agent-integration.md",
-      "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "dest": "/public/agent-integration.md"
     },
     {
       "src": "/api/v1/facilitator/verify",

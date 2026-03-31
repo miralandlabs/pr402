@@ -1,6 +1,6 @@
 # Agent integration (pr402 facilitator)
 
-Short runbook for **buyer-side** agents (wallets, OpenClaw-style orchestrators, or custom HTTP clients). **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL (e.g. `https://preview.pr402.signer-payer.me/openapi.json`). **This file** is embedded in the serverless binary and served at **`GET /agent-integration.md`** (see `capabilities.httpEndpoints.agentIntegration`). **Source:** `src/agent_integration.md` in the repo (Vercel’s Rust build may omit `docs/` from the package context). Machine discovery: **`GET /api/v1/facilitator/capabilities`** includes `httpEndpoints` and `openApi`.
+Short runbook for **buyer-side** agents (wallets, OpenClaw-style orchestrators, or custom HTTP clients). **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL (e.g. `https://preview.pr402.signer-payer.me/openapi.json`). **This file** lives in **`public/agent-integration.md`** in the repo and is served like **`openapi.json`** (static deploy; see `capabilities.httpEndpoints.agentIntegration`). Machine discovery: **`GET /api/v1/facilitator/capabilities`** includes `httpEndpoints` and `openApi`.
 
 ## 1. Discover
 

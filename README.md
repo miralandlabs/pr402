@@ -20,7 +20,7 @@ If **BlockhashNotFound** appears on settle, repeat build → sign → verify →
 
 | Integration | What to use |
 |-------------|-------------|
-| **Step-by-step** | **[`src/agent_integration.md`](src/agent_integration.md)** (also **`GET /agent-integration.md`** on a deployed host). Stub: [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). |
+| **Step-by-step** | **[`public/agent-integration.md`](public/agent-integration.md)** (same static pattern as `openapi.json`; **`GET /agent-integration.md`**). Stub: [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). |
 | **Schema / codegen** | **`GET /openapi.json`** on the facilitator base URL (see `capabilities.httpEndpoints.openApi`). |
 | **TypeScript** | Copy or import [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts): `getCapabilities`, `buildExactPaymentTx`, `verifyPayment`, `settlePayment`, etc. (`fetch` only). |
 | **Rust** | Add **`pr402`** with feature **`facilitator-http`**, then use **`pr402::sdk::http`**: [`FacilitatorHttpClient`](src/sdk/http.rs) or the free async functions (same paths as the TS file). Omit this feature when **deploying** the `facilitator` binary. |
@@ -75,7 +75,7 @@ To ensure the highest level of transparency for the Agentic Economy, the facilit
 
 ## 🚀 API Endpoints (v1)
 - **OpenAPI 3.1:** [`public/openapi.json`](public/openapi.json) — served at **`GET /openapi.json`** on the deployed host (and `GET /api/v1/facilitator/openapi.json` redirects there). Use it for agents, codegen, and contract tests. `GET /api/v1/facilitator/capabilities` includes `httpEndpoints.openApi` pointing to this path.
-- **Agent runbook:** edit [`src/agent_integration.md`](src/agent_integration.md) (embedded in the `facilitator` binary); served at **`GET /agent-integration.md`**. [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md) redirects readers there. Listed under `capabilities.httpEndpoints.agentIntegration`.
+- **Agent runbook:** edit [`public/agent-integration.md`](public/agent-integration.md) (static, like **`public/openapi.json`**); served at **`GET /agent-integration.md`** (`vercel.json` route). [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). Listed under `capabilities.httpEndpoints.agentIntegration`.
 - `GET /api/v1/facilitator/supported`: Returns the **Enriched Metadata** for all active schemes. This is the primary discovery endpoint for AI Agents.
 - `POST /api/v1/facilitator/verify`: Validates transactions against the protocol requirements and the agent's selected oracle.
 - `POST /api/v1/facilitator/settle`: Relays the signed transaction to the blockchain.
