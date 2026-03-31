@@ -59,6 +59,19 @@ static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 /// Institutional audit log category (mirrors signer-payer baseline).
 const LOG_SERVER_LOG: &str = "server_log";
 
+/// Buyer runbook (same as `docs/AGENT_INTEGRATION.md`); served at `GET /agent-integration.md`
+/// so Vercel does not rely on a separate static artifact for this path.
+const AGENT_INTEGRATION_MD: &str = include_str!("../../docs/AGENT_INTEGRATION.md");
+
+fn agent_integration_markdown_response() -> Response<Body> {
+    facilitator_response!()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/markdown; charset=utf-8")
+        .header("Cache-Control", "public, max-age=300")
+        .body(Body::Text(AGENT_INTEGRATION_MD.to_string()))
+        .unwrap()
+}
+
 fn with_api_version_v1(mut res: Response<Body>) -> Response<Body> {
     res.headers_mut().insert(
         http::HeaderName::from_static("x-api-version"),
@@ -265,6 +278,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
             let response = match (method.as_str(), path.as_str()) {
                 ("OPTIONS", p) if p.starts_with("/api/v1/facilitator") => cors_preflight_response(),
+                ("GET", "/agent-integration.md") => agent_integration_markdown_response(),
+                ("OPTIONS", "/agent-integration.md") => cors_preflight_response(),
                 ("POST", "/api/v1/facilitator/verify") => {
                     handle_verify(facilitator.clone(), body, correlation_hdr.as_deref()).await
                 }

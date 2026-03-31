@@ -35,7 +35,8 @@
     },
     {
       "src": "/agent-integration.md",
-      "dest": "/public/agent-integration.md"
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
     },
     {
       "src": "/api/v1/facilitator/verify",

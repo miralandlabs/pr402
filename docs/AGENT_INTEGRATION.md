@@ -1,6 +1,6 @@
 # Agent integration (pr402 facilitator)
 
-Short runbook for **buyer-side** agents (wallets, OpenClaw-style orchestrators, or custom HTTP clients). **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL (e.g. `https://preview.pr402.signer-payer.me/openapi.json`). **This document** is also served as static Markdown at **`GET /agent-integration.md`** on the same host (see `capabilities.httpEndpoints.agentIntegration`). Machine discovery: **`GET /api/v1/facilitator/capabilities`** includes `httpEndpoints` and `openApi`.
+Short runbook for **buyer-side** agents (wallets, OpenClaw-style orchestrators, or custom HTTP clients). **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL (e.g. `https://preview.pr402.signer-payer.me/openapi.json`). **This file** is what the facilitator serves at **`GET /agent-integration.md`** (embedded in the serverless binary from this path in the repo; see `capabilities.httpEndpoints.agentIntegration`). Machine discovery: **`GET /api/v1/facilitator/capabilities`** includes `httpEndpoints` and `openApi`.
 
 ## 1. Discover
 
