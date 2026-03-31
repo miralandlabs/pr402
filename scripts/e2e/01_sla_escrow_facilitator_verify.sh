@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
-# Scenario B: SLA-Escrow rail (larger devnet test amount; default 1 USDC — see E2E_SCENARIO_B_AMOUNT_HUMAN).
+# Scenario B1: SLA-Escrow — buyer pays Solana fees (CLI `fund-payment`, legacy-shaped shell).
 # Full x402 facilitator flow on devnet: on-chain fund-payment → POST /verify → POST /settle → optional DB.
+#
+# For facilitator-paid fees (recommended / `exact`-aligned), use `03_sla_escrow_http_facilitator_fees.sh`.
 #
 # Further SLA-Escrow lifecycle (submit-delivery, confirm-oracle, release-payment) is merchant/oracle
 # CLI work after the x402 verify/settle pair; see sla-escrow CLI and README below.
@@ -37,8 +39,8 @@ TTL_SEC="${E2E_SLA_TTL:-3600}"
 SLA_HASH_ZERO="0000000000000000000000000000000000000000000000000000000000000000"
 
 echo "=============================================="
-echo " E2E Scenario B: SLA-Escrow (devnet test amount)"
-echo "  → /verify + /settle (devnet)"
+echo " E2E Scenario B1: SLA-Escrow CLI (buyer-paid fees)"
+echo "  → fund-payment → /verify + /settle (devnet)"
 echo "=============================================="
 echo " Policy (prod ref): >= ${USDC_POLICY_THRESHOLD_WHOLE} USDC → sla-escrow — test uses ${AMOUNT_HUMAN} USDC"
 echo " RPC:             $RPC_URL"
@@ -177,5 +179,5 @@ if [[ "$SETTLE_CODE" != "200" ]]; then
 fi
 
 echo ""
-echo "✅ Scenario B: SLA-Escrow x402 verify + settle E2E finished."
+echo "✅ Scenario B1: SLA-Escrow (CLI / buyer-paid) verify + settle E2E finished."
 echo "   On-chain escrow lifecycle after settlement (delivery / oracle / release): use sla-escrow CLI if needed."

@@ -91,10 +91,23 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         // `escrow_details` upsert runs after `record_payment_settle` in `bin/facilitator.rs`
         // so the parent `payment_attempts` row exists (same ordering bug as verify).
 
-        // Fund-payment txs are buyer fee-paid and fully signed before they reach the facilitator.
-        // [`SolanaChainProvider::sign`] overwrites signature slot 0 for UniversalSettle/exact shells
-        // where the fee payer is the facilitator — that would corrupt buyer-signed FundPayment txs.
-        let tx_sig = settle_sla_escrow_fund_payment(&self.provider, verification).await?;
+        // Facilitator-sponsored fund txs (fee payer = facilitator, buyer = 2nd signer): reuse the same
+        // `sign` + `send_and_confirm` path as `exact`. Legacy buyer-paid shells keep idempotent
+        // confirm/submit in [`settle_sla_escrow_fund_payment`].
+        let facilitator = self.provider.pubkey();
+        let sponsor_is_facilitator = verification
+            .transaction
+            .message
+            .static_account_keys()
+            .first()
+            .copied()
+            == Some(facilitator);
+
+        let tx_sig = if sponsor_is_facilitator {
+            settle_transaction(&self.provider, verification).await?
+        } else {
+            settle_sla_escrow_fund_payment(&self.provider, verification).await?
+        };
 
         Ok(proto::v2::SettleResponse::Success {
             payer,
@@ -132,6 +145,7 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                     config_address: config_address.into(),
                     fee_bps: fee_bps.into(),
                     ttl_seconds: 3600.into(), // Default 1 hour
+                    sla_fund_tx_network_fee_payer: Some("facilitator".to_string()),
                 })
                 .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?,
             );
@@ -194,21 +208,24 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
     }
 }
 
-/// Submit or acknowledge an SLA-Escrow **FundPayment** transaction for x402 `/settle`.
+/// Submit or acknowledge an SLA-Escrow **FundPayment** transaction for x402 `/settle` (**buyer-paid**
+/// message layout only — facilitator-sponsored layouts use [`settle_transaction`] from [`settle`]).
 ///
-/// CLI / wallet flows usually **already broadcast** the fund tx before `/verify`. The shared
-/// [`settle_transaction`] path overwrites signature slot 0 with the facilitator fee payer (correct
-/// for `exact` shells, wrong for buyer-paid FundPayment). Here we either confirm the existing
-/// primary signature on-chain or submit the buyer-signed tx unchanged.
+/// The tx must be **fully signed** by the buyer (`!is_fully_signed` → error; never call
+/// [`settle_transaction`] here — it would overwrite slot 0 with the facilitator key). Then: confirm
+/// existing signature on-chain, submit unchanged if pending, or accept “already processed”.
 async fn settle_sla_escrow_fund_payment(
     provider: &SolanaChainProvider,
     verification: VerifyTransferResult,
 ) -> Result<Signature, X402SchemeFacilitatorError> {
     let tx_int = TransactionInt::new(verification.transaction.clone());
     if !tx_int.is_fully_signed() {
-        return settle_transaction(provider, verification)
-            .await
-            .map_err(Into::into);
+        // Only reached when message fee payer is **not** the facilitator (buyer-paid / CLI). Never
+        // call [`settle_transaction`] here — it overwrites signature slot 0 with the facilitator key.
+        return Err(X402SchemeFacilitatorError::OnchainFailure(
+            "escrow settle (buyer-paid): fund transaction must be fully signed by the buyer"
+                .to_string(),
+        ));
     }
 
     let primary = *verification.transaction.signatures.first().ok_or_else(|| {
@@ -384,6 +401,16 @@ pub async fn verify_transfer(
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
 
     let fee_payer_pubkey = provider.pubkey();
+    let message_fee_payer = transaction
+        .message
+        .static_account_keys()
+        .first()
+        .copied()
+        .ok_or_else(|| {
+            PaymentVerificationError::TransactionSimulation("missing fee payer key".into())
+        })?;
+    let facilitator_sponsors_fees = message_fee_payer == fee_payer_pubkey;
+
     for instruction in transaction.message.instructions().iter() {
         for account_idx in instruction.accounts.iter() {
             let account = transaction
@@ -402,9 +429,25 @@ pub async fn verify_transfer(
         }
     }
 
-    let signed_tx = TransactionInt::new(transaction.clone())
-        .sign(provider)
-        .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
+    if facilitator_sponsors_fees && buyer_pubkey != message_fee_payer {
+        let need_sigs = transaction.message.header().num_required_signatures as usize;
+        if need_sigs < 2 {
+            return Err(PaymentVerificationError::TransactionSimulation(
+                "Facilitator-sponsored fund tx must list two signers (facilitator fee payer + buyer)"
+                    .into(),
+            ));
+        }
+    }
+
+    // Simulation: add facilitator signature only when the message fee payer is the facilitator
+    // (`exact`-aligned two-signer shell). Buyer-paid / CLI layouts must keep client signatures intact.
+    let signed_tx = if facilitator_sponsors_fees {
+        TransactionInt::new(transaction.clone())
+            .sign(provider)
+            .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?
+    } else {
+        TransactionInt::new(transaction.clone())
+    };
 
     let cfg = RpcSimulateTransactionConfig {
         sig_verify: false,

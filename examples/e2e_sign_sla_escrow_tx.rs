@@ -1,5 +1,8 @@
 //! Sign an **unsigned** `VersionedTransaction` from
-//! `POST /api/v1/facilitator/build-sla-escrow-payment-tx` (buyer is fee payer + sole signer).
+//! `POST /api/v1/facilitator/build-sla-escrow-payment-tx`.
+//!
+//! **Default** response uses **facilitator** as fee payer: `try_partial_sign` fills **buyer** slots only
+//! (same idea as `e2e_sign_exact_tx`). For `buyerPaysTransactionFees: true`, buyer is the sole signer.
 //!
 //! ```text
 //! curl -s .../build-sla-escrow-payment-tx -d @body.json | jq -r .transaction \

@@ -25,6 +25,8 @@ export type BuildSlaEscrowPaymentTxRequest = {
   oracleAuthority: string;
   paymentUid?: string;
   skipSourceBalanceCheck?: boolean;
+  /** `true` = buyer fee payer (CLI-shaped). Omit/false = facilitator pays fees (`exact`-aligned). */
+  buyerPaysTransactionFees?: boolean;
 };
 
 export type BuildPaymentTxResponse = {

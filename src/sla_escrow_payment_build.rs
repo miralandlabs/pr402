@@ -2,8 +2,12 @@
 //! (same instruction layout as [`sla_escrow_api::sdk::EscrowSdk::fund_payment`], PDAs resolved from
 //! `SLAEscrowConfig.program_id` — not the crate-wired `sla_escrow_api::ID` alone).
 //!
-//! Unlike [`crate::exact_payment_build`], the **network fee payer is the buyer** (`payer`). The
-//! facilitator pubkey must not appear in any instruction account (see escrow [`verify_transfer`]).
+//! **Default (Phase 5):** the **facilitator** pays Solana network fees and is listed first as fee payer
+//! (same *shape* as [`crate::exact_payment_build`]): the buyer (`payer`) signs as `FundPayment`
+//! authority; slot 0 is reserved for the facilitator at `/settle`.
+//!
+//! Set **`buyer_pays_transaction_fees: true`** for legacy **buyer fee payer** shells (CLI-shaped
+//! txs). The facilitator pubkey must still not appear inside instruction account metas.
 
 use std::str::FromStr;
 
@@ -28,7 +32,7 @@ use spl_token::solana_program::program_pack::Pack;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildSlaEscrowPaymentTxRequest {
-    /// Buyer pubkey; signs the transaction and pays network fees.
+    /// Buyer pubkey; signs `FundPayment` (second signer when the facilitator is fee payer).
     pub payer: String,
     /// One element from `402 accepts[]` (`scheme: "sla-escrow"`).
     pub accepted: serde_json::Value,
@@ -44,16 +48,20 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     /// If `false` (default), require payer source ATA to exist and hold enough tokens.
     #[serde(default)]
     pub skip_source_balance_check: bool,
+    /// If `true`, build a **buyer fee payer** shell (one signer), matching `sla-escrow` CLI.
+    /// Default `false` — **facilitator** pays fees (aligned with `build-exact-payment-tx`).
+    #[serde(default)]
+    pub buyer_pays_transaction_fees: bool,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildSlaEscrowPaymentTxResponse {
     pub x402_version: u8,
-    /// Base64 `bincode` [`VersionedTransaction`], **unsigned** (buyer is fee payer + sole signer).
+    /// Base64 `bincode` [`VersionedTransaction`], **unsigned** (default: facilitator + buyer signer slots).
     pub transaction: String,
     pub recent_blockhash: String,
-    /// Same as `payer` (buyer pays Solana fees for this rail).
+    /// Network fee payer pubkey (`facilitator` by default; `payer` when `buyerPaysTransactionFees`).
     pub fee_payer: String,
     pub payer: String,
     pub payment_uid: String,
@@ -413,7 +421,12 @@ pub async fn build_sla_escrow_fund_payment_tx(
     );
     ixs.push(fund_ix);
 
-    let fee_payer_addr = Address::new_from_array(payer_pk.to_bytes());
+    let fee_payer_pk = if req.buyer_pays_transaction_fees {
+        payer_pk
+    } else {
+        provider.fee_payer()
+    };
+    let fee_payer_addr = Address::new_from_array(fee_payer_pk.to_bytes());
     let message = Message::new_with_blockhash(&ixs, Some(&fee_payer_addr), &blockhash);
     let tx = Transaction::new_unsigned(message);
     let vtx = VersionedTransaction::from(tx);
@@ -434,17 +447,25 @@ pub async fn build_sla_escrow_fund_payment_tx(
         "paymentRequirements": req.accepted,
     });
 
-    let notes = vec![
-        "SLA-Escrow: buyer (`payer`) is the transaction fee payer and sole signer — not the facilitator.".into(),
-        "Sign with the buyer keypair, broadcast the fund tx on-chain, then POST verify/settle with the signed transaction in paymentPayload.payload.transaction.".into(),
-        "Blockhashes expire; rebuild if verification fails with BlockhashNotFound.".into(),
-    ];
+    let notes = if req.buyer_pays_transaction_fees {
+        vec![
+            "SLA-Escrow (legacy): buyer pays Solana fees and is the sole signer — facilitator does not appear in instruction accounts.".into(),
+            "Sign with the buyer keypair; you may broadcast before verify or use /settle as today.".into(),
+            "Blockhashes expire; rebuild if verification fails with BlockhashNotFound.".into(),
+        ]
+    } else {
+        vec![
+            "SLA-Escrow (default): facilitator pays Solana fees; buyer signs FundPayment authority (second signer, same pattern as build-exact-payment-tx).".into(),
+            "Sign with the buyer keypair only (partial sign); POST /verify then /settle so the facilitator fills fee-payer signature slot 0.".into(),
+            "Blockhashes expire; rebuild if verification fails with BlockhashNotFound.".into(),
+        ]
+    };
 
     Ok(BuildSlaEscrowPaymentTxResponse {
         x402_version: 2,
         transaction: tx_b64,
         recent_blockhash: blockhash.to_string(),
-        fee_payer: payer_pk.to_string(),
+        fee_payer: fee_payer_pk.to_string(),
         payer: payer_pk.to_string(),
         payment_uid,
         verify_body_template,

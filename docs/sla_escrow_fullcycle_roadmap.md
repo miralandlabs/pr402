@@ -94,12 +94,14 @@ Deliver in order:
 
 ### Phase 4 — E2E & policy
 
+- [x] Dual SLA fund E2E on devnet: **`03_sla_escrow_http_facilitator_fees.sh`** (facilitator fees) + **`01_sla_escrow_facilitator_verify.sh`** (CLI buyer-paid); orchestrated by **`run_all_devnet.sh`** (`SKIP_SLA_HTTP` / `SKIP_SLA_CLI`).
 - [ ] Shell or Rust E2E: fund → submit-delivery → confirm-oracle → release (devnet), with `psql` asserts on new columns.
 - [ ] Document security: never accept oracle calls without checking on-chain payment state + pubkey.
 
 ### Phase 5 — FundPayment fee payer (optional product alignment)
 
-- [ ] Implement **facilitator fee payer** FundPayment in CLI/SDK so slot-0 signing matches `exact`; then **reduce** special-case settle logic over time.
+- [x] **Facilitator fee payer (default):** `build-sla-escrow-payment-tx` uses facilitator as message fee payer (two signers); `/verify` + `/settle` align with `exact` (`sign` slot 0 + `settle_transaction`). **`buyerPaysTransactionFees: true`** preserves buyer-paid / CLI-shaped txs (`settle_sla_escrow_fund_payment`). See [sla_escrow_fee_payer_and_settle.md](./sla_escrow_fee_payer_and_settle.md), `/supported` `extra.slaFundTxNetworkFeePayer`.
+- [ ] **CLI:** Optional non-send / facilitator fee-payer build mode (or document HTTP-only); `fund-payment` `about` text points agents at pr402.
 
 ---
 
