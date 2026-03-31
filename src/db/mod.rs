@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 use tokio::time::timeout;
+use tokio_postgres::types::Json;
 use tokio_postgres::Transaction;
 use tracing::{error, info};
 
@@ -828,18 +829,18 @@ impl Pr402Db {
             "refund_payment" => json!({}),
             _ => json!({}),
         };
-        let payload_str = payload_value.to_string();
-
         const INSERT_EV: &str = r#"
             INSERT INTO escrow_lifecycle_events (payment_attempt_id, step, tx_signature, payload)
-            VALUES ($1, $2, $3, $4::jsonb)
+            VALUES ($1, $2, $3, $4)
             "#;
+
+        let payload_json = Json(payload_value);
 
         let ins = match timeout(
             Self::QUERY_TIMEOUT,
             tx.execute(
                 INSERT_EV,
-                &[&attempt_id, &step_norm, &tx_signature, &payload_str],
+                &[&attempt_id, &step_norm, &tx_signature, &payload_json],
             ),
         )
         .await
