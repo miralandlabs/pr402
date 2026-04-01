@@ -55,6 +55,17 @@ pub struct SchemeOnboardInfo {
     pub token_pda: Option<String>,
     pub fee_bps: crate::proto::util::U16String,
     pub status: String,
+    pub is_sovereign: bool,
+    pub provisioning_status: Option<ProvisioningStatus>,
+}
+
+/// Recovery progress for JIT provisioned vaults.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisioningStatus {
+    pub asset: String,     // "SOL" or "USDC" (mint symbol)
+    pub recovered: String, // Raw units as string
+    pub total: String,     // Raw units as string
 }
 
 /// Complete onboarding response for a wallet across all supported schemes.

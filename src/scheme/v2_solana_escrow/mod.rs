@@ -205,9 +205,11 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             role: "Protocol Core (Global)".to_string(),
             vault_pda: escrow_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
-            token_pda: None, // Unique to each SPL token Bank
+            token_pda: None,
             fee_bps: fee_bps.into(),
             status: "Active".to_string(),
+            is_sovereign: false,
+            provisioning_status: None,
         })
     }
 

@@ -19,6 +19,7 @@ use crate::scheme::{
 
 // Re-export shared Solana verification logic
 pub mod shared;
+use crate::chain::solana_universalsettle::{Config as USConfig, SplitVault};
 use shared::{
     settle_transaction, verify_transaction as shared_verify_transaction, TransferRequirement,
     VerifyTransferResult,
@@ -159,15 +160,85 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         // MATHEMATICAL DISCOVERY: Calculate PDAs without spending SOL on-chain.
         let (vault_pda, _) = self.provider.get_vault_pda(&seller);
         let (sol_storage_pda, _) = self.provider.get_sol_storage_pda(vault_pda);
+        let (config_pda, _) = self.provider.get_config_pda(&us_config.program_id);
+
+        let mut is_sovereign = false;
+        let mut provisioning_status = None;
+        let mut current_fee_bps = fee_bps;
+
+        // Fetch on-chain state to determine sovereign status and recovery progress
+        if let Ok(vault_acc) = self.provider.rpc_client().get_account(&vault_pda).await {
+            let data = &vault_acc.data;
+            if data.len() >= 8 + std::mem::size_of::<SplitVault>() {
+                let vault: &SplitVault =
+                    bytemuck::from_bytes(&data[8..8 + std::mem::size_of::<SplitVault>()]);
+                is_sovereign = vault.is_sovereign == 1;
+
+                if !is_sovereign && vault.is_provisioned == 0 {
+                    // Fetch global config for recovery targets
+                    if let Ok(config_acc) =
+                        self.provider.rpc_client().get_account(&config_pda).await
+                    {
+                        let c_data = &config_acc.data;
+                        if c_data.len() >= 8 + std::mem::size_of::<USConfig>() {
+                            let config: &USConfig = bytemuck::from_bytes(
+                                &c_data[8..8 + std::mem::size_of::<USConfig>()],
+                            );
+                            let sol_recovered = u64::from_le_bytes(vault.sol_recovered);
+                            let sol_target = u64::from_le_bytes(config.provisioning_fee_sol);
+
+                            let spl_recovered = u64::from_le_bytes(vault.spl_recovered);
+                            let spl_target = u64::from_le_bytes(config.provisioning_fee_spl);
+
+                            current_fee_bps = u16::from_le_bytes(config.fee_bps);
+
+                            if sol_recovered > 0 || (spl_recovered == 0) {
+                                provisioning_status =
+                                    Some(crate::facilitator::ProvisioningStatus {
+                                        asset: "SOL".to_string(),
+                                        recovered: sol_recovered.to_string(),
+                                        total: sol_target.to_string(),
+                                    });
+                            } else if spl_recovered > 0 {
+                                provisioning_status =
+                                    Some(crate::facilitator::ProvisioningStatus {
+                                        asset: "USDC".to_string(),
+                                        recovered: spl_recovered.to_string(),
+                                        total: spl_target.to_string(),
+                                    });
+                            }
+                        }
+                    }
+                } else if is_sovereign {
+                    if let Ok(config_acc) =
+                        self.provider.rpc_client().get_account(&config_pda).await
+                    {
+                        let c_data = &config_acc.data;
+                        if c_data.len() >= 8 + std::mem::size_of::<USConfig>() {
+                            let config: &USConfig = bytemuck::from_bytes(
+                                &c_data[8..8 + std::mem::size_of::<USConfig>()],
+                            );
+                            current_fee_bps = u16::from_le_bytes(config.discounted_fee_bps);
+                        }
+                    }
+                }
+            }
+        }
 
         Ok(crate::facilitator::SchemeOnboardInfo {
             label: "SplitVault (Provider State)".to_string(),
             role: "Resource Provider (Seller)".to_string(),
             vault_pda: vault_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
-            token_pda: None, // Only provisioned for specific SPL mints during settlement
-            fee_bps: fee_bps.into(),
-            status: "Discovery".to_string(),
+            token_pda: None,
+            fee_bps: current_fee_bps.into(),
+            status: if is_sovereign {
+                "Sovereign".to_string()
+            } else {
+                "Active".to_string()
+            },
+            is_sovereign,
+            provisioning_status,
         })
     }
 

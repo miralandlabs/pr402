@@ -37,6 +37,7 @@ pub enum UniversalSettleInstruction {
     UpdateAuthority = 101,
     UpdateFeeRate = 102,
     UpdateFeeDestination = 103,
+    UpdateDiscountedFeeRate = 104,
 }
 
 /// UniversalSettle CreateVault instruction data structure.
@@ -71,6 +72,34 @@ impl SweepData {
         bytes.extend_from_slice(&self._padding);
         bytes
     }
+}
+
+/// UniversalSettle Config account structure (matches universalsettle/api/src/state/config.rs).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct Config {
+    pub authority: Pubkey,
+    pub fee_destination: Pubkey,
+    pub fee_bps: [u8; 2],
+    pub discounted_fee_bps: [u8; 2],
+    pub min_fee_amount: [u8; 8],
+    pub provisioning_fee_sol: [u8; 8],
+    pub provisioning_fee_spl: [u8; 8],
+    pub updated_at: [u8; 8],
+    pub _padding: [u8; 4],
+}
+
+/// UniversalSettle SplitVault account structure (matches universalsettle/api/src/state/split_vault.rs).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct SplitVault {
+    pub seller: Pubkey,
+    pub sol_recovered: [u8; 8],
+    pub spl_recovered: [u8; 8],
+    pub is_provisioned: u8,
+    pub bump: u8,
+    pub is_sovereign: u8,
+    pub _padding: [u8; 5],
 }
 
 pub fn build_create_vault_instruction(
