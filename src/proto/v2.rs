@@ -192,3 +192,18 @@ pub struct PaymentRequired {
     pub resource: ResourceInfo,
     pub accepts: Vec<serde_json::Value>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildPaymentTxResponse {
+    pub x402_version: u8,
+    pub transaction: String,
+    pub recent_blockhash: String,
+    pub fee_payer: String,
+    pub payer: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_uid: Option<String>,
+    pub verify_body_template: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}

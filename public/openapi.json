@@ -315,10 +315,37 @@
         }
       }
     },
+    "/api/v1/facilitator/onboard/build-tx": {
+      "get": {
+        "summary": "Build agent-native onboarding tx",
+        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) for UniversalSettle SplitVault creation. Sign and send to receive the 95 bps institutional discount.",
+        "operationId": "facilitatorOnboardBuildTx",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unsigned onboarding tx",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BuildPaymentTxResponse" }
+              }
+            }
+          },
+          "400": { "description": "Missing wallet" },
+          "500": { "description": "Error" }
+        }
+      }
+    },
     "/api/v1/facilitator/onboard": {
       "get": {
-        "summary": "Onboard preview (PDAs only, no DB)",
-        "description": "Public vault/sol_storage preview for UniversalSettle. For persisted registration use challenge + POST.",
+        "summary": "Onboard preview (status & incentives)",
+        "description": "Public vault/sol_storage preview for UniversalSettle. Clearly delivers fee rules and ROI status for proactive sellers.",
         "operationId": "facilitatorOnboardPreview",
         "parameters": [
           {
@@ -330,10 +357,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Scheme onboard info",
+            "description": "OnboardResponse",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": { "$ref": "#/components/schemas/OnboardResponse" }
               }
             }
           },
@@ -355,10 +382,10 @@
         },
         "responses": {
           "200": {
-            "description": "Onboard result",
+            "description": "OnboardResponse",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": { "$ref": "#/components/schemas/OnboardResponse" }
               }
             }
           },
@@ -407,10 +434,10 @@
         ],
         "responses": {
           "200": {
-            "description": "Snapshot JSON",
+            "description": "VaultSnapshotResponse",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": { "$ref": "#/components/schemas/VaultSnapshotResponse" }
               }
             }
           },
@@ -533,6 +560,53 @@
           "wallet": { "type": "string" },
           "message": { "type": "string" },
           "signature": { "type": "string" }
+        }
+      },
+      "ProvisioningStatus": {
+        "type": "object",
+        "required": ["asset", "recovered", "total"],
+        "properties": {
+          "asset": { "type": "string", "example": "SOL" },
+          "recovered": { "type": "string", "example": "5000000" },
+          "total": { "type": "string", "example": "10000000" }
+        }
+      },
+      "SchemeOnboardInfo": {
+        "type": "object",
+        "required": ["label", "role", "vaultPda", "solStoragePda", "feeBps", "status", "isSovereign"],
+        "properties": {
+          "label": { "type": "string" },
+          "role": { "type": "string" },
+          "vaultPda": { "type": "string" },
+          "solStoragePda": { "type": "string" },
+          "tokenPda": { "type": "string", "nullable": true },
+          "feeBps": { "type": "string", "description": "Effective fee in basis points" },
+          "status": { "type": "string", "example": "Sovereign" },
+          "isSovereign": { "type": "boolean", "description": "Has 5 bps institutional discount" },
+          "provisioningStatus": { "$ref": "#/components/schemas/ProvisioningStatus", "nullable": true }
+        }
+      },
+      "OnboardResponse": {
+        "type": "object",
+        "required": ["wallet", "facilitator", "schemes"],
+        "properties": {
+          "wallet": { "type": "string" },
+          "facilitator": { "type": "string" },
+          "schemes": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/components/schemas/SchemeOnboardInfo" }
+          }
+        }
+      },
+      "VaultSnapshotResponse": {
+        "type": "object",
+        "required": ["wallet", "vaultPda"],
+        "properties": {
+          "wallet": { "type": "string" },
+          "vaultPda": { "type": "string" },
+          "solBalance": { "type": "string" },
+          "splBalance": { "type": "string", "nullable": true },
+          "isProvisioned": { "type": "boolean" }
         }
       }
     }

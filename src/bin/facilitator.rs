@@ -333,6 +333,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("GET", "/api/v1/facilitator/onboard") => {
                     handle_onboard_preview(facilitator.clone(), &query).await
                 }
+                ("GET", "/api/v1/facilitator/onboard/build-tx") => {
+                    handle_onboard_build_tx(facilitator.clone(), &query).await
+                }
                 ("GET", "/api/v1/facilitator/vault-snapshot") => {
                     handle_vault_snapshot(&query).await
                 }
@@ -836,6 +839,8 @@ async fn handle_capabilities(
             "settle": { "method": "POST", "path": "/api/v1/facilitator/settle" },
             "buildExactPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-exact-payment-tx" },
             "buildSlaEscrowPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-sla-escrow-payment-tx" },
+            "onboard": { "method": "POST", "path": "/api/v1/facilitator/onboard" },
+            "buildOnboardTx": { "method": "GET", "path": "/api/v1/facilitator/onboard/build-tx" },
             "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
             "health": { "method": "GET", "path": "/api/v1/facilitator/health" },
             "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" }
@@ -880,6 +885,34 @@ async fn handle_onboard_preview(
         Err(e) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("Onboarding failed: {}", e),
+        ),
+    }
+}
+
+/// Agent-Native Onboarding: Build an unsigned UniversalSettle `create_vault` transaction.
+/// Query: `wallet=<PUBKEY>`. Return: [`pr402::proto::v2::BuildPaymentTxResponse`].
+async fn handle_onboard_build_tx(
+    facilitator: Arc<
+        dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,
+    >,
+    query: &str,
+) -> Response<Body> {
+    let wallet = query_param(query, "wallet");
+    if wallet.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "Missing wallet parameter");
+    }
+
+    match facilitator.build_onboard_tx(&wallet).await {
+        Ok(response) => facilitator_response!()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Body::Text(serde_json::to_string(&response).unwrap_or_else(
+                |_| r#"{"error":"serialization failed"}"#.to_string(),
+            )))
+            .unwrap(),
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Build onboard tx failed: {}", e),
         ),
     }
 }

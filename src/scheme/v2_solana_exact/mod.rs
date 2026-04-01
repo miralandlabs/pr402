@@ -242,6 +242,52 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         })
     }
 
+    async fn build_onboard_tx(
+        &self,
+        wallet: &str,
+    ) -> Result<proto::v2::BuildPaymentTxResponse, X402SchemeFacilitatorError> {
+        let seller = solana_pubkey::Pubkey::from_str(wallet)
+            .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?;
+        let us_config = self.provider.universalsettle().ok_or_else(|| {
+            X402SchemeFacilitatorError::OnchainFailure("UniversalSettle not enabled".to_string())
+        })?;
+
+        let ix = crate::chain::solana_universalsettle::build_create_vault_instruction(
+            us_config.program_id,
+            seller,
+            seller,
+        );
+
+        let blockhash = self
+            .provider
+            .rpc_client()
+            .get_latest_blockhash()
+            .await
+            .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?;
+
+        // Manual construction of VersionedTransaction (unsigned shell)
+        let message = solana_message::v0::Message::try_compile(&seller, &[ix], &[], blockhash)
+            .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?;
+
+        let tx = solana_transaction::versioned::VersionedTransaction {
+            signatures: vec![solana_signature::Signature::default()],
+            message: solana_message::VersionedMessage::V0(message),
+        };
+
+        let tx_b64 = bs58::encode(bincode::serialize(&tx).unwrap()).into_string();
+
+        Ok(proto::v2::BuildPaymentTxResponse {
+            x402_version: 2,
+            transaction: tx_b64,
+            recent_blockhash: blockhash.to_string(),
+            fee_payer: seller.to_string(),
+            payer: seller.to_string(),
+            payment_uid: None,
+            verify_body_template: serde_json::Value::Null,
+            notes: vec!["Sovereign onboarding transaction created. Sign and send to receive the 95 bps institutional discount.".to_string()],
+        })
+    }
+
     async fn upgrade(
         &self,
         request: &proto::PaymentRequired,

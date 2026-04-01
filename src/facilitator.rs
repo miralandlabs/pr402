@@ -37,6 +37,12 @@ pub trait Facilitator: Send + Sync {
     /// Onboards a resource owner's wallet by ensuring vaults are provisioned.
     async fn onboard(&self, wallet: &str) -> Result<OnboardResponse, Self::Error>;
 
+    /// Builds an unsigned transaction for proactive onboarding to become Sovereign.
+    async fn build_onboard_tx(
+        &self,
+        wallet: &str,
+    ) -> Result<proto::v2::BuildPaymentTxResponse, Self::Error>;
+
     /// Upgrades a Lite 402 challenge into a full Institutional PaymentRequired response.
     async fn upgrade(
         &self,
@@ -220,6 +226,25 @@ impl Facilitator for FacilitatorLocal {
         Ok(response)
     }
 
+    async fn build_onboard_tx(
+        &self,
+        wallet: &str,
+    ) -> Result<proto::v2::BuildPaymentTxResponse, Self::Error> {
+        // UniversalSettle Proactive Onboarding: Any scheme handler can build it since they
+        // all share the same UniversalSettle infrastructure. We pick the first one.
+        for handler in self.scheme_handlers.values() {
+            if let Ok(tx) = handler.build_onboard_tx(wallet).await {
+                return Ok(tx);
+            }
+        }
+
+        Err(FacilitatorLocalError::Onboard(
+            X402SchemeFacilitatorError::OnchainFailure(
+                "No scheme handler could build onboarding transaction".to_string(),
+            ),
+        ))
+    }
+
     async fn upgrade(
         &self,
         request: &proto::PaymentRequired,
@@ -243,4 +268,6 @@ pub enum FacilitatorLocalError {
     Settlement(X402SchemeFacilitatorError),
     #[error(transparent)]
     Upgrade(X402SchemeFacilitatorError),
+    #[error(transparent)]
+    Onboard(X402SchemeFacilitatorError),
 }
