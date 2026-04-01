@@ -990,4 +990,44 @@ impl Pr402Db {
 
         Ok(())
     }
+
+    /// Count how many shadow vaults (facilitator-paid) were created in the last 24 hours.
+    pub async fn count_daily_vault_creations(&self) -> Result<u64, DbError> {
+        // We count resource_providers where the facilitator provisioned (verified_at is null)
+        // and a vault PDA exists, within the last 24 hours.
+        const SQL: &str = r#"
+                SELECT COUNT(*) as count
+                FROM resource_providers
+                WHERE registration_verified_at IS NULL
+                  AND split_vault_pda IS NOT NULL
+                  AND last_seen_at >= NOW() - INTERVAL '24 hours'
+                "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(Self::QUERY_TIMEOUT, tx.query_one(SQL, &[])).await {
+            Ok(Ok(row)) => {
+                let count: i64 = row.get("count");
+                Ok(count as u64)
+            }
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "count_daily_vault_creations failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        if result.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        result
+    }
 }

@@ -153,6 +153,7 @@ CREATE INDEX IF NOT EXISTS idx_parameters_inactive ON parameters (inactive ASC);
 -- =============================================================================
 
 INSERT INTO parameters (param_name, param_value) VALUES
+    ('PR402_MAX_DAILY_PROVISION_COUNT', '50'),
     ('PR402_ONBOARD_HMAC_SECRET', 'AgenticEconomics'),
     ('PR402_ONBOARD_CHALLENGE_TTL_SEC', '600'),
     ('PR402_SWEEP_MIN_SPENDABLE_LAMPORTS', '30000000'),

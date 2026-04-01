@@ -302,6 +302,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("POST", "/api/v1/facilitator/settle") => {
                     handle_settle(facilitator.clone(), body, correlation_hdr.as_deref()).await
                 }
+                ("POST", "/api/v1/facilitator/upgrade") => {
+                    handle_upgrade(facilitator.clone(), body).await
+                }
                 ("GET", "/api/v1/facilitator/supported") => {
                     handle_supported(facilitator.clone()).await
                 }
@@ -999,6 +1002,37 @@ async fn handle_onboard_submit(
             StatusCode::INTERNAL_SERVER_ERROR,
             &format!("Onboarding failed: {}", e),
         ),
+    }
+}
+
+async fn handle_upgrade(
+    facilitator: Arc<
+        dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,
+    >,
+    body: Body,
+) -> Response<Body> {
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+    };
+
+    let upgrade_request: pr402::proto::PaymentRequired = match serde_json::from_str(&body_str) {
+        Ok(req) => req,
+        Err(e) => {
+            return error_response(StatusCode::BAD_REQUEST, &format!("Invalid request: {}", e));
+        }
+    };
+
+    match facilitator.upgrade(&upgrade_request).await {
+        Ok(response) => facilitator_response!()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Body::Text(serde_json::to_string(&response).unwrap_or_else(
+                |_| r#"{"error":"serialization failed"}"#.to_string(),
+            )))
+            .unwrap(),
+        Err(e) => error_response(StatusCode::BAD_REQUEST, &format!("Upgrade failed: {}", e)),
     }
 }
 

@@ -285,7 +285,8 @@ impl AsPaymentProblem for PaymentVerificationError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum PaymentRequired {
     V2(v2::PaymentRequired),
 }

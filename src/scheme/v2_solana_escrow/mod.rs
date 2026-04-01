@@ -210,6 +210,63 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             status: "Active".to_string(),
         })
     }
+
+    async fn upgrade(
+        &self,
+        request: &proto::PaymentRequired,
+    ) -> Result<proto::PaymentRequired, X402SchemeFacilitatorError> {
+        let mut pr = match request {
+            proto::PaymentRequired::V2(v2) => v2.clone(),
+        };
+
+        for (i, accept) in pr.accepts.iter_mut().enumerate() {
+            let scheme = accept.get("scheme").and_then(|s| s.as_str());
+            let network = accept.get("network").and_then(|n| n.as_str());
+
+            if scheme == Some(SLAEscrowScheme.as_ref())
+                && network == Some(&self.provider.chain_id().to_string())
+            {
+                // SE-CRIT-12: Escrow Elevation.
+                // In SLA-Escrow, we must provide the trusted oracles and program metadata.
+                let escrow_config = self
+                    .provider
+                    .sla_escrow()
+                    .expect("SLAEscrow config missing");
+
+                let (bank_address, _) = self.provider.get_bank_pda(&escrow_config.program_id);
+                let (config_address, _) = self.provider.get_config_pda(&escrow_config.program_id);
+                let fee_bps = escrow_config.fee_bps.unwrap_or(0);
+
+                let oracle_authorities = escrow_config
+                    .oracle_authorities
+                    .iter()
+                    .map(|p| (*p).into())
+                    .collect::<Vec<Address>>();
+
+                if let Some(obj) = accept.as_object_mut() {
+                    let extra = types::SLAEscrowPaymentRequirementsExtra {
+                        fee_payer: self.provider.fee_payer().into(),
+                        oracle_authorities,
+                        escrow_program_id: escrow_config.program_id.into(),
+                        bank_address: bank_address.into(),
+                        config_address: config_address.into(),
+                        fee_bps: fee_bps.into(),
+                        ttl_seconds: 3600.into(), // Default 1 hour
+                        sla_fund_tx_network_fee_payer: Some("facilitator".to_string()),
+                    };
+                    obj.insert("extra".to_string(), serde_json::to_value(extra).unwrap());
+
+                    tracing::info!(
+                        index = i,
+                        scheme = %SLAEscrowScheme.as_ref(),
+                        "Upgraded Lite challenge with Escrow institutional metadata"
+                    );
+                }
+            }
+        }
+
+        Ok(proto::PaymentRequired::V2(pr))
+    }
 }
 
 /// Submit or acknowledge an SLA-Escrow **FundPayment** transaction for x402 `/settle` (**buyer-paid**

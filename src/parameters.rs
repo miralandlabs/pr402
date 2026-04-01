@@ -89,6 +89,9 @@ pub const PR402_ONBOARD_CHALLENGE_TTL_SEC: &str = "PR402_ONBOARD_CHALLENGE_TTL_S
 /// Comma-separated SPL mint pubkeys (or single mint) for quote / payment rails — optional consumer.
 pub const PR402_QUOTE_SPL_MINTS: &str = "PR402_QUOTE_SPL_MINTS";
 
+/// Maximum number of new SplitVaults the facilitator will pay to create per day (anti-spam).
+pub const PR402_MAX_DAILY_PROVISION_COUNT: &str = "PR402_MAX_DAILY_PROVISION_COUNT";
+
 /// Min spendable lamports in UniversalSettle SOL storage before submitting a Sweep (gas not worth dust).
 pub const PR402_SWEEP_MIN_SPENDABLE_LAMPORTS: &str = "PR402_SWEEP_MIN_SPENDABLE_LAMPORTS";
 /// Default min SPL raw amount when mint has no entry in [`PR402_SWEEP_MIN_SPL_RAW_BY_MINT`] (see [`DEFAULT_SWEEP_MIN_SPL_RAW_DEFAULT`]).
@@ -101,6 +104,9 @@ pub const DEFAULT_SWEEP_MIN_SPENDABLE_LAMPORTS: u64 = 30_000_000;
 
 /// Fallback when `PR402_SWEEP_MIN_SPL_RAW_DEFAULT` is unset (~$3 at 6 decimals; typical stablecoin rails).
 pub const DEFAULT_SWEEP_MIN_SPL_RAW_DEFAULT: u64 = 3_000_000;
+
+/// Fallback when `PR402_MAX_DAILY_PROVISION_COUNT` is unset.
+pub const DEFAULT_MAX_DAILY_PROVISION_COUNT: u64 = 50;
 
 /// Read cache then env (no async DB fetch). Call [`refresh_parameters_from_db`] before settle so cache is warm.
 pub fn resolve_string_sync(param_key: &str, env_key: &str) -> Option<String> {

@@ -517,38 +517,96 @@ pub async fn settle_transaction(
                     }
 
                     if !skip_sweep {
-                        let sweep_ix =
-                            crate::chain::solana_universalsettle::build_sweep_instruction(
-                                us_config.program_id,
-                                provider.pubkey(),
-                                vault_pda,
-                                seller,
-                                fee_dest,
-                                token_mint,
-                                details.amount,
-                                is_sol_sweep,
-                                details.token_program,
+                        let mut instructions = Vec::new();
+
+                        // SE-CRIT-11: JIT Onboarding logic.
+                        // If the merchant vault doesn't exist, the facilitator creates it (paying rent)
+                        // as long as the daily onboarding quota isn't exceeded.
+                        match provider.account_exists(&vault_pda).await {
+                            Ok(exists) => {
+                                if !exists {
+                                    let max_provisions = crate::parameters::resolve_u64_sync(
+                                        crate::parameters::PR402_MAX_DAILY_PROVISION_COUNT,
+                                        crate::parameters::PR402_MAX_DAILY_PROVISION_COUNT,
+                                        crate::parameters::DEFAULT_MAX_DAILY_PROVISION_COUNT,
+                                    );
+                                    let count = {
+                                        // We need to check the DB for the daily count.
+                                        // Note: In serverless, we might not have a long-lived DB connection here,
+                                        // but we attempt it if configured.
+                                        let db_url = std::env::var("DATABASE_URL").ok();
+                                        if let Some(url) = db_url {
+                                            if let Ok(db) = crate::db::Pr402Db::connect(url) {
+                                                db.count_daily_vault_creations().await.unwrap_or(0)
+                                            } else {
+                                                0
+                                            }
+                                        } else {
+                                            0
+                                        }
+                                    };
+
+                                    if count < max_provisions {
+                                        tracing::info!(
+                                            seller = %seller,
+                                            vault = %vault_pda,
+                                            "provisioning new SplitVault (JIT)"
+                                        );
+                                        instructions.push(crate::chain::solana_universalsettle::build_create_vault_instruction(
+                                            us_config.program_id,
+                                            provider.pubkey(),
+                                            seller,
+                                        ));
+                                    } else {
+                                        tracing::warn!(
+                                            seller = %seller,
+                                            "skip UniversalSettle shadow provision: daily quota reached"
+                                        );
+                                        // We skip the sweep because the vault doesn't exist and we can't create it.
+                                        skip_sweep = true;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, "vault existence check failed during settlement");
+                            }
+                        }
+
+                        if !skip_sweep {
+                            instructions.push(
+                                crate::chain::solana_universalsettle::build_sweep_instruction(
+                                    us_config.program_id,
+                                    provider.pubkey(),
+                                    vault_pda,
+                                    seller,
+                                    fee_dest,
+                                    token_mint,
+                                    details.amount,
+                                    is_sol_sweep,
+                                    details.token_program,
+                                ),
                             );
 
-                        let (recent_blockhash, _) = provider
-                            .rpc_client()
-                            .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())
-                            .await?;
-                        let sweep_tx = VersionedTransaction::from(
-                            solana_transaction::Transaction::new_signed_with_payer(
-                                &[sweep_ix],
-                                Some(&provider.pubkey()),
-                                &[provider.keypair()],
-                                recent_blockhash,
-                            ),
-                        );
-                        if let Err(e) = provider.send_sweep_transaction(&sweep_tx).await {
-                            tracing::warn!(
-                                error = %e,
-                                payment_signature = %tx_sig,
-                                seller = %seller,
-                                "UniversalSettle sweep transaction send failed"
+                            let (recent_blockhash, _) = provider
+                                .rpc_client()
+                                .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())
+                                .await?;
+                            let sweep_tx = VersionedTransaction::from(
+                                solana_transaction::Transaction::new_signed_with_payer(
+                                    &instructions,
+                                    Some(&provider.pubkey()),
+                                    &[provider.keypair()],
+                                    recent_blockhash,
+                                ),
                             );
+                            if let Err(e) = provider.send_sweep_transaction(&sweep_tx).await {
+                                tracing::warn!(
+                                    error = %e,
+                                    payment_signature = %tx_sig,
+                                    seller = %seller,
+                                    "UniversalSettle sweep transaction send failed"
+                                );
+                            }
                         }
                     }
                 }

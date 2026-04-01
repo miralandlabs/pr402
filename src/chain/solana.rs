@@ -102,6 +102,19 @@ impl SolanaChainProvider {
         self.rpc_client.get_slot().await.map_err(|e| e.into())
     }
 
+    pub async fn account_exists(&self, pubkey: &Pubkey) -> Result<bool, SolanaChainProviderError> {
+        match self.rpc_client.get_account(pubkey).await {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                if e.to_string().contains("AccountNotFound") {
+                    Ok(false)
+                } else {
+                    Err(e.into())
+                }
+            }
+        }
+    }
+
     pub fn chain_id(&self) -> crate::chain::ChainId {
         self.chain_id.clone()
     }

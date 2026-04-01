@@ -36,6 +36,12 @@ pub trait Facilitator: Send + Sync {
 
     /// Onboards a resource owner's wallet by ensuring vaults are provisioned.
     async fn onboard(&self, wallet: &str) -> Result<OnboardResponse, Self::Error>;
+
+    /// Upgrades a Lite 402 challenge into a full Institutional PaymentRequired response.
+    async fn upgrade(
+        &self,
+        request: &proto::PaymentRequired,
+    ) -> Result<proto::PaymentRequired, Self::Error>;
 }
 
 /// Information returned after onboarding a wallet for a specific scheme.
@@ -202,6 +208,20 @@ impl Facilitator for FacilitatorLocal {
 
         Ok(response)
     }
+
+    async fn upgrade(
+        &self,
+        request: &proto::PaymentRequired,
+    ) -> Result<proto::PaymentRequired, Self::Error> {
+        let mut upgraded = request.clone();
+        for handler in self.scheme_handlers.values() {
+            upgraded = handler
+                .upgrade(&upgraded)
+                .await
+                .map_err(FacilitatorLocalError::Upgrade)?;
+        }
+        Ok(upgraded)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -210,4 +230,6 @@ pub enum FacilitatorLocalError {
     Verification(X402SchemeFacilitatorError),
     #[error(transparent)]
     Settlement(X402SchemeFacilitatorError),
+    #[error(transparent)]
+    Upgrade(X402SchemeFacilitatorError),
 }

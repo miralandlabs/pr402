@@ -4,6 +4,7 @@
 //! [`RpcClient::get_account`]. For a wallet-held balance, Solana’s
 //! `getTokenAccountsByOwner` is also available on [`RpcClient`] if you need to scan all mints.
 
+use serde::Serialize;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_client::rpc_request::TokenAccountsFilter;
 use solana_client::rpc_response::UiAccountData;
@@ -16,7 +17,7 @@ const VAULT_SEED: &[u8] = b"vault";
 const SOL_STORAGE_SEED: &[u8] = b"sol_storage";
 
 /// Snapshot of spendable balances for one seller's UniversalSettle vaults.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct UniversalSettleVaultSnapshot {
     pub seller: Pubkey,
     pub program_id: Pubkey,

@@ -170,6 +170,60 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             status: "Discovery".to_string(),
         })
     }
+
+    async fn upgrade(
+        &self,
+        request: &proto::PaymentRequired,
+    ) -> Result<proto::PaymentRequired, X402SchemeFacilitatorError> {
+        let mut pr = match request {
+            proto::PaymentRequired::V2(v2) => v2.clone(),
+        };
+
+        for (i, accept) in pr.accepts.iter_mut().enumerate() {
+            let scheme = accept.get("scheme").and_then(|s| s.as_str());
+            let network = accept.get("network").and_then(|n| n.as_str());
+
+            if scheme == Some(ExactScheme.as_ref())
+                && network == Some(&self.provider.chain_id().to_string())
+            {
+                let pay_to = accept.get("payTo").and_then(|p| p.as_str()).unwrap_or("");
+                if let Ok(merchant_wallet) = solana_pubkey::Pubkey::from_str(pay_to) {
+                    // SE-CRIT-11: Institutional Elevation.
+                    // If the merchant provided a raw wallet, we elevate it to their SplitVault PDA.
+                    let (vault_pda, _) = self.provider.get_vault_pda(&merchant_wallet);
+
+                    if let Some(obj) = accept.as_object_mut() {
+                        obj.insert(
+                            "payTo".to_string(),
+                            serde_json::json!(vault_pda.to_string()),
+                        );
+
+                        // Inject required institutional metadata for agentic signers
+                        if let Some(us_config) = self.provider.universalsettle() {
+                            let (config_address, _) =
+                                self.provider.get_config_pda(&us_config.program_id);
+                            let extra = SupportedPaymentKindExtra {
+                                fee_payer: self.provider.fee_payer().into(),
+                                program_id: us_config.program_id.into(),
+                                config_address: config_address.into(),
+                                fee_bps: us_config.fee_bps.unwrap_or(0).into(),
+                            };
+                            obj.insert("extra".to_string(), serde_json::to_value(extra).unwrap());
+                        }
+
+                        tracing::info!(
+                            index = i,
+                            merchant = %merchant_wallet,
+                            vault = %vault_pda,
+                            "Upgraded Lite challenge to institutional SplitVault"
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(proto::PaymentRequired::V2(pr))
+    }
 }
 
 /// Verify a v2 transfer request.
