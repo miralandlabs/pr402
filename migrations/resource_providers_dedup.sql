@@ -26,6 +26,6 @@ NULLS NOT DISTINCT;
 COMMIT;
 
 -- 4. Verification
-SELECT id, wallet_pubkey, settlement_mode, spl_mint, last_seen_at 
+SELECT id, wallet_pubkey, settlement_mode, spl_mint, updated_at 
 FROM resource_providers 
-ORDER BY last_seen_at DESC;
+ORDER BY updated_at DESC;

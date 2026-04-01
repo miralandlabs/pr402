@@ -250,10 +250,10 @@ impl Pr402Db {
         spl_mint: Option<&str>,
     ) -> Result<i64, DbError> {
         const SQL: &str = r#"
-                INSERT INTO resource_providers (wallet_pubkey, settlement_mode, spl_mint, last_seen_at)
+                INSERT INTO resource_providers (wallet_pubkey, settlement_mode, spl_mint, updated_at)
                 VALUES ($1, $2, $3, NOW())
                 ON CONFLICT (wallet_pubkey, settlement_mode, spl_mint) DO UPDATE SET
-                    last_seen_at = NOW()
+                    updated_at = NOW()
                 RETURNING id
                 "#;
 
@@ -316,13 +316,13 @@ impl Pr402Db {
         const SQL: &str = r#"
                 INSERT INTO resource_providers (
                     wallet_pubkey, settlement_mode, spl_mint,
-                    split_vault_pda, vault_sol_storage_pda, last_seen_at
+                    split_vault_pda, vault_sol_storage_pda, updated_at
                 )
                 VALUES ($1, $2, $3, $4, $5, NOW())
                 ON CONFLICT (wallet_pubkey, settlement_mode, spl_mint) DO UPDATE SET
                     split_vault_pda = EXCLUDED.split_vault_pda,
                     vault_sol_storage_pda = EXCLUDED.vault_sol_storage_pda,
-                    last_seen_at = NOW()
+                    updated_at = NOW()
                 RETURNING id
                 "#;
 
@@ -394,13 +394,13 @@ impl Pr402Db {
         const SQL: &str = r#"
                 INSERT INTO resource_providers (
                     wallet_pubkey, settlement_mode, spl_mint,
-                    split_vault_pda, vault_sol_storage_pda, last_seen_at, registration_verified_at
+                    split_vault_pda, vault_sol_storage_pda, updated_at, registration_verified_at
                 )
                 VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
                 ON CONFLICT (wallet_pubkey, settlement_mode, spl_mint) DO UPDATE SET
                     split_vault_pda = EXCLUDED.split_vault_pda,
                     vault_sol_storage_pda = EXCLUDED.vault_sol_storage_pda,
-                    last_seen_at = NOW(),
+                    updated_at = NOW(),
                     registration_verified_at = NOW()
                 RETURNING id
                 "#;
@@ -1000,7 +1000,7 @@ impl Pr402Db {
                 FROM resource_providers
                 WHERE registration_verified_at IS NULL
                   AND split_vault_pda IS NOT NULL
-                  AND last_seen_at >= NOW() - INTERVAL '24 hours'
+                  AND created_at >= NOW() - INTERVAL '24 hours'
                 "#;
 
         let mut client = self.conn().await?;

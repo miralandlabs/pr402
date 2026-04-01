@@ -27,11 +27,11 @@ CREATE TABLE IF NOT EXISTS resource_providers (
     split_vault_pda     TEXT,
     vault_sol_storage_pda TEXT,
     registration_verified_at TIMESTAMPTZ,
-    first_seen_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_seen_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_sweep_attempt_at TIMESTAMPTZ,
     last_sweep_signature TEXT,
-    inactive            BOOLEAN NOT NULL DEFAULT FALSE
+    inactive            BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE resource_providers ENABLE ROW LEVEL SECURITY;
@@ -42,8 +42,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_providers_dedup_trip
 ON resource_providers (wallet_pubkey, settlement_mode, spl_mint) 
 NULLS NOT DISTINCT;
 
-CREATE INDEX IF NOT EXISTS idx_resource_providers_last_seen
-    ON resource_providers (last_seen_at ASC);
+CREATE INDEX IF NOT EXISTS idx_resource_providers_created_at
+    ON resource_providers (created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_resource_providers_updated_at
+    ON resource_providers (updated_at ASC);
 
 CREATE TABLE IF NOT EXISTS payment_attempts (
     id                   BIGSERIAL PRIMARY KEY,
