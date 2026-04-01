@@ -5,16 +5,16 @@ Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Res
 ## 1. Institutional Neutrality & Incentives
 X402 is designed for "Zero-Barrier" entry. You do not need SOL in your wallet to start receiving payments. We offer two paths with a specific **Institutional Incentive** for proactive providers.
 
-### Path A: Sovereign Onboarding (Merchant-Paid) 🏆 *Recommended*
+### Path A: Protocol Onboarding (On-Chain Provisioning) 🏆 *Recommended*
 If you already have SOL and wish to fully control your vault setup:
 
-**Choice 1: CLI-Native**
+**Choice 1: CLI-Native (Protocol On-Chain)**
 Use the UniversalSettle CLI directly:
 ```bash
 universalsettle create-vault --seller <YOUR_WALLET_PUBKEY>
 ```
 
-**Choice 2: Agent-Native (API + Local Signing)**
+**Choice 2: Agent-Native (Protocol On-Chain)**
 For autonomous agents and backend services:
 1. **Build**: `GET /api/v1/facilitator/onboard/build-tx?wallet=<YOUR_PUBKEY>`
 2. **Sign**: Use your private key to sign the returned transaction locally.
@@ -23,6 +23,8 @@ For autonomous agents and backend services:
 **Institutional Incentive**: 
 - **Discounted Fees**: You receive an ongoing **5 bps (0.05%) discount** on all protocol fees. (Standard: 1.00% → Your Rate: **0.95%**).
 - **No Setup Fee**: You avoid the one-time $1.00 provisioning recovery fee.
+
+**Registry (Off-Chain Discovery)**: After provisioning your vault on-chain, use the Facilitator API (`/onboard/challenge`) to persist your verified metadata in the database for high-fidelity discovery.
 
 ### Path B: Facilitated Onboarding (Shadow/JIT)
 If you have no SOL and want a seamless start:
