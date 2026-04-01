@@ -14,7 +14,7 @@ FACILITATOR_URL = os.getenv("PR402_BASE_URL", "https://preview.pr402.signer-paye
 
 # Program IDs
 SLA_ESCROW_ID = "s1jWKnB1QwKKKZUDq3bZCmqvwEf8UQpQCbkEtQzHknS"
-UNIVERSALSETTLE_ID = "u2pHjM1sFzXFYK9Sh6hdjx1uVDW7pVUfUeCfpudrYu7"
+UNIVERSALSETTLE_ID = "u3rpbRNp8AS91gs9hCJhQM22AmAZDcq8iQ9UX8SY4RS"
 
 # Keypairs (Placeholder: assuming the user has them configured in solana CLI)
 def get_address(label="id.json"):
@@ -36,7 +36,7 @@ print(f"Buyer Address:  {BUYER_ADDR}")
 print("-"*60)
 print("📝 Prerequisites for Cloud Deployment:")
 print("  1. ESCROW_PROGRAM_ID: s1jWKnB1QwKKKZUDq3bZCmqvwEf8UQpQCbkEtQzHknS")
-print("  2. UNIVERSALSETTLE_PROGRAM_ID: u2pHjM1sFzXFYK9Sh6hdjx1uVDW7pVUfUeCfpudrYu7")
+print("  2. UNIVERSALSETTLE_PROGRAM_ID: u3rpbRNp8AS91gs9hCJhQM22AmAZDcq8iQ9UX8SY4RS")
 print("  3. ORACLE_AUTHORITIES: <Pubkeys for candidates, comma-separated>")
 print("-"*60)
 
