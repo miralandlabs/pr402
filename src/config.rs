@@ -51,8 +51,9 @@ pub struct SLAEscrowConfig {
     pub program_id: Pubkey,
     /// Bank PDA (read from chain or derived)
     pub bank_address: Option<Pubkey>,
-    /// Fee basis points (read from on-chain Bank account)
     pub fee_bps: Option<u16>,
+    /// Oracle fee basis points (read from on-chain Escrow account, default 0)
+    pub oracle_fee_bps: Option<u16>,
     /// List of trusted oracle authorities as candidates for user selection
     pub oracle_authorities: Vec<Pubkey>,
 }
@@ -144,6 +145,7 @@ impl Config {
                 program_id,
                 bank_address: None,
                 fee_bps: None,
+                oracle_fee_bps: None,
                 oracle_authorities,
             })
         } else {

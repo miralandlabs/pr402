@@ -48,10 +48,10 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     /// If `false` (default), require payer source ATA to exist and hold enough tokens.
     #[serde(default)]
     pub skip_source_balance_check: bool,
-    /// If `true`, build a **buyer fee payer** shell (one signer), matching `sla-escrow` CLI.
-    /// Default `false` — **facilitator** pays fees (aligned with `build-exact-payment-tx`).
+    /// If `true`, build a **facilitator fee payer** shell (two signers), aligned with `build-exact-payment-tx`.
+    /// Default `false` — **buyer** pays fees (one signer, matching sla-escrow CLI).
     #[serde(default)]
-    pub buyer_pays_transaction_fees: bool,
+    pub facilitator_pays_transaction_fees: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -421,10 +421,10 @@ pub async fn build_sla_escrow_fund_payment_tx(
     );
     ixs.push(fund_ix);
 
-    let fee_payer_pk = if req.buyer_pays_transaction_fees {
-        payer_pk
-    } else {
+    let fee_payer_pk = if req.facilitator_pays_transaction_fees {
         provider.fee_payer()
+    } else {
+        payer_pk
     };
     let fee_payer_addr = Address::new_from_array(fee_payer_pk.to_bytes());
     let message = Message::new_with_blockhash(&ixs, Some(&fee_payer_addr), &blockhash);
@@ -447,16 +447,16 @@ pub async fn build_sla_escrow_fund_payment_tx(
         "paymentRequirements": req.accepted,
     });
 
-    let notes = if req.buyer_pays_transaction_fees {
+    let notes = if req.facilitator_pays_transaction_fees {
         vec![
-            "SLA-Escrow (legacy): buyer pays Solana fees and is the sole signer — facilitator does not appear in instruction accounts.".into(),
-            "Sign with the buyer keypair; you may broadcast before verify or use /settle as today.".into(),
+            "SLA-Escrow (sponsored): facilitator pays Solana fees; buyer signs FundPayment authority (second signer, same pattern as build-exact-payment-tx).".into(),
+            "Sign with the buyer keypair only (partial sign); POST /verify then /settle so the facilitator fills fee-payer signature slot 0.".into(),
             "Blockhashes expire; rebuild if verification fails with BlockhashNotFound.".into(),
         ]
     } else {
         vec![
-            "SLA-Escrow (default): facilitator pays Solana fees; buyer signs FundPayment authority (second signer, same pattern as build-exact-payment-tx).".into(),
-            "Sign with the buyer keypair only (partial sign); POST /verify then /settle so the facilitator fills fee-payer signature slot 0.".into(),
+            "SLA-Escrow (default): buyer pays Solana fees and is the sole signer — facilitator does not appear in instruction accounts.".into(),
+            "Sign with the buyer keypair; you may broadcast before verify or use /settle as today.".into(),
             "Blockhashes expire; rebuild if verification fails with BlockhashNotFound.".into(),
         ]
     };

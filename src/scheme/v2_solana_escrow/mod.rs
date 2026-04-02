@@ -129,6 +129,7 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             let (bank_address, _) = self.provider.get_bank_pda(&escrow_config.program_id);
             let (config_address, _) = self.provider.get_config_pda(&escrow_config.program_id);
             let fee_bps = escrow_config.fee_bps.unwrap_or(0);
+            let oracle_fee_bps = escrow_config.oracle_fee_bps.unwrap_or(0);
 
             let oracle_authorities = escrow_config
                 .oracle_authorities
@@ -144,8 +145,9 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                     bank_address: bank_address.into(),
                     config_address: config_address.into(),
                     fee_bps: fee_bps.into(),
+                    oracle_fee_bps: oracle_fee_bps.into(),
                     ttl_seconds: 3600.into(), // Default 1 hour
-                    sla_fund_tx_network_fee_payer: Some("facilitator".to_string()),
+                    sla_fund_tx_network_fee_payer: Some("buyer".to_string()),
                 })
                 .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?,
             );
@@ -286,6 +288,7 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                 let (bank_address, _) = self.provider.get_bank_pda(&escrow_config.program_id);
                 let (config_address, _) = self.provider.get_config_pda(&escrow_config.program_id);
                 let fee_bps = escrow_config.fee_bps.unwrap_or(0);
+                let oracle_fee_bps = escrow_config.oracle_fee_bps.unwrap_or(0);
 
                 let oracle_authorities = escrow_config
                     .oracle_authorities
@@ -301,8 +304,9 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                         bank_address: bank_address.into(),
                         config_address: config_address.into(),
                         fee_bps: fee_bps.into(),
+                        oracle_fee_bps: oracle_fee_bps.into(),
                         ttl_seconds: 3600.into(), // Default 1 hour
-                        sla_fund_tx_network_fee_payer: Some("facilitator".to_string()),
+                        sla_fund_tx_network_fee_payer: Some("buyer".to_string()),
                     };
                     obj.insert("extra".to_string(), serde_json::to_value(extra).unwrap());
 
