@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 description = "The lightweight, serverless x402 facilitator for the Solana Agentic Economy."
-repository = "https://github.com/miraland-labs/pr402"
+repository = "https://github.com/miralandlabs/pr402.git"
 keywords = ["x402", "solana", "payments", "serverless", "vercel"]
 categories = ["cryptography", "finance", "stablecoins"]
 
