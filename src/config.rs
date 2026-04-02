@@ -189,20 +189,19 @@ impl UniversalSettleConfig {
         })?;
 
         // Deserialize Config using bytemuck (skipping 8-byte discriminator)
-        if account.data.len() < 8 {
+        let config_size = std::mem::size_of::<USConfig>();
+        if account.data.len() < 8 + config_size {
             return Err(ConfigError::InvalidChainId(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
-                "Config account data too short".to_string(),
+                format!(
+                    "Config account data too short (need {} bytes, got {})",
+                    8 + config_size,
+                    account.data.len()
+                ),
             ));
         }
 
-        let config_state =
-            bytemuck::try_from_bytes::<USConfig>(&account.data[8..]).map_err(|e| {
-                ConfigError::InvalidChainId(
-                    "UNIVERSALSETTLE_CONFIG".to_string(),
-                    format!("Failed to deserialize UniversalSettle Config: {}", e),
-                )
-            })?;
+        let config_state = bytemuck::from_bytes::<USConfig>(&account.data[8..8 + config_size]);
 
         self.fee_destination = Some(Pubkey::from(config_state.fee_destination.to_bytes()));
         self.fee_bps = Some(config_state.fee_bps);
@@ -233,20 +232,19 @@ impl SLAEscrowConfig {
         })?;
 
         // Deserialize Bank using bytemuck (skipping 8-byte discriminator)
-        if account.data.len() < 8 {
+        let bank_size = std::mem::size_of::<EscrowBank>();
+        if account.data.len() < 8 + bank_size {
             return Err(ConfigError::InvalidChainId(
                 "SLAESCROW_BANK".to_string(),
-                "Bank account data too short".to_string(),
+                format!(
+                    "Bank account data too short (need {} bytes, got {})",
+                    8 + bank_size,
+                    account.data.len()
+                ),
             ));
         }
 
-        let bank_state =
-            bytemuck::try_from_bytes::<EscrowBank>(&account.data[8..]).map_err(|e| {
-                ConfigError::InvalidChainId(
-                    "SLAESCROW_BANK".to_string(),
-                    format!("Failed to deserialize SLAEscrow Bank: {}", e),
-                )
-            })?;
+        let bank_state = bytemuck::from_bytes::<EscrowBank>(&account.data[8..8 + bank_size]);
 
         self.fee_bps = Some(bank_state.fee_bps);
         self.bank_address = Some(bank_pda);
