@@ -47,8 +47,8 @@ solana-client = "3.1"
 bs58 = "0.5"
 # universalsettle-api = "0.1.1"
 # sla-escrow-api = "0.2.5"
-universalsettle-api = { path = "../universalsettle/api" }
-sla-escrow-api = { path = "../sla-escrow/api" }
+universalsettle-api = "0.1.2"
+sla-escrow-api = "0.2.6"
 bytemuck = "1.16"
 
 # Base64 encoding
