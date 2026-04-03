@@ -7495,9 +7495,9 @@ dependencies = [
 
 [[package]]
 name = "universalsettle-api"
-version = "0.1.3"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b1c8090a0ae64fdcad4f66cc0c689c1807cde3c48ae4b87f3c28acc14c3813c"
+checksum = "dc2848a5d67f37b7ef79a33f5deb191511da1aabc6509df7f83c92775e11d764"
 dependencies = [
  "bytemuck",
  "const-crypto",
