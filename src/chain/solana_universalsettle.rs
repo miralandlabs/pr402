@@ -82,16 +82,16 @@ impl SweepData {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Config {
-    pub authority: Pubkey,            // 32
-    pub fee_destination: Pubkey,      // 32
-    pub updated_at: [u8; 8],          // 8
-    pub min_fee_amount: [u8; 8],      // 8
-    pub min_fee_amount_sol: [u8; 8],  // 8
+    pub authority: Pubkey,             // 32
+    pub fee_destination: Pubkey,       // 32
+    pub updated_at: [u8; 8],           // 8
+    pub min_fee_amount: [u8; 8],       // 8
+    pub min_fee_amount_sol: [u8; 8],   // 8
     pub provisioning_fee_sol: [u8; 8], // 8
     pub provisioning_fee_spl: [u8; 8], // 8
-    pub fee_bps: [u8; 2],             // 2
-    pub discounted_fee_bps: [u8; 2],  // 2
-    pub _padding: [u8; 4],            // 4
+    pub fee_bps: [u8; 2],              // 2
+    pub discounted_fee_bps: [u8; 2],   // 2
+    pub _padding: [u8; 4],             // 4
 }
 
 /// UniversalSettle SplitVault account structure (matches universalsettle/api/src/state/split_vault.rs).
@@ -99,13 +99,13 @@ pub struct Config {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct SplitVault {
-    pub seller: Pubkey,                // 32
-    pub sol_recovered: [u8; 8],        // 8
-    pub spl_recovered: [u8; 8],        // 8
-    pub is_provisioned: u8,            // 1
-    pub bump: u8,                      // 1
-    pub is_sovereign: u8,              // 1
-    pub _padding: [u8; 5],             // 5
+    pub seller: Pubkey,         // 32
+    pub sol_recovered: [u8; 8], // 8
+    pub spl_recovered: [u8; 8], // 8
+    pub is_provisioned: u8,     // 1
+    pub bump: u8,               // 1
+    pub is_sovereign: u8,       // 1
+    pub _padding: [u8; 5],      // 5
 }
 
 pub fn build_create_vault_instruction(
