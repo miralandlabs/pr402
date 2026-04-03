@@ -8,6 +8,7 @@ use solana_pubkey::{pubkey, Pubkey};
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
 use solana_transaction::TransactionError;
+use tracing::error;
 
 use crate::chain::solana::{Address, SolanaChainProvider, SolanaChainProviderError};
 use crate::proto::PaymentVerificationError;
@@ -20,6 +21,8 @@ pub struct TransferRequirement<'a> {
     pub asset: &'a Address,
     pub pay_to: &'a Address,
     pub amount: u64,
+    pub merchant_wallet: Option<&'a Address>, // IDENTITY: Original wallet for derivation
+    pub collection_beneficiary: Option<&'a Address>, // COLLECTION: Priority payout destination
 }
 
 fn is_ata_of(ata: Pubkey, owner: Pubkey, mint: &Pubkey, token_program: &Pubkey) -> bool {
@@ -35,7 +38,9 @@ fn is_ata_of(ata: Pubkey, owner: Pubkey, mint: &Pubkey, token_program: &Pubkey) 
 
 pub struct VerifyTransferResult {
     pub payer: Address,
-    pub beneficiary: Address,
+    pub merchant_identity: Address,
+    pub final_beneficiary: Address,
+    pub vault_pda: Pubkey,
     pub transaction: VersionedTransaction,
 }
 
@@ -271,22 +276,33 @@ pub async fn verify_transaction(
         return Err(SolanaExactError::InvalidTransactionInstructionsCount.into());
     };
 
-    // Rule: UniversalSettle SplitVault enforcement
-    if let Some(us_config) = provider.universalsettle() {
-        let seller = *transfer_requirement.pay_to.pubkey();
-        let _fee_dest = us_config
-            .fee_destination
-            .ok_or(SolanaExactError::UniversalSettleNotConfigured)?;
-        let (vault_pda, _) = provider.get_vault_pda(&seller);
+    let pay_to_pk = *transfer_requirement.pay_to.pubkey();
+    let (vault_from_pay_to, _) = provider.get_vault_pda(&pay_to_pk);
 
+    // ADAPTIVE PDA RESOLUTION: resolve the authoritative merchant identity (wallet)
+    // and the target vault PDA in a single pass to avoid "Double-PDA" errors.
+    let (final_vault_pda, merchant_identity) =
+        if let Some(identity) = transfer_requirement.merchant_wallet {
+            let (v, _) = provider.get_vault_pda(identity.pubkey());
+            (v, *identity.pubkey())
+        } else if pay_to_pk == vault_from_pay_to {
+            // CASE: pay_to is ALREADY the PDA. This is the Double-PDA trap.
+            (pay_to_pk, pay_to_pk)
+        } else {
+            // CASE: pay_to is the merchant wallet identity.
+            (vault_from_pay_to, pay_to_pk)
+        };
+
+    // Rule: UniversalSettle SplitVault enforcement
+    if provider.universalsettle().is_some() {
         let is_sol = *transfer_requirement.asset.pubkey() == Pubkey::default();
         let dest_match = if is_sol {
-            let (vault_sol_storage, _) = provider.get_sol_storage_pda(vault_pda);
+            let (vault_sol_storage, _) = provider.get_sol_storage_pda(final_vault_pda);
             transfer_instruction.destination == vault_sol_storage
         } else {
             is_ata_of(
                 transfer_instruction.destination,
-                vault_pda,
+                final_vault_pda,
                 transfer_requirement.asset.pubkey(),
                 &transfer_instruction.token_program,
             )
@@ -313,10 +329,17 @@ pub async fn verify_transaction(
     }
 
     let payer: Address = transfer_instruction.authority.into();
-    let beneficiary = *transfer_requirement.pay_to;
+    // COLLECTION PRIORITY: beneficiary (from requirement) > merchant identity fallback
+    let final_beneficiary = transfer_requirement
+        .collection_beneficiary
+        .cloned()
+        .unwrap_or_else(|| Address::new(merchant_identity));
+
     Ok(VerifyTransferResult {
         payer,
-        beneficiary,
+        merchant_identity: Address::new(merchant_identity),
+        final_beneficiary,
+        vault_pda: final_vault_pda,
         transaction,
     })
 }
@@ -422,6 +445,7 @@ pub async fn verify_transfer_instruction(
 pub async fn settle_transaction(
     provider: &SolanaChainProvider,
     verification: VerifyTransferResult,
+    collection_beneficiary: Option<Pubkey>, // COLLECTION: Priority payout destination
 ) -> Result<Signature, SolanaChainProviderError> {
     let tx = TransactionInt::new(verification.transaction).sign(provider)?;
     if !tx.is_fully_signed() {
@@ -437,10 +461,23 @@ pub async fn settle_transaction(
         let payer = *verification.payer.pubkey();
         match provider.extract_transfer_from_pst(&tx.inner, &payer) {
             Ok(details) => {
-                let seller = *verification.beneficiary.pubkey();
-                let fee_dest = us_config.fee_destination.unwrap_or_default();
-                let (vault_pda, _) = provider.get_vault_pda(&seller);
+                let merchant_identity = *verification.merchant_identity.pubkey();
+                let vault_pda = verification.vault_pda;
                 let (vault_sol_storage, _) = provider.get_sol_storage_pda(vault_pda);
+
+                // COLLECTION PRIORITY: prioritized final_beneficiary from verification (or override)
+                let final_beneficiary =
+                    collection_beneficiary.unwrap_or(*verification.final_beneficiary.pubkey());
+                let fee_dest = match us_config.fee_destination {
+                    Some(dest) => dest,
+                    None => {
+                        error!(
+                            merchant = %merchant_identity,
+                            "UniversalSettle fee destination NOT CONFIGURED: skipping sweep"
+                        );
+                        return Ok(tx_sig);
+                    }
+                };
 
                 let spl_token_prog = details
                     .token_program
@@ -470,7 +507,7 @@ pub async fn settle_transaction(
                     match crate::vault_balance::fetch_universalsettle_vault_snapshot(
                         provider.rpc_client(),
                         us_config.program_id,
-                        seller,
+                        merchant_identity,
                         spl_mint_for_snap,
                         snap_token_program,
                     )
@@ -487,7 +524,7 @@ pub async fn settle_transaction(
                                     tracing::info!(
                                         spendable_lamports = snap.spendable_lamports,
                                         min_lamports,
-                                        seller = %seller,
+                                        seller = %merchant_identity,
                                         "skip UniversalSettle sweep: SOL vault below threshold"
                                     );
                                     skip_sweep = true;
@@ -501,7 +538,7 @@ pub async fn settle_transaction(
                                         spl_amount_raw = snap.spl_amount_raw,
                                         min_spl,
                                         mint = %token_mint,
-                                        seller = %seller,
+                                        seller = %merchant_identity,
                                         "skip UniversalSettle sweep: SPL vault below threshold"
                                     );
                                     skip_sweep = true;
@@ -548,18 +585,18 @@ pub async fn settle_transaction(
 
                                     if count < max_provisions {
                                         tracing::info!(
-                                            seller = %seller,
+                                            seller = %merchant_identity,
                                             vault = %vault_pda,
                                             "provisioning new SplitVault (JIT)"
                                         );
                                         instructions.push(crate::chain::solana_universalsettle::build_create_vault_instruction(
                                             us_config.program_id,
                                             provider.pubkey(),
-                                            seller,
+                                            merchant_identity,
                                         ));
                                     } else {
                                         tracing::warn!(
-                                            seller = %seller,
+                                            seller = %merchant_identity,
                                             "skip UniversalSettle shadow provision: daily quota reached"
                                         );
                                         // We skip the sweep because the vault doesn't exist and we can't create it.
@@ -578,7 +615,7 @@ pub async fn settle_transaction(
                                     us_config.program_id,
                                     provider.pubkey(),
                                     vault_pda,
-                                    seller,
+                                    final_beneficiary,
                                     fee_dest,
                                     token_mint,
                                     details.amount,
@@ -603,7 +640,7 @@ pub async fn settle_transaction(
                                 tracing::warn!(
                                     error = %e,
                                     payment_signature = %tx_sig,
-                                    seller = %seller,
+                                    seller = %merchant_identity,
                                     "UniversalSettle sweep transaction send failed"
                                 );
                             }

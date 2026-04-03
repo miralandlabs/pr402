@@ -69,6 +69,10 @@ pub struct SLAEscrowPaymentRequirementsExtra {
     /// `"facilitator"` (recommended; aligns with `exact`) or `"buyer"` (legacy / CLI-shaped).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sla_fund_tx_network_fee_payer: Option<String>,
+    #[serde(default)]
+    pub merchant_wallet: Option<Address>, // IDENTITY: Original wallet for re-derivation
+    #[serde(default)]
+    pub beneficiary: Option<Address>, // COLLECTION: Final payout destination (Priority)
 }
 
 /// Verify request for v2:solana:escrow.

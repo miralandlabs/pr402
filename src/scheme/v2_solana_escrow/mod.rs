@@ -103,8 +103,26 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             .copied()
             == Some(facilitator);
 
+        // PRIORITY: Use explicit beneficiary for collection/audit if provided, otherwise default to merchant identity
+        let final_beneficiary = request_v2
+            .payment_requirements
+            .extra
+            .as_ref()
+            .and_then(|e| e.beneficiary.as_ref())
+            .map(|a| *a.pubkey())
+            .unwrap_or_else(|| {
+                // For escrow, identity is often the merchant wallet if present in extra
+                request_v2
+                    .payment_requirements
+                    .extra
+                    .as_ref()
+                    .and_then(|e| e.merchant_wallet.as_ref())
+                    .map(|a| *a.pubkey())
+                    .unwrap_or_else(|| *verification.merchant_identity.pubkey())
+            });
+
         let tx_sig = if sponsor_is_facilitator {
-            settle_transaction(&self.provider, verification).await?
+            settle_transaction(&self.provider, verification, Some(final_beneficiary)).await?
         } else {
             settle_sla_escrow_fund_payment(&self.provider, verification).await?
         };
@@ -148,6 +166,8 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                     oracle_fee_bps: oracle_fee_bps.into(),
                     ttl_seconds: 3600.into(), // Default 1 hour
                     sla_fund_tx_network_fee_payer: Some("buyer".to_string()),
+                    merchant_wallet: None,
+                    beneficiary: None,
                 })
                 .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?,
             );
@@ -203,9 +223,9 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                 .get_sla_escrow_sol_storage_pda(Pubkey::default(), bank_pda, escrow_pda);
 
         Ok(crate::facilitator::SchemeOnboardInfo {
-            label: "Escrow Bank (Shared System)".to_string(),
-            role: "Protocol Core (Global)".to_string(),
-            vault_pda: escrow_pda.to_string(),
+            label: "SLA Escrow Bank".to_string(),
+            role: "Institutional Escrow".to_string(),
+            vault_pda: bank_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
             token_pda: None,
             fee_bps: fee_bps.into(),
@@ -297,6 +317,20 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                     .collect::<Vec<Address>>();
 
                 if let Some(obj) = accept.as_object_mut() {
+                    let merchant_wallet = obj
+                        .get("extra")
+                        .and_then(|e| e.get("merchantWallet"))
+                        .and_then(|w| w.as_str())
+                        .and_then(|w| Pubkey::from_str(w).ok())
+                        .map(Address::new);
+
+                    let beneficiary = obj
+                        .get("extra")
+                        .and_then(|e| e.get("beneficiary"))
+                        .and_then(|w| w.as_str())
+                        .and_then(|w| Pubkey::from_str(w).ok())
+                        .map(Address::new);
+
                     let extra = types::SLAEscrowPaymentRequirementsExtra {
                         fee_payer: self.provider.fee_payer().into(),
                         oracle_authorities,
@@ -307,6 +341,8 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                         oracle_fee_bps: oracle_fee_bps.into(),
                         ttl_seconds: 3600.into(), // Default 1 hour
                         sla_fund_tx_network_fee_payer: Some("buyer".to_string()),
+                        merchant_wallet,
+                        beneficiary,
                     };
                     obj.insert("extra".to_string(), serde_json::to_value(extra).unwrap());
 
@@ -482,7 +518,22 @@ pub async fn verify_transfer(
         PaymentVerificationError::TransactionSimulation(format!("Invalid FundPayment Data: {}", e))
     })?;
 
-    if Address::new(Pubkey::from(fund_payment.seller.to_bytes())) != requirements.pay_to {
+    let extra = requirements
+        .extra
+        .as_ref()
+        .ok_or(PaymentVerificationError::InvalidFormat(
+            "Missing extra requirements".into(),
+        ))?;
+
+    let expected_seller_pda = if let Some(identity) = extra.merchant_wallet.as_ref() {
+        let (pda, _) = provider.get_escrow_pda(*requirements.asset.pubkey(), *identity.pubkey());
+        pda
+    } else {
+        // Fallback: assume pay_to is the correct destination (PDA or wallet)
+        *requirements.pay_to.pubkey()
+    };
+
+    if Pubkey::from(fund_payment.seller.to_bytes()) != expected_seller_pda {
         return Err(PaymentVerificationError::RecipientMismatch);
     }
     if Address::new(Pubkey::from(fund_payment.mint.to_bytes())) != requirements.asset {
@@ -497,12 +548,7 @@ pub async fn verify_transfer(
         ));
     }
 
-    let extra = requirements
-        .extra
-        .as_ref()
-        .ok_or(PaymentVerificationError::InvalidFormat(
-            "Missing extra requirements".into(),
-        ))?;
+    // extra already defined above
 
     let selected_oracle = Address::new(Pubkey::from(fund_payment.oracle_authority.to_bytes()));
     if !extra.oracle_authorities.contains(&selected_oracle) {
@@ -579,10 +625,14 @@ pub async fn verify_transfer(
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
 
     let payer = Address::new(buyer_pubkey);
-    let beneficiary = Address::new(Pubkey::from(fund_payment.seller.to_bytes()));
+    let identity = extra.merchant_wallet.unwrap_or(requirements.pay_to);
+    let beneficiary = extra.beneficiary.unwrap_or(identity);
+
     Ok(VerifyTransferResult {
         payer,
-        beneficiary,
+        merchant_identity: identity,
+        final_beneficiary: beneficiary,
+        vault_pda: expected_seller_pda,
         transaction,
     })
 }

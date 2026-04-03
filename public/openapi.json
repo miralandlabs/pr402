@@ -580,6 +580,7 @@
           "vaultPda": { "type": "string" },
           "solStoragePda": { "type": "string" },
           "tokenPda": { "type": "string", "nullable": true },
+          "merchantWallet": { "type": "string", "description": "Authoritative merchant identity (base58)", "nullable": true },
           "feeBps": { "type": "string", "description": "Effective fee in basis points" },
           "status": { "type": "string", "example": "Sovereign" },
           "isSovereign": { "type": "boolean", "description": "Has 5 bps institutional discount" },
@@ -607,6 +608,25 @@
           "solBalance": { "type": "string" },
           "splBalance": { "type": "string", "nullable": true },
           "isProvisioned": { "type": "boolean" }
+        }
+      },
+      "UniversalSettleExtra": {
+        "type": "object",
+        "properties": {
+          "programId": { "type": "string" },
+          "configAddress": { "type": "string" },
+          "feeBps": { "type": "string" },
+          "merchantWallet": { "type": "string", "description": "IDENTITY: Required for PDA re-derivation" }
+        }
+      },
+      "SLAEscrowExtra": {
+        "type": "object",
+        "properties": {
+          "escrowProgramId": { "type": "string" },
+          "bankAddress": { "type": "string" },
+          "configAddress": { "type": "string" },
+          "oracleAuthorities": { "type": "array", "items": { "type": "string" } },
+          "merchantWallet": { "type": "string", "description": "IDENTITY: Original merchant pubkey" }
         }
       }
     }

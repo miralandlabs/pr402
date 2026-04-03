@@ -78,10 +78,13 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             .await?;
         let verification = verify_transfer(&self.provider, &request).await?;
 
+        // REFINEMENT: Extract authoritative identity for JIT provisioning and final sweep destination.
+        let merchant_id = verification.merchant_identity;
+        let final_beneficiary = verification.final_beneficiary;
+        let seller = merchant_id;
+
         // Just-in-Time Provisioning: Ensure vault is created only when a real settlement is requested.
-        // This prevents spam-creation of accounts as settlement requires valid, signed payloads.
         if let Some(us_config) = self.provider.universalsettle() {
-            let seller = *verification.beneficiary.pubkey();
             let fee_dest = us_config.fee_destination.ok_or_else(|| {
                 X402SchemeFacilitatorError::OnchainFailure(
                     "UniversalSettle fee destination not configured".to_string(),
@@ -90,12 +93,18 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             let fee_bps = us_config.fee_bps.unwrap_or(100);
             let asset = *request.payment_requirements.asset.pubkey();
             self.provider
-                .ensure_vault_setup(&seller, &fee_dest, fee_bps, Some(asset))
+                .ensure_vault_setup(seller.pubkey(), &fee_dest, fee_bps, Some(asset))
                 .await?;
         }
 
         let payer = verification.payer.to_string();
-        let tx_sig = settle_transaction(&self.provider, verification).await?;
+
+        let tx_sig = settle_transaction(
+            &self.provider,
+            verification,
+            Some(*final_beneficiary.pubkey()),
+        )
+        .await?;
         Ok(proto::v2::SettleResponse::Success {
             payer,
             transaction: tx_sig.to_string(),
@@ -117,6 +126,8 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
                     fee_bps: us_config.fee_bps.unwrap_or(0).into(),
                     min_fee_amount: us_config.min_fee_amount.unwrap_or(0).into(),
                     min_fee_amount_sol: us_config.min_fee_amount_sol.unwrap_or(0).into(),
+                    merchant_wallet: None,
+                    beneficiary: None,
                 };
                 Some(serde_json::to_value(extra).unwrap())
             } else {
@@ -357,6 +368,14 @@ pub async fn verify_transfer(
         pay_to: &requirements.pay_to,
         asset: &requirements.asset,
         amount: requirements.amount.inner(),
+        merchant_wallet: requirements
+            .extra
+            .as_ref()
+            .and_then(|e| e.merchant_wallet.as_ref()), // IDENTITY: pass to resolver
+        collection_beneficiary: requirements
+            .extra
+            .as_ref()
+            .and_then(|e| e.beneficiary.as_ref()), // COLLECTION: priority destination
     };
     shared_verify_transaction(provider, transaction_b64_string, &transfer_requirement).await
 }

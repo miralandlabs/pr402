@@ -74,6 +74,16 @@ Scheme Configuration:
 
 ---
 
+## 🛡️ Institutional Identity Standard
+In the UniversalSettle and SLA-Escrow ecosystems, the concept of a "beneficiary" is split to ensure buyer agents can be stateless:
+
+1.  **`payTo` (The Destination)**: This is MUST be the direct on-chain destination for the transaction. For institutional payments, this is the **SplitVault PDA** or **Escrow Bank PDA**.
+2.  **`extra.merchantWallet` (The Identity)**: This is the original merchant wallet. The Facilitator uses this to re-derive PDAs for fee-sweeping and provisioning. 
+
+**Standard Compliance Rule**: Buyers SHOULD always pay the address in `payTo`. Facilitators MUST look for the merchant's identity in `extra.merchantWallet` if `payTo` is a PDA.
+
+---
+
 ## 🛡️ Reliability & Security Standard
 To ensure the highest level of transparency for the Agentic Economy, the facilitator implements the following standards:
 

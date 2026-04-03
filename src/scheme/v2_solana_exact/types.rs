@@ -66,6 +66,10 @@ pub struct SupportedPaymentKindExtra {
     pub fee_bps: U16String,
     pub min_fee_amount: U64String,     // New: notify buyer of SPL floor
     pub min_fee_amount_sol: U64String, // New: notify buyer of SOL floor
+    #[serde(default)]
+    pub merchant_wallet: Option<Address>, // IDENTITY: Original wallet for sweep/audit
+    #[serde(default)]
+    pub beneficiary: Option<Address>, // COLLECTION: Final sweep destination (Priority)
 }
 
 /// Verify request for v2:solana:exact.
@@ -118,6 +122,12 @@ pub fn v2_upgrade(
                             fee_bps: us_config.fee_bps.unwrap_or(0).into(),
                             min_fee_amount: us_config.min_fee_amount.unwrap_or(0).into(),
                             min_fee_amount_sol: us_config.min_fee_amount_sol.unwrap_or(0).into(),
+                            merchant_wallet: Some(merchant_wallet.into()),
+                            beneficiary: obj
+                                .get("beneficiary")
+                                .and_then(|v| v.as_str())
+                                .and_then(|s| solana_pubkey::Pubkey::from_str(s).ok())
+                                .map(Address::new),
                         };
                         obj.insert("extra".to_string(), serde_json::to_value(extra).unwrap());
                     }
