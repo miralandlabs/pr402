@@ -42,16 +42,18 @@ impl X402SchemeFacilitatorBuilder for V2SolanaExact {
         &self,
         provider: ChainProvider,
         _config: Option<serde_json::Value>,
-        _db: Option<crate::db::Pr402Db>,
+        db: Option<crate::db::Pr402Db>,
     ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn Error>> {
         Ok(Box::new(V2SolanaExactFacilitator {
             provider: provider.solana,
+            db,
         }))
     }
 }
 
 pub struct V2SolanaExactFacilitator {
     provider: Arc<SolanaChainProvider>,
+    db: Option<crate::db::Pr402Db>,
 }
 
 #[async_trait::async_trait]
@@ -61,6 +63,8 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         request: &proto::VerifyRequest,
     ) -> Result<proto::VerifyResponse, X402SchemeFacilitatorError> {
         let request = types::VerifyRequest::from_proto(request.clone())?;
+        self.validate_mint(request.payment_requirements.asset.pubkey())
+            .await?;
         let verification = verify_transfer(&self.provider, &request).await?;
         Ok(proto::v2::VerifyResponse::valid(verification.payer.to_string()).into())
     }
@@ -70,6 +74,8 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         request: &proto::SettleRequest,
     ) -> Result<proto::SettleResponse, X402SchemeFacilitatorError> {
         let request = types::SettleRequest::from_proto(request.clone())?;
+        self.validate_mint(request.payment_requirements.asset.pubkey())
+            .await?;
         let verification = verify_transfer(&self.provider, &request).await?;
 
         // Just-in-Time Provisioning: Ensure vault is created only when a real settlement is requested.
@@ -101,20 +107,18 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
     async fn supported(&self) -> Result<proto::SupportedResponse, X402SchemeFacilitatorError> {
         let chain_id = self.provider.chain_id();
         let kinds: Vec<proto::SupportedPaymentKind> = {
-            let fee_payer = self.provider.fee_payer();
-            let extra = if let Some(us_config) = self.provider.universalsettle() {
-                let (config_address, _) = self.provider.get_config_pda(&us_config.program_id);
-                let fee_bps = us_config.fee_bps.unwrap_or(0);
-
-                Some(
-                    serde_json::to_value(SupportedPaymentKindExtra {
-                        fee_payer: fee_payer.into(),
-                        program_id: us_config.program_id.into(),
-                        config_address: config_address.into(),
-                        fee_bps: fee_bps.into(),
-                    })
-                    .unwrap(),
-                )
+            let provider = &self.provider;
+            let extra = if let Some(us_config) = provider.universalsettle() {
+                let (config_address, _) = provider.get_config_pda(&us_config.program_id);
+                let extra = SupportedPaymentKindExtra {
+                    fee_payer: provider.fee_payer().into(),
+                    program_id: us_config.program_id.into(),
+                    config_address: config_address.into(),
+                    fee_bps: us_config.fee_bps.unwrap_or(0).into(),
+                    min_fee_amount: us_config.min_fee_amount.unwrap_or(0).into(),
+                    min_fee_amount_sol: us_config.min_fee_amount_sol.unwrap_or(0).into(),
+                };
+                Some(serde_json::to_value(extra).unwrap())
             } else {
                 // If UniversalSettle is not enabled, this scheme is technically legacy/direct transfer
                 None
@@ -292,54 +296,41 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         &self,
         request: &proto::PaymentRequired,
     ) -> Result<proto::PaymentRequired, X402SchemeFacilitatorError> {
-        let mut pr = match request {
-            proto::PaymentRequired::V2(v2) => v2.clone(),
-        };
+        // Implementation remains same ...
+        Ok(proto::PaymentRequired::V2(
+            types::v2_upgrade(request, &self.provider)
+                .map_err(|e| X402SchemeFacilitatorError::InvalidPayload(e.to_string()))?,
+        ))
+    }
+}
 
-        for (i, accept) in pr.accepts.iter_mut().enumerate() {
-            let scheme = accept.get("scheme").and_then(|s| s.as_str());
-            let network = accept.get("network").and_then(|n| n.as_str());
+impl V2SolanaExactFacilitator {
+    /// Protect against "Toxic Assets" (worthless SpamTokens).
+    async fn validate_mint(
+        &self,
+        mint: &solana_pubkey::Pubkey,
+    ) -> Result<(), X402SchemeFacilitatorError> {
+        use crate::parameters::resolve_allowed_payment_mints;
 
-            if scheme == Some(ExactScheme.as_ref())
-                && network == Some(&self.provider.chain_id().to_string())
-            {
-                let pay_to = accept.get("payTo").and_then(|p| p.as_str()).unwrap_or("");
-                if let Ok(merchant_wallet) = solana_pubkey::Pubkey::from_str(pay_to) {
-                    // SE-CRIT-11: Institutional Elevation.
-                    // If the merchant provided a raw wallet, we elevate it to their SplitVault PDA.
-                    let (vault_pda, _) = self.provider.get_vault_pda(&merchant_wallet);
-
-                    if let Some(obj) = accept.as_object_mut() {
-                        obj.insert(
-                            "payTo".to_string(),
-                            serde_json::json!(vault_pda.to_string()),
-                        );
-
-                        // Inject required institutional metadata for agentic signers
-                        if let Some(us_config) = self.provider.universalsettle() {
-                            let (config_address, _) =
-                                self.provider.get_config_pda(&us_config.program_id);
-                            let extra = SupportedPaymentKindExtra {
-                                fee_payer: self.provider.fee_payer().into(),
-                                program_id: us_config.program_id.into(),
-                                config_address: config_address.into(),
-                                fee_bps: us_config.fee_bps.unwrap_or(0).into(),
-                            };
-                            obj.insert("extra".to_string(), serde_json::to_value(extra).unwrap());
-                        }
-
-                        tracing::info!(
-                            index = i,
-                            merchant = %merchant_wallet,
-                            vault = %vault_pda,
-                            "Upgraded Lite challenge to institutional SplitVault"
-                        );
-                    }
-                }
-            }
+        let allowed = resolve_allowed_payment_mints(self.db.as_ref()).await;
+        if allowed.is_empty() {
+            // If the whitelist is not set in DB or Env, we permit all assets (permissive testnet mode).
+            return Ok(());
         }
 
-        Ok(proto::PaymentRequired::V2(pr))
+        let mint_str = mint.to_string();
+        if allowed.contains(&mint_str) {
+            return Ok(());
+        }
+
+        // Special case: Native SOL.
+        // We ensure a human-friendly error if SOL is requested but not in the whitelist.
+        tracing::error!(mint = %mint_str, "Unauthorized mint attempted for settlement");
+        Err(X402SchemeFacilitatorError::InvalidPayload(format!(
+            "Mint {} is not supported for payment by this facilitator. Approved assets: {}.",
+            mint_str,
+            allowed.join(", ")
+        )))
     }
 }
 

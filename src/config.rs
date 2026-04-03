@@ -42,6 +42,10 @@ pub struct UniversalSettleConfig {
     pub fee_destination: Option<Pubkey>,
     /// Fee basis points (read from on-chain Config account)
     pub fee_bps: Option<u16>,
+    /// Minimum fee for SPL tokens
+    pub min_fee_amount: Option<u64>,
+    /// Minimum fee for Native SOL
+    pub min_fee_amount_sol: Option<u64>,
 }
 
 /// SLAEscrow configuration for escrow-based settlements.
@@ -114,8 +118,10 @@ impl Config {
             })?;
             Some(UniversalSettleConfig {
                 program_id,
-                fee_destination: None, // Will be read from chain
-                fee_bps: None,         // Will be read from chain
+                fee_destination: None,
+                fee_bps: None,
+                min_fee_amount: None,
+                min_fee_amount_sol: Some(200_000),
             })
         } else {
             None
@@ -205,6 +211,8 @@ impl UniversalSettleConfig {
 
         self.fee_destination = Some(Pubkey::from(config_state.fee_destination.to_bytes()));
         self.fee_bps = Some(config_state.fee_bps);
+        self.min_fee_amount = Some(config_state.min_fee_amount);
+        self.min_fee_amount_sol = Some(config_state.min_fee_amount_sol);
 
         Ok(())
     }

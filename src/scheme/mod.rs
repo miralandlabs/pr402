@@ -58,6 +58,8 @@ pub enum X402SchemeFacilitatorError {
     SolanaChain(#[from] crate::chain::solana::SolanaChainProviderError),
     #[error("Onchain error: {0}")]
     OnchainFailure(String),
+    #[error("Invalid payload: {0}")]
+    InvalidPayload(String),
 }
 
 impl proto::AsPaymentProblem for X402SchemeFacilitatorError {
@@ -69,6 +71,9 @@ impl proto::AsPaymentProblem for X402SchemeFacilitatorError {
             }
             X402SchemeFacilitatorError::OnchainFailure(e) => {
                 proto::PaymentProblem::new(proto::ErrorReason::UnexpectedError, e.to_string())
+            }
+            X402SchemeFacilitatorError::InvalidPayload(e) => {
+                proto::PaymentProblem::new(proto::ErrorReason::InvalidFormat, e.to_string())
             }
         }
     }

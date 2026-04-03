@@ -88,6 +88,9 @@ pub const PR402_ONBOARD_HMAC_SECRET: &str = "PR402_ONBOARD_HMAC_SECRET";
 pub const PR402_ONBOARD_CHALLENGE_TTL_SEC: &str = "PR402_ONBOARD_CHALLENGE_TTL_SEC";
 /// Comma-separated SPL mint pubkeys (or single mint) for quote / payment rails — optional consumer.
 pub const PR402_QUOTE_SPL_MINTS: &str = "PR402_QUOTE_SPL_MINTS";
+/// Comma-separated SPL mint pubkeys (plus `11111111111111111111111111111111` for Native SOL) allowed for payment.
+/// Effectively the "Sovereign Whitelist" for the facilitator.
+pub const PR402_ALLOWED_PAYMENT_MINTS: &str = "PR402_ALLOWED_PAYMENT_MINTS";
 
 /// Maximum number of new SplitVaults the facilitator will pay to create per day (anti-spam).
 pub const PR402_MAX_DAILY_PROVISION_COUNT: &str = "PR402_MAX_DAILY_PROVISION_COUNT";
@@ -205,6 +208,23 @@ pub async fn resolve_onboard_challenge_ttl_sec(db: Option<&Pr402Db>, default: u6
 /// Quote mints from `PR402_QUOTE_SPL_MINTS` (commas / ASCII whitespace). DB or env via [`resolve_string`].
 pub async fn resolve_quote_spl_mints(db: Option<&Pr402Db>) -> Vec<String> {
     let Some(raw) = resolve_string(db, PR402_QUOTE_SPL_MINTS, Some(PR402_QUOTE_SPL_MINTS)).await
+    else {
+        return Vec::new();
+    };
+    raw.split(|c: char| c == ',' || c.is_whitespace())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+/// Allowed mints from `PR402_ALLOWED_PAYMENT_MINTS`. DB or env via [`resolve_string`].
+pub async fn resolve_allowed_payment_mints(db: Option<&Pr402Db>) -> Vec<String> {
+    let Some(raw) = resolve_string(
+        db,
+        PR402_ALLOWED_PAYMENT_MINTS,
+        Some(PR402_ALLOWED_PAYMENT_MINTS),
+    )
+    .await
     else {
         return Vec::new();
     };

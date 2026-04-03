@@ -31,13 +31,16 @@ fn associated_token_address(wallet: &Pubkey, mint: &Pubkey, token_program: &Pubk
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UniversalSettleInstruction {
-    Sweep = 0,       // Replacing Settle for indirect/batch settlement
-    CreateVault = 1, // To setup SplitVault for a seller
+    Sweep = 0,
+    CreateVault = 1,
     Initialize = 100,
     UpdateAuthority = 101,
     UpdateFeeRate = 102,
     UpdateFeeDestination = 103,
-    UpdateDiscountedFeeRate = 104,
+    UpdateMinFeeAmount = 104,
+    UpdateMinFeeAmountSol = 105,
+    UpdateProvisioningFee = 106,
+    UpdateDiscountedFeeRate = 107,
 }
 
 /// UniversalSettle CreateVault instruction data structure.
@@ -75,31 +78,34 @@ impl SweepData {
 }
 
 /// UniversalSettle Config account structure (matches universalsettle/api/src/state/config.rs).
+/// Corrected to 112-byte layout for v0.1.3.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Config {
-    pub authority: Pubkey,
-    pub fee_destination: Pubkey,
-    pub fee_bps: [u8; 2],
-    pub discounted_fee_bps: [u8; 2],
-    pub min_fee_amount: [u8; 8],
-    pub provisioning_fee_sol: [u8; 8],
-    pub provisioning_fee_spl: [u8; 8],
-    pub updated_at: [u8; 8],
-    pub _padding: [u8; 4],
+    pub authority: Pubkey,            // 32
+    pub fee_destination: Pubkey,      // 32
+    pub updated_at: [u8; 8],          // 8
+    pub min_fee_amount: [u8; 8],      // 8
+    pub min_fee_amount_sol: [u8; 8],  // 8
+    pub provisioning_fee_sol: [u8; 8], // 8
+    pub provisioning_fee_spl: [u8; 8], // 8
+    pub fee_bps: [u8; 2],             // 2
+    pub discounted_fee_bps: [u8; 2],  // 2
+    pub _padding: [u8; 4],            // 4
 }
 
 /// UniversalSettle SplitVault account structure (matches universalsettle/api/src/state/split_vault.rs).
+/// Corrected to 56-byte layout.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct SplitVault {
-    pub seller: Pubkey,
-    pub sol_recovered: [u8; 8],
-    pub spl_recovered: [u8; 8],
-    pub is_provisioned: u8,
-    pub bump: u8,
-    pub is_sovereign: u8,
-    pub _padding: [u8; 5],
+    pub seller: Pubkey,                // 32
+    pub sol_recovered: [u8; 8],        // 8
+    pub spl_recovered: [u8; 8],        // 8
+    pub is_provisioned: u8,            // 1
+    pub bump: u8,                      // 1
+    pub is_sovereign: u8,              // 1
+    pub _padding: [u8; 5],             // 5
 }
 
 pub fn build_create_vault_instruction(

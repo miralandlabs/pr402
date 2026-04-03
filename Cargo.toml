@@ -47,7 +47,7 @@ solana-client = "3.1"
 bs58 = "0.5"
 # universalsettle-api = "0.1.1"
 # sla-escrow-api = "0.2.5"
-universalsettle-api = "0.1.2"
+universalsettle-api = "0.1.3"
 sla-escrow-api = "0.2.6"
 bytemuck = "1.16"
 
