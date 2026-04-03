@@ -62,6 +62,10 @@ When an unauthenticated buyer hits your service, respond with an `HTTP 402 Payme
 ```
 *Note: Your application can construct this dynamically based on any pricing configuration module.*
 
+### Advanced: The `sla-escrow` Scheme
+While `exact` (UniversalSettle) handles precise pay-per-use, your API can alternatively ask for the `sla-escrow` scheme! If you offer long-running machine tasks (e.g. video rendering or multi-stage AI reasoning), setting `"scheme": "sla-escrow"` allows agents to lock funds in a time-bound cryptographic escrow at the Facilitator layer.
+If you use SLA-Escrow, the Facilitator will return an SLA verification hash. You only sweep the funds after fulfilling the async API result!
+
 ---
 
 ## 3. Proxying the Settlement (`X-PAYMENT`)
