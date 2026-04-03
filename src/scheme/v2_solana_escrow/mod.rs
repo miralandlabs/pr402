@@ -8,6 +8,7 @@ use std::fmt::Write as _;
 use std::mem;
 use std::str::FromStr;
 use std::sync::Arc;
+use base64::{engine::general_purpose::STANDARD, Engine};
 
 use crate::chain::solana::{Address, SolanaChainProvider};
 use crate::chain::ChainProvider;
@@ -269,7 +270,7 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             message: solana_message::VersionedMessage::V0(message),
         };
 
-        let tx_b64 = bs58::encode(bincode::serialize(&tx).unwrap()).into_string();
+        let tx_b64 = STANDARD.encode(bincode::serialize(&tx).unwrap());
 
         Ok(proto::v2::BuildPaymentTxResponse {
             x402_version: 2,

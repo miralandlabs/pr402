@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::str::FromStr;
 use std::sync::Arc;
+use base64::{engine::general_purpose::STANDARD, Engine};
 
 use crate::chain::solana::SolanaChainProvider;
 use crate::chain::ChainProvider;
@@ -289,7 +290,7 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             message: solana_message::VersionedMessage::V0(message),
         };
 
-        let tx_b64 = bs58::encode(bincode::serialize(&tx).unwrap()).into_string();
+        let tx_b64 = STANDARD.encode(bincode::serialize(&tx).unwrap());
 
         Ok(proto::v2::BuildPaymentTxResponse {
             x402_version: 2,
