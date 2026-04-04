@@ -59,6 +59,11 @@ export class X402Error extends Error {
 
 // ── Client ──────────────────────────────────────────────────────────────
 
+export interface FetchAutoPayOptions extends RequestInit {
+  /** If true, the facilitator SDK build step will inject wSOL wrapping instructions automatically. */
+  autoWrapSol?: boolean;
+}
+
 /**
  * Lightweight pr402 agent client.
  *
@@ -85,13 +90,13 @@ export class X402AgentClient {
    *
    * @param url        - The target API endpoint
    * @param preferredMint - Base58 mint address of the token you want to pay with
-   * @param options    - Optional extra fetch options (headers, etc.)
+   * @param options    - Optional extra fetch options (headers, autoWrapSol, etc.)
    * @throws {X402Error} with a specific `code` for each failure mode
    */
   async fetchWithAutoPay(
     url: string,
     preferredMint: string,
-    options?: RequestInit
+    options?: FetchAutoPayOptions
   ): Promise<Response> {
     const res = await fetch(url, options);
 
@@ -144,6 +149,7 @@ export class X402AgentClient {
           accepted: rule,
           resource: requirement.resource,
           skipSourceBalanceCheck: true,
+          autoWrapSol: options?.autoWrapSol,
         }),
       }
     );

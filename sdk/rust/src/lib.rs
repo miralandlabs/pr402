@@ -100,6 +100,7 @@ impl From<serde_json::Error> for X402Error {
 pub struct X402AgentClient {
     http: Client,
     wallet: Keypair,
+    pub auto_wrap_sol: bool,
 }
 
 impl X402AgentClient {
@@ -107,7 +108,13 @@ impl X402AgentClient {
         Self {
             http: Client::new(),
             wallet,
+            auto_wrap_sol: false,
         }
+    }
+
+    pub fn with_auto_wrap_sol(mut self, enabled: bool) -> Self {
+        self.auto_wrap_sol = enabled;
+        self
     }
 
     /// Access an API endpoint. If challenged with a 402, automatically routes to the Facilitator,
@@ -144,7 +151,8 @@ impl X402AgentClient {
             "payer": self.wallet.pubkey().to_string(),
             "accepted": rule,
             "resource": requirement.get("resource"),
-            "skipSourceBalanceCheck": true
+            "skipSourceBalanceCheck": true,
+            "autoWrapSol": self.auto_wrap_sol
         });
 
         let build_res = self.http.post(&build_url).json(&build_payload).send().await?;

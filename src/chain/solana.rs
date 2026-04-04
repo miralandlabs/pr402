@@ -50,6 +50,8 @@ pub enum SolanaChainProviderError {
     Transaction(#[from] TransactionError),
     #[error("Invalid transaction: {0}")]
     InvalidTransaction(#[from] solana_client::rpc_response::UiTransactionError),
+    #[error("Signer not found in transaction")]
+    SignerNotFoundInTransaction,
     #[error("Account not found")]
     AccountNotFound,
 }
@@ -347,11 +349,13 @@ impl SolanaChainProvider {
         &self,
         mut tx: VersionedTransaction,
     ) -> Result<VersionedTransaction, SolanaChainProviderError> {
-        // In Solana 3.x/4.x split crates, sometimes VersionedTransaction doesn't have try_sign.
-        // We can sign manually if needed, but try tx.sign first with correct imports.
-        // If that fails, we use the signatures array directly.
-        tx.signatures[0] = self.keypair.sign_message(tx.message.serialize().as_slice());
-        Ok(tx)
+        let pk = self.pubkey();
+        if let Some(idx) = tx.message.static_account_keys().iter().position(|k| *k == pk) {
+            tx.signatures[idx] = self.keypair.sign_message(tx.message.serialize().as_slice());
+            Ok(tx)
+        } else {
+            Err(SolanaChainProviderError::SignerNotFoundInTransaction)
+        }
     }
 
     /// Submit without local simulation (facilitator chooses when fee/speed favors skipping preflight).

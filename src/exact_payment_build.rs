@@ -42,6 +42,8 @@ pub struct BuildExactPaymentTxRequest {
     /// If `false` (default), require payer source ATA to exist and hold enough tokens.
     #[serde(default)]
     pub skip_source_balance_check: bool,
+    /// If `true`, the builder will inject wrap instructions if the payment mint is wrapped SOL.
+    pub auto_wrap_sol: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -312,7 +314,23 @@ pub async fn build_exact_spl_payment_tx(
         let source_ata = associated_token_address(&payer_pk, &pay_mint, &token_program);
         let dest_ata = spl_destination_ata(&pay_to, &pay_mint, us_prog, &token_program);
 
-        if !req.skip_source_balance_check {
+        let auto_wrap = req.auto_wrap_sol.unwrap_or(false);
+        const WSOL_MINT: Pubkey = solana_pubkey::pubkey!("So11111111111111111111111111111111111111112");
+
+        if pay_mint == WSOL_MINT && auto_wrap {
+            // BUY-5: Auto-wrap wSOL injected by the builder
+            ixs.push(create_associated_token_account_idempotent_ix(
+                &payer_pk,
+                &payer_pk,
+                &WSOL_MINT,
+                &spl_token::ID,
+            ));
+            ixs.push(system_transfer_ix(&payer_pk, &source_ata, amount));
+            ixs.push(
+                spl_token::instruction::sync_native(&spl_token::ID, &source_ata)
+                    .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("sync_native: {}", e)))?,
+            );
+        } else if !req.skip_source_balance_check {
             let bal = provider
                 .rpc_client()
                 .get_token_account_balance(&source_ata)

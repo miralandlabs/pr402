@@ -52,6 +52,8 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     /// Default `false` — **buyer** pays fees (one signer, matching sla-escrow CLI).
     #[serde(default)]
     pub facilitator_pays_transaction_fees: bool,
+    /// If `true`, the builder will inject wrap instructions if the payment mint is wrapped SOL.
+    pub auto_wrap_sol: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -357,7 +359,36 @@ pub async fn build_sla_escrow_fund_payment_tx(
 
     let source_ata = associated_token_address(&payer_pk, &mint, &token_program);
 
-    if !req.skip_source_balance_check {
+    let cu_limit = compute_budget_ix_set_limit(provider.max_compute_unit_limit());
+    let cu_price = compute_budget_ix_set_price(provider.max_compute_unit_price());
+
+    let auto_wrap = req.auto_wrap_sol.unwrap_or(false);
+    const WSOL_MINT: Pubkey = solana_pubkey::pubkey!("So11111111111111111111111111111111111111112");
+    let mut ixs: Vec<Instruction> = vec![cu_limit, cu_price];
+
+    if mint == WSOL_MINT && auto_wrap {
+        ixs.push(create_associated_token_account_idempotent_ix(
+            &payer_pk,
+            &payer_pk,
+            &WSOL_MINT,
+            &spl_token::ID,
+        ));
+        let mut data = Vec::with_capacity(12);
+        data.extend_from_slice(&2u32.to_le_bytes()); // Transfer discriminator
+        data.extend_from_slice(&amount.to_le_bytes());
+        ixs.push(Instruction {
+            program_id: SYSTEM_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(payer_pk, true),
+                AccountMeta::new(source_ata, false),
+            ],
+            data,
+        });
+        ixs.push(
+            spl_token::instruction::sync_native(&spl_token::ID, &source_ata)
+                .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("sync_native: {}", e)))?,
+        );
+    } else if !req.skip_source_balance_check {
         let bal = provider
             .rpc_client()
             .get_token_account_balance(&source_ata)
@@ -388,11 +419,6 @@ pub async fn build_sla_escrow_fund_payment_tx(
     })?;
     let (escrow_pda, _) = provider.get_escrow_pda(mint, bank_pda);
     let escrow_token_ata = associated_token_address(&escrow_pda, &mint, &token_program);
-
-    let cu_limit = compute_budget_ix_set_limit(provider.max_compute_unit_limit());
-    let cu_price = compute_budget_ix_set_price(provider.max_compute_unit_price());
-
-    let mut ixs: Vec<Instruction> = vec![cu_limit, cu_price];
 
     let need_create_escrow_ata = provider
         .rpc_client()
