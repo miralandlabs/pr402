@@ -4,3 +4,5 @@ target/
 .env.local
 *.log
 
+sdk/ts/node_modules/
+sdk/ts/package-lock.json
