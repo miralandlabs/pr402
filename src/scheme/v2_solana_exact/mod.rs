@@ -104,6 +104,7 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             &self.provider,
             verification,
             Some(*final_beneficiary.pubkey()),
+            self.db.as_ref(),
         )
         .await?;
         Ok(proto::v2::SettleResponse::Success {

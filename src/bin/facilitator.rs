@@ -60,6 +60,73 @@ static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 const LOG_SERVER_LOG: &str = "server_log";
 const SCHEMA_VERSION: &str = "1.0.0";
 
+// ── INFRA-4: Lightweight in-process rate limiter for build endpoints ─────────
+use std::sync::Mutex;
+static BUILD_RATE_LIMITER: OnceLock<Mutex<BuildRateState>> = OnceLock::new();
+
+struct BuildRateState {
+    /// Start of the current sliding window (UNIX seconds).
+    window_start: u64,
+    /// Request count in the current window.
+    count: u64,
+    /// Max requests per window (loaded from env once).
+    limit: u64,
+}
+
+impl BuildRateState {
+    fn new() -> Self {
+        let limit = std::env::var("PR402_BUILD_RATE_LIMIT_PER_MIN")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(60u64);
+        Self {
+            window_start: 0,
+            count: 0,
+            limit,
+        }
+    }
+}
+
+/// Returns `Some(Response 429)` if the build rate limit is exceeded.
+fn check_build_rate_limit() -> Option<Response<Body>> {
+    let state = BUILD_RATE_LIMITER.get_or_init(|| Mutex::new(BuildRateState::new()));
+    let mut guard = match state.lock() {
+        Ok(g) => g,
+        Err(_) => return None, // poisoned mutex: fail-open
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Reset window every 60 seconds
+    if now.saturating_sub(guard.window_start) >= 60 {
+        guard.window_start = now;
+        guard.count = 0;
+    }
+    guard.count += 1;
+    if guard.count > guard.limit {
+        warn!(
+            target: LOG_SERVER_LOG,
+            count = guard.count,
+            limit = guard.limit,
+            "build endpoint rate limit exceeded"
+        );
+        Some(
+            facilitator_response!()
+                .status(StatusCode::TOO_MANY_REQUESTS)
+                .header("Content-Type", "application/json")
+                .header("Retry-After", "60")
+                .body(Body::Text(
+                    r#"{"error":"Rate limit exceeded for build endpoints. Retry after 60s."}"#
+                        .to_string(),
+                ))
+                .unwrap(),
+        )
+    } else {
+        None
+    }
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HealthResponse {
@@ -340,10 +407,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     handle_vault_snapshot(&query).await
                 }
                 ("POST", "/api/v1/facilitator/build-exact-payment-tx") => {
-                    handle_build_exact_payment_tx(body).await
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handle_build_exact_payment_tx(body).await
+                    }
                 }
                 ("POST", "/api/v1/facilitator/build-sla-escrow-payment-tx") => {
-                    handle_build_sla_escrow_payment_tx(body).await
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handle_build_sla_escrow_payment_tx(body).await
+                    }
                 }
                 _ => {
                     warn!(

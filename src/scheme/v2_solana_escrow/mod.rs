@@ -123,7 +123,7 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             });
 
         let tx_sig = if sponsor_is_facilitator {
-            settle_transaction(&self.provider, verification, Some(final_beneficiary)).await?
+            settle_transaction(&self.provider, verification, Some(final_beneficiary), None).await?
         } else {
             settle_sla_escrow_fund_payment(&self.provider, verification).await?
         };

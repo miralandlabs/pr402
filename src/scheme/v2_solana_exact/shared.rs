@@ -446,6 +446,7 @@ pub async fn settle_transaction(
     provider: &SolanaChainProvider,
     verification: VerifyTransferResult,
     collection_beneficiary: Option<Pubkey>, // COLLECTION: Priority payout destination
+    db: Option<&crate::db::Pr402Db>,       // SELL-3: reuse existing pool
 ) -> Result<Signature, SolanaChainProviderError> {
     let tx = TransactionInt::new(verification.transaction).sign(provider)?;
     if !tx.is_fully_signed() {
@@ -567,20 +568,9 @@ pub async fn settle_transaction(
                                         crate::parameters::PR402_MAX_DAILY_PROVISION_COUNT,
                                         crate::parameters::DEFAULT_MAX_DAILY_PROVISION_COUNT,
                                     );
-                                    let count = {
-                                        // We need to check the DB for the daily count.
-                                        // Note: In serverless, we might not have a long-lived DB connection here,
-                                        // but we attempt it if configured.
-                                        let db_url = std::env::var("DATABASE_URL").ok();
-                                        if let Some(url) = db_url {
-                                            if let Ok(db) = crate::db::Pr402Db::connect(url) {
-                                                db.count_daily_vault_creations().await.unwrap_or(0)
-                                            } else {
-                                                0
-                                            }
-                                        } else {
-                                            0
-                                        }
+                                    let count = match db {
+                                        Some(pool) => pool.count_daily_vault_creations().await.unwrap_or(0),
+                                        None => 0,
                                     };
 
                                     if count < max_provisions {

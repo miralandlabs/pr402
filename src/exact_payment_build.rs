@@ -55,6 +55,12 @@ pub struct BuildExactPaymentTxResponse {
     pub recent_blockhash: String,
     pub fee_payer: String,
     pub payer: String,
+    /// BUY-4: Index into `VersionedTransaction.signatures[]` where the **payer** (buyer) must place
+    /// their ed25519 signature. The fee-payer signature at index 0 is added by the facilitator at settle.
+    pub payer_signature_index: usize,
+    /// BUY-3: Estimated UNIX epoch (seconds) when the embedded `recentBlockhash` expires.
+    /// Agents should request a fresh build if `now() >= recentBlockhashExpiresAt`.
+    pub recent_blockhash_expires_at: u64,
     /// POST this object to `/verify` / `/settle` **after** replacing `paymentPayload.payload.transaction`
     /// with base64(`bincode(VersionedTransaction)`) of the **signed** transaction (same unsigned shell).
     pub verify_body_template: serde_json::Value,
@@ -364,6 +370,25 @@ pub async fn build_exact_spl_payment_tx(
     let message = Message::new_with_blockhash(&ixs, Some(&fee_addr), &blockhash);
     let tx = Transaction::new_unsigned(message);
     let vtx = VersionedTransaction::from(tx);
+
+    // BUY-4: Determine payer signature index from account keys.
+    let payer_signature_index = vtx
+        .message
+        .static_account_keys()
+        .iter()
+        .position(|k| *k == payer_pk)
+        .unwrap_or(1); // fee_payer is 0; payer is typically 1
+
+    // BUY-3: Estimate blockhash expiry (~60s conservative, Solana slots are ~400ms).
+    let recent_blockhash_expires_at = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        now + 60 // conservative: Solana blockhashes last ~60-90s
+    };
+
     let wire = bincode::serialize(&vtx)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("bincode serialize: {}", e)))?;
     let tx_b64 = STANDARD.encode(wire);
@@ -383,6 +408,7 @@ pub async fn build_exact_spl_payment_tx(
     let notes = vec![
         "Transaction is unsigned: sign with the payer keypair, then replace paymentPayload.payload.transaction with base64(bincode(VersionedTransaction)) of the signed tx.".into(),
         "Blockhashes expire: if verify/settle fails with BlockhashNotFound, request a fresh build.".into(),
+        format!("Payer must sign at signatures[{}]; fee payer (index 0) is added by the facilitator at settle.", payer_signature_index),
     ];
 
     Ok(BuildExactPaymentTxResponse {
@@ -391,6 +417,8 @@ pub async fn build_exact_spl_payment_tx(
         recent_blockhash: blockhash.to_string(),
         fee_payer: fee_payer.to_string(),
         payer: payer_pk.to_string(),
+        payer_signature_index,
+        recent_blockhash_expires_at,
         verify_body_template,
         notes,
     })
