@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS resource_providers (
     spl_mint            TEXT,
     split_vault_pda     TEXT,
     vault_sol_storage_pda TEXT,
+    sweep_threshold     BIGINT,
     registration_verified_at TIMESTAMPTZ,
     last_sweep_attempt_at TIMESTAMPTZ,
     last_sweep_signature TEXT,
