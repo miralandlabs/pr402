@@ -1030,4 +1030,46 @@ impl Pr402Db {
         }
         result
     }
+    pub async fn get_resource_provider_sweep_threshold(
+        &self,
+        wallet_pubkey_str: &str,
+        spl_mint_str: Option<&str>,
+    ) -> Result<Option<u64>, DbError> {
+        const SQL: &str = r#"
+            SELECT sweep_threshold
+            FROM resource_providers
+            WHERE wallet_pubkey = $1
+              AND spl_mint IS NOT DISTINCT FROM $2
+            ORDER BY id DESC
+            LIMIT 1
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&wallet_pubkey_str, &spl_mint_str])).await {
+            Ok(Ok(Some(row))) => {
+                let threshold: Option<i64> = row.get("sweep_threshold");
+                Ok(threshold.map(|v| v as u64))
+            }
+            Ok(Ok(None)) => Ok(None),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "get_resource_provider_sweep_threshold failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        if result.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        result
+    }
 }

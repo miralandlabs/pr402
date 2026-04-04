@@ -515,32 +515,48 @@ pub async fn settle_transaction(
                     .await
                     {
                         Ok(snap) => {
-                            if is_sol_sweep {
-                                let min_lamports = crate::parameters::resolve_u64_sync(
+                            let global_floor = if is_sol_sweep {
+                                crate::parameters::resolve_u64_sync(
                                     crate::parameters::PR402_SWEEP_MIN_SPENDABLE_LAMPORTS,
                                     crate::parameters::PR402_SWEEP_MIN_SPENDABLE_LAMPORTS,
                                     crate::parameters::DEFAULT_SWEEP_MIN_SPENDABLE_LAMPORTS,
-                                );
-                                if snap.spendable_lamports < min_lamports {
+                                )
+                            } else {
+                                crate::parameters::resolve_sweep_min_spl_raw_for_mint(&token_mint)
+                            };
+
+                            let merchant_floor = if let Some(pool) = db {
+                                let spl_mint_for_db = spl_mint_for_snap.map(|m| m.to_string());
+                                pool.get_resource_provider_sweep_threshold(
+                                    &merchant_identity.to_string(),
+                                    spl_mint_for_db.as_deref()
+                                )
+                                .await
+                                .unwrap_or(None)
+                            } else {
+                                None
+                            };
+
+                            let safe_sweep_threshold = std::cmp::max(merchant_floor.unwrap_or(0), global_floor);
+
+                            if is_sol_sweep {
+                                if snap.spendable_lamports < safe_sweep_threshold {
                                     tracing::info!(
                                         spendable_lamports = snap.spendable_lamports,
-                                        min_lamports,
+                                        safe_sweep_threshold,
                                         seller = %merchant_identity,
-                                        "skip UniversalSettle sweep: SOL vault below threshold"
+                                        "skip UniversalSettle sweep: SOL vault below safe threshold"
                                     );
                                     skip_sweep = true;
                                 }
                             } else {
-                                let min_spl = crate::parameters::resolve_sweep_min_spl_raw_for_mint(
-                                    &token_mint,
-                                );
-                                if snap.spl_amount_raw < min_spl {
+                                if snap.spl_amount_raw < safe_sweep_threshold {
                                     tracing::info!(
                                         spl_amount_raw = snap.spl_amount_raw,
-                                        min_spl,
+                                        safe_sweep_threshold,
                                         mint = %token_mint,
                                         seller = %merchant_identity,
-                                        "skip UniversalSettle sweep: SPL vault below threshold"
+                                        "skip UniversalSettle sweep: SPL vault below safe threshold"
                                     );
                                     skip_sweep = true;
                                 }
