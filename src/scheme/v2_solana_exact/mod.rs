@@ -2,11 +2,11 @@
 
 pub mod types;
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use std::collections::HashMap;
 use std::error::Error;
 use std::str::FromStr;
 use std::sync::Arc;
-use base64::{engine::general_purpose::STANDARD, Engine};
 
 use crate::chain::solana::SolanaChainProvider;
 use crate::chain::ChainProvider;

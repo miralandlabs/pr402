@@ -1052,7 +1052,12 @@ impl Pr402Db {
 
         Self::deallocate_all_signer_style(&tx).await;
 
-        let result = match timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&wallet_pubkey_str, &spl_mint_str])).await {
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query_opt(SQL, &[&wallet_pubkey_str, &spl_mint_str]),
+        )
+        .await
+        {
             Ok(Ok(Some(row))) => {
                 let threshold: Option<i64> = row.get("sweep_threshold");
                 Ok(threshold.map(|v| v as u64))

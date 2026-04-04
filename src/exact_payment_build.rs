@@ -153,10 +153,7 @@ fn system_transfer_ix(from: &Pubkey, to: &Pubkey, lamports: u64) -> Instruction 
     data.extend_from_slice(&lamports.to_le_bytes());
     Instruction {
         program_id: SYSTEM_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*from, true),
-            AccountMeta::new(*to, false),
-        ],
+        accounts: vec![AccountMeta::new(*from, true), AccountMeta::new(*to, false)],
         data,
     }
 }
@@ -315,7 +312,8 @@ pub async fn build_exact_spl_payment_tx(
         let dest_ata = spl_destination_ata(&pay_to, &pay_mint, us_prog, &token_program);
 
         let auto_wrap = req.auto_wrap_sol.unwrap_or(false);
-        const WSOL_MINT: Pubkey = solana_pubkey::pubkey!("So11111111111111111111111111111111111111112");
+        const WSOL_MINT: Pubkey =
+            solana_pubkey::pubkey!("So11111111111111111111111111111111111111112");
 
         if pay_mint == WSOL_MINT && auto_wrap {
             // BUY-5: Auto-wrap wSOL injected by the builder
@@ -327,8 +325,9 @@ pub async fn build_exact_spl_payment_tx(
             ));
             ixs.push(system_transfer_ix(&payer_pk, &source_ata, amount));
             ixs.push(
-                spl_token::instruction::sync_native(&spl_token::ID, &source_ata)
-                    .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("sync_native: {}", e)))?,
+                spl_token::instruction::sync_native(&spl_token::ID, &source_ata).map_err(|e| {
+                    ExactPaymentBuildError::InvalidRequest(format!("sync_native: {}", e))
+                })?,
             );
         } else if !req.skip_source_balance_check {
             let bal = provider

@@ -5,6 +5,23 @@
 
 use solana_transaction::{versioned::VersionedTransaction, Transaction};
 
+/// Reject v0 messages that load accounts via on-chain address lookup tables.
+///
+/// Verification walks instructions with [`solana_message::VersionedMessage::static_account_keys`]
+/// only; ALT-loaded addresses are not supported yet.
+pub fn reject_versioned_tx_with_address_lookup_tables(
+    tx: &VersionedTransaction,
+) -> Result<(), String> {
+    if let Some(lookups) = tx.message.address_table_lookups() {
+        if !lookups.is_empty() {
+            return Err(
+                "versioned transactions with address lookup tables are not supported".into(),
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Deserialize `bincode` bytes produced by either legacy `Transaction` or `VersionedTransaction`.
 pub fn decode_versioned_transaction_from_bincode(
     bytes: &[u8],

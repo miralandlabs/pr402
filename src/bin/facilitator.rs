@@ -92,7 +92,7 @@ fn check_build_rate_limit() -> Option<Response<Body>> {
     let state = BUILD_RATE_LIMITER.get_or_init(|| Mutex::new(BuildRateState::new()));
     let mut guard = match state.lock() {
         Ok(g) => g,
-        Err(_) => return None, // poisoned mutex: fail-open
+        Err(p) => p.into_inner(),
     };
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -309,6 +309,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         return Err("PR402_DB: OnceLock already initialized".into());
     }
 
+    pr402::parameters::refresh_parameters_from_db(db.as_ref()).await;
+    if pr402::parameters::resolve_allowed_payment_mints(db.as_ref())
+        .await
+        .is_empty()
+    {
+        warn!(
+            target: LOG_SERVER_LOG,
+            "PR402_ALLOWED_PAYMENT_MINTS is not set (environment or `parameters` table). No mint allowlist is active: the facilitator accepts any SPL mint until an allowlist is configured. Configure an allowlist before production use."
+        );
+    }
+
     let facilitator_ready: Result<DynFacilitator, String> = (async {
         let config = Config::from_env().map_err(|e| format!("Config error: {}", e))?;
         let chain_provider = ChainProvider::from_config(&config)
@@ -354,7 +365,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         facilitator_response!()
                             .status(StatusCode::INTERNAL_SERVER_ERROR)
                             .header("Content-Type", "application/json")
-                            .body(Body::Text(format!(r#"{{"error":"{}"}}"#, e)))
+                            .body(Body::Text(serde_json::json!({ "error": e }).to_string()))
                             .unwrap(),
                         correlation_hdr.as_deref(),
                     ));

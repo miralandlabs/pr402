@@ -350,7 +350,12 @@ impl SolanaChainProvider {
         mut tx: VersionedTransaction,
     ) -> Result<VersionedTransaction, SolanaChainProviderError> {
         let pk = self.pubkey();
-        if let Some(idx) = tx.message.static_account_keys().iter().position(|k| *k == pk) {
+        if let Some(idx) = tx
+            .message
+            .static_account_keys()
+            .iter()
+            .position(|k| *k == pk)
+        {
             tx.signatures[idx] = self.keypair.sign_message(tx.message.serialize().as_slice());
             Ok(tx)
         } else {

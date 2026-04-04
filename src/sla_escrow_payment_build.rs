@@ -209,16 +209,6 @@ pub async fn build_sla_escrow_fund_payment_tx(
         });
     }
 
-    let pay_to_str = req
-        .accepted
-        .get("payTo")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest("accepted.payTo missing".into())
-        })?;
-    let seller = Pubkey::from_str(pay_to_str)
-        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(e.to_string()))?;
-
     let asset_str = req
         .accepted
         .get("asset")
@@ -385,8 +375,9 @@ pub async fn build_sla_escrow_fund_payment_tx(
             data,
         });
         ixs.push(
-            spl_token::instruction::sync_native(&spl_token::ID, &source_ata)
-                .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("sync_native: {}", e)))?,
+            spl_token::instruction::sync_native(&spl_token::ID, &source_ata).map_err(|e| {
+                SlaEscrowPaymentBuildError::InvalidRequest(format!("sync_native: {}", e))
+            })?,
         );
     } else if !req.skip_source_balance_check {
         let bal = provider
@@ -418,6 +409,20 @@ pub async fn build_sla_escrow_fund_payment_tx(
         )
     })?;
     let (escrow_pda, _) = provider.get_escrow_pda(mint, bank_pda);
+
+    if let Some(pt) = req.accepted.get("payTo").and_then(|v| v.as_str()) {
+        let parsed = Pubkey::from_str(pt).map_err(|e| {
+            SlaEscrowPaymentBuildError::InvalidRequest(format!("accepted.payTo: {}", e))
+        })?;
+        if parsed != escrow_pda {
+            return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
+                "accepted.payTo must be the SLA Escrow PDA for this asset (expected {})",
+                escrow_pda
+            )));
+        }
+    }
+
+    let seller = escrow_pda;
     let escrow_token_ata = associated_token_address(&escrow_pda, &mint, &token_program);
 
     let need_create_escrow_ata = provider
@@ -461,16 +466,22 @@ pub async fn build_sla_escrow_fund_payment_tx(
     })?;
     let tx_b64 = STANDARD.encode(wire);
 
+    let mut accepted_norm = req.accepted.clone();
+    let accepted_obj = accepted_norm.as_object_mut().ok_or_else(|| {
+        SlaEscrowPaymentBuildError::InvalidRequest("accepted must be a JSON object".into())
+    })?;
+    accepted_obj.insert("payTo".to_string(), json!(escrow_pda.to_string()));
+
     let verify_body_template = json!({
         "x402Version": 2,
         "paymentPayload": {
             "x402Version": 2,
-            "accepted": req.accepted,
+            "accepted": accepted_norm.clone(),
             "payload": { "transaction": tx_b64 },
             "resource": req.resource,
             "extensions": {}
         },
-        "paymentRequirements": req.accepted,
+        "paymentRequirements": accepted_norm,
     });
 
     let notes = if req.facilitator_pays_transaction_fees {

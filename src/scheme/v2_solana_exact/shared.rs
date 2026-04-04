@@ -12,7 +12,10 @@ use tracing::error;
 
 use crate::chain::solana::{Address, SolanaChainProvider, SolanaChainProviderError};
 use crate::proto::PaymentVerificationError;
-use crate::util::{decode_versioned_transaction_from_bincode, Base64Bytes};
+use crate::util::{
+    decode_versioned_transaction_from_bincode, reject_versioned_tx_with_address_lookup_tables,
+    Base64Bytes,
+};
 
 pub const ATA_PROGRAM_PUBKEY: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
@@ -258,6 +261,8 @@ pub async fn verify_transaction(
         .map_err(|e| SolanaExactError::TransactionDecoding(e.to_string()))?;
     let transaction = decode_versioned_transaction_from_bincode(bytes.as_slice())
         .map_err(SolanaExactError::TransactionDecoding)?;
+    reject_versioned_tx_with_address_lookup_tables(&transaction)
+        .map_err(SolanaExactError::TransactionDecoding)?;
 
     // perform transaction introspection to validate the transaction structure and details
     let instructions = transaction.message.instructions();
@@ -446,7 +451,7 @@ pub async fn settle_transaction(
     provider: &SolanaChainProvider,
     verification: VerifyTransferResult,
     collection_beneficiary: Option<Pubkey>, // COLLECTION: Priority payout destination
-    db: Option<&crate::db::Pr402Db>,       // SELL-3: reuse existing pool
+    db: Option<&crate::db::Pr402Db>,        // SELL-3: reuse existing pool
 ) -> Result<Signature, SolanaChainProviderError> {
     let tx = TransactionInt::new(verification.transaction).sign(provider)?;
     if !tx.is_fully_signed() {
@@ -529,7 +534,7 @@ pub async fn settle_transaction(
                                 let spl_mint_for_db = spl_mint_for_snap.map(|m| m.to_string());
                                 pool.get_resource_provider_sweep_threshold(
                                     &merchant_identity.to_string(),
-                                    spl_mint_for_db.as_deref()
+                                    spl_mint_for_db.as_deref(),
                                 )
                                 .await
                                 .unwrap_or(None)
@@ -537,7 +542,8 @@ pub async fn settle_transaction(
                                 None
                             };
 
-                            let safe_sweep_threshold = std::cmp::max(merchant_floor.unwrap_or(0), global_floor);
+                            let safe_sweep_threshold =
+                                std::cmp::max(merchant_floor.unwrap_or(0), global_floor);
 
                             if is_sol_sweep {
                                 if snap.spendable_lamports < safe_sweep_threshold {
@@ -549,17 +555,15 @@ pub async fn settle_transaction(
                                     );
                                     skip_sweep = true;
                                 }
-                            } else {
-                                if snap.spl_amount_raw < safe_sweep_threshold {
-                                    tracing::info!(
-                                        spl_amount_raw = snap.spl_amount_raw,
-                                        safe_sweep_threshold,
-                                        mint = %token_mint,
-                                        seller = %merchant_identity,
-                                        "skip UniversalSettle sweep: SPL vault below safe threshold"
-                                    );
-                                    skip_sweep = true;
-                                }
+                            } else if snap.spl_amount_raw < safe_sweep_threshold {
+                                tracing::info!(
+                                    spl_amount_raw = snap.spl_amount_raw,
+                                    safe_sweep_threshold,
+                                    mint = %token_mint,
+                                    seller = %merchant_identity,
+                                    "skip UniversalSettle sweep: SPL vault below safe threshold"
+                                );
+                                skip_sweep = true;
                             }
                         }
                         Err(e) => {
@@ -585,7 +589,9 @@ pub async fn settle_transaction(
                                         crate::parameters::DEFAULT_MAX_DAILY_PROVISION_COUNT,
                                     );
                                     let count = match db {
-                                        Some(pool) => pool.count_daily_vault_creations().await.unwrap_or(0),
+                                        Some(pool) => {
+                                            pool.count_daily_vault_creations().await.unwrap_or(0)
+                                        }
                                         None => 0,
                                     };
 

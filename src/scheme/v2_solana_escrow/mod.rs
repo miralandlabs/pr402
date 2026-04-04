@@ -2,13 +2,13 @@
 
 pub mod types;
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Write as _;
 use std::mem;
 use std::str::FromStr;
 use std::sync::Arc;
-use base64::{engine::general_purpose::STANDARD, Engine};
 
 use crate::chain::solana::{Address, SolanaChainProvider};
 use crate::chain::ChainProvider;
@@ -24,7 +24,10 @@ use crate::scheme::v2_solana_exact::shared::{
     settle_transaction, verify_compute_limit_instruction, verify_compute_price_instruction,
     TransactionInt, VerifyTransferResult,
 };
-use crate::util::{decode_versioned_transaction_from_bincode, Base64Bytes};
+use crate::util::{
+    decode_versioned_transaction_from_bincode, reject_versioned_tx_with_address_lookup_tables,
+    Base64Bytes,
+};
 use sla_escrow_api::instruction::{EscrowInstruction, FundPayment};
 
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
@@ -458,6 +461,8 @@ pub async fn verify_transfer(
         .map_err(|e| PaymentVerificationError::InvalidFormat(e.to_string()))?;
     let transaction = decode_versioned_transaction_from_bincode(bytes.as_slice())
         .map_err(PaymentVerificationError::InvalidFormat)?;
+    reject_versioned_tx_with_address_lookup_tables(&transaction)
+        .map_err(PaymentVerificationError::InvalidFormat)?;
 
     let instructions = transaction.message.instructions();
     let compute_units = verify_compute_limit_instruction(&transaction, 0)?;
@@ -490,7 +495,9 @@ pub async fn verify_transfer(
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
 
     let program_id = fund_instruction.program_id();
-    let escrow_config = provider.sla_escrow().expect("SLAEscrow config missing");
+    let escrow_config = provider.sla_escrow().ok_or_else(|| {
+        PaymentVerificationError::TransactionSimulation("SLA Escrow not configured".into())
+    })?;
     if program_id != escrow_config.program_id {
         return Err(PaymentVerificationError::TransactionSimulation(
             "Invalid SLAEscrow Program ID".into(),
@@ -526,15 +533,26 @@ pub async fn verify_transfer(
             "Missing extra requirements".into(),
         ))?;
 
-    let expected_seller_pda = if let Some(identity) = extra.merchant_wallet.as_ref() {
-        let (pda, _) = provider.get_escrow_pda(*requirements.asset.pubkey(), *identity.pubkey());
-        pda
-    } else {
-        // Fallback: assume pay_to is the correct destination (PDA or wallet)
-        *requirements.pay_to.pubkey()
-    };
+    let bank_pda = escrow_config.bank_address.ok_or_else(|| {
+        PaymentVerificationError::TransactionSimulation(
+            "SLA Escrow bank_address not loaded for facilitator".into(),
+        )
+    })?;
 
-    if Pubkey::from(fund_payment.seller.to_bytes()) != expected_seller_pda {
+    if extra.bank_address.pubkey() != &bank_pda {
+        return Err(PaymentVerificationError::InvalidFormat(
+            "paymentRequirements.extra.bankAddress does not match facilitator escrow bank".into(),
+        ));
+    }
+
+    // Canonical Escrow PDA for this mint + bank (matches onboard / builder); `payTo` must be this PDA.
+    let (expected_escrow_pda, _) = provider.get_escrow_pda(*requirements.asset.pubkey(), bank_pda);
+
+    if requirements.pay_to.pubkey() != &expected_escrow_pda {
+        return Err(PaymentVerificationError::RecipientMismatch);
+    }
+
+    if Pubkey::from(fund_payment.seller.to_bytes()) != expected_escrow_pda {
         return Err(PaymentVerificationError::RecipientMismatch);
     }
     if Address::new(Pubkey::from(fund_payment.mint.to_bytes())) != requirements.asset {
@@ -633,7 +651,7 @@ pub async fn verify_transfer(
         payer,
         merchant_identity: identity,
         final_beneficiary: beneficiary,
-        vault_pda: expected_seller_pda,
+        vault_pda: expected_escrow_pda,
         transaction,
     })
 }
