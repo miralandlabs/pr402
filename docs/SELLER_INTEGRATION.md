@@ -16,7 +16,7 @@ When your API server spins up (or dynamically upon handling a request), your ser
 ### Call the Facilitator Onboard Endpoint:
 Make a standard GET request to your assigned Facilitator:
 ```http
-GET https://preview.pr402.signer-payer.me/api/v1/facilitator/onboard/{your_merchant_wallet}
+GET https://preview.agent.pay402.me/api/v1/facilitator/onboard/{your_merchant_wallet}
 ```
 
 The response will contain the derived Vault PDAs for your supported schemes (e.g., `v2:solana:exact` or `v2:solana:escrow`). Cache these!
@@ -55,7 +55,7 @@ When an unauthenticated buyer hits your service, respond with an `HTTP 402 Payme
     "maxTimeoutSeconds": 300,
     "extra": {
       "merchantWallet": "D76Nso7EE7kantk8Fnt3cZuprzLqhjW3TtT2XPy4orA2", 
-      "capabilitiesUrl": "https://preview.pr402.signer-payer.me/api/v1/facilitator/capabilities"
+      "capabilitiesUrl": "https://preview.agent.pay402.me/api/v1/facilitator/capabilities"
     }
   }
 ]
@@ -81,7 +81,7 @@ When you extract this header, you do not need to parse or verify the Solana tran
 Submit a `POST /api/v1/facilitator/verify` or `/settle` request containing the exact contents of the `X-PAYMENT` header. 
 
 ```bash
-curl -X POST https://preview.pr402.signer-payer.me/api/v1/facilitator/settle \
+curl -X POST https://preview.agent.pay402.me/api/v1/facilitator/settle \
      -H "Content-Type: application/json" \
      -d '<DECODED_X_PAYMENT_JSON>'
 ```

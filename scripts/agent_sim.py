@@ -10,7 +10,7 @@ import base64
 SOLANA_RPC_URL = os.getenv("SOLANA_RPC_URL", "https://api.devnet.solana.com")
 CHAIN_ID = os.getenv("SOLANA_CHAIN_ID", "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")
 USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-FACILITATOR_URL = os.getenv("PR402_BASE_URL", "https://preview.pr402.signer-payer.me")
+FACILITATOR_URL = os.getenv("PR402_BASE_URL", "https://preview.agent.pay402.me")
 
 # Program IDs
 SLA_ESCROW_ID = "s1jWKnB1QwKKKZUDq3bZCmqvwEf8UQpQCbkEtQzHknS"

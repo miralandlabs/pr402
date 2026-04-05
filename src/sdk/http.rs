@@ -116,7 +116,7 @@ pub struct FacilitatorHttpClient {
 }
 
 impl FacilitatorHttpClient {
-    /// `base_url`: e.g. `https://preview.pr402.signer-payer.me` (trailing slash OK).
+    /// `base_url`: e.g. `https://preview.agent.pay402.me` (trailing slash OK).
     pub fn new(base_url: impl AsRef<str>) -> Result<Self, FacilitatorHttpError> {
         Ok(Self {
             base_url: normalize_base_url(base_url.as_ref())?,

@@ -12,7 +12,7 @@
   },
   "servers": [
     {
-      "url": "https://preview.pr402.signer-payer.me",
+      "url": "https://preview.agent.pay402.me",
       "description": "Example deployment — substitute your facilitator base URL (no trailing slash)."
     }
   ],

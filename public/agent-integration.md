@@ -117,7 +117,7 @@ Walk this in order when a seller returns **402** JSON:
 ### 1. Discover
 
 ```bash
-BASE="https://preview.pr402.signer-payer.me"
+BASE="https://preview.agent.pay402.me"
 curl -sS "$BASE/api/v1/facilitator/supported" | jq .
 # or
 curl -sS "$BASE/api/v1/facilitator/capabilities" | jq .
