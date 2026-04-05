@@ -107,6 +107,11 @@
       "methods": ["GET", "OPTIONS"]
     },
     {
+      "src": "/api/v1/facilitator/discovery",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
       "src": "/api/v1/facilitator/build-exact-payment-tx",
       "dest": "/src/bin/facilitator",
       "methods": ["POST", "OPTIONS"]
