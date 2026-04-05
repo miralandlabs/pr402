@@ -429,6 +429,61 @@
             box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
         }
 
+        .section-kicker {
+            margin-top: 3rem;
+            margin-bottom: 0;
+        }
+
+        .section-kicker h2 {
+            font-size: 1.35rem;
+            letter-spacing: -0.03em;
+            margin: 0.5rem 0 0.35rem;
+        }
+
+        .section-kicker .section-lead {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+            max-width: 720px;
+            font-weight: 300;
+            line-height: 1.55;
+        }
+
+        .card-links {
+            list-style: none;
+            margin: -0.25rem 0 1.5rem;
+            padding: 0;
+        }
+
+        .card-links li {
+            margin-bottom: 0.45rem;
+        }
+
+        .card-links a {
+            color: var(--primary);
+            text-decoration: none;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            letter-spacing: 0.02em;
+        }
+
+        .card-links a:hover {
+            text-decoration: underline;
+        }
+
+        .badge-amber {
+            background: rgba(245, 158, 11, 0.12) !important;
+            color: #fbbf24 !important;
+            border-color: rgba(245, 158, 11, 0.28) !important;
+        }
+
+        .inline-code {
+            font-family: var(--font-code);
+            font-size: 0.88em;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 0.12em 0.4em;
+            border-radius: 3px;
+        }
+
         @media (max-width: 768px) {
             .container { padding: 2rem 1rem; }
             .grid { grid-template-columns: 1fr; }
@@ -453,25 +508,62 @@
             <p class="tagline">Providing an effortless REST gateway to the Solana economic stack. One API for all agentic payments.</p>
         </header>
 
+        <div class="section-kicker">
+            <span class="badge">Documentation</span>
+            <h2>Agent integration</h2>
+            <p class="section-lead">
+                <strong style="color: var(--text); font-weight: 500;">Seller agents</strong> (resource providers) onboard vaults and publish correct
+                <span class="inline-code">payTo</span> PDAs.
+                <strong style="color: var(--text); font-weight: 500;">Buyer agents</strong> discover <span class="inline-code">accepts[]</span>, build and sign proofs, then call verify and settle.
+                Full runbook: <a href="/agent-integration.md" style="color: var(--primary);">/agent-integration.md</a>
+                — sellers: <a href="/agent-integration.md#publishing-a-payment-required-line-sellers" style="color: var(--primary);">publish 402</a>;
+                buyers routed from a 402: <a href="/agent-integration.md#payment-pipeline-from-accepts-to-settlement" style="color: var(--primary);">pipeline</a>,
+                <a href="/agent-integration.md#how-pr402-differs-from-the-generic-x402-spec" style="color: var(--primary);">vs spec</a>.
+            </p>
+        </div>
+
         <div class="grid">
-            <!-- Documentation Card -->
             <div class="card">
-                <span class="badge">Developer Docs</span>
-                <h3>Agent Integration</h3>
-                <p>Complete guide on how to implement the x402 headers and verify settlements in your own agents.</p>
+                <span class="badge badge-amber">Seller agents</span>
+                <h3>Resource providers</h3>
+                <p>UniversalSettle split-vault onboarding, sovereign discount path, optional signed registry, and SLA-Escrow bank metadata. Your x402 lines must use program PDAs—not a bare wallet—as <span class="inline-code">payTo</span> for settlement proofs.</p>
+                <ul class="card-links">
+                    <li><a href="/agent-integration.md#seller-agents-resource-providers">Seller runbook →</a></li>
+                    <li><a href="/agent-integration.md#publishing-a-payment-required-line-sellers">Publishing <span class="inline-code">accepts[]</span> →</a></li>
+                    <li><a href="/onboarding_guide.md">Onboarding guide →</a></li>
+                </ul>
                 <div class="btn-group">
-                    <a href="/agent-integration.md" class="btn btn-primary" id="btn-docs">Read Spec</a>
+                    <a href="/agent-integration.md#seller-agents-resource-providers" class="btn btn-primary" id="btn-seller-docs">Seller steps</a>
+                    <a href="/onboarding_guide.md" class="btn btn-secondary" id="btn-onboard-guide">Onboarding</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <span class="badge">Buyer agents</span>
+                <h3>Payers</h3>
+                <p>Match the resource’s 402 offer, call unsigned-tx builders when needed, sign locally, then <span class="inline-code">POST /verify</span> and <span class="inline-code">POST /settle</span> with the same JSON body. SLA-Escrow templates from the facilitator carry canonical <span class="inline-code">payTo</span>.</p>
+                <ul class="card-links">
+                    <li><a href="/agent-integration.md#buyer-agents-payers">Buyer runbook →</a></li>
+                    <li><a href="/agent-integration.md#payment-pipeline-from-accepts-to-settlement">402 → signed tx pipeline →</a></li>
+                    <li><a href="/agent-integration.md#how-pr402-differs-from-the-generic-x402-spec">pr402 vs x402 spec →</a></li>
+                    <li><a href="/openapi.json">OpenAPI 3.1 →</a></li>
+                </ul>
+                <div class="btn-group">
+                    <a href="/agent-integration.md#buyer-agents-payers" class="btn btn-primary" id="btn-buyer-docs">Buyer steps</a>
                     <a href="/openapi.json" class="btn btn-secondary" id="btn-openapi">OpenAPI</a>
                 </div>
             </div>
 
-            <!-- Discovery Card -->
             <div class="card">
-                <span class="badge">Machine Discovery</span>
-                <h3>System Capabilities</h3>
-                <p>Real-time configuration of the facilitator, including supported schemes, fee structures, and oracle candidates.</p>
+                <span class="badge">Live discovery</span>
+                <h3>Capabilities &amp; health</h3>
+                <p>Machine-readable <span class="inline-code">features</span>, <span class="inline-code">feePayer</span>, <span class="inline-code">chainId</span>, and endpoint index. Use for agent bootstrapping and probes.</p>
+                <ul class="card-links">
+                    <li><a href="/api/v1/facilitator/capabilities">GET /capabilities</a></li>
+                    <li><a href="/api/v1/facilitator/health">GET /health</a></li>
+                </ul>
                 <div class="btn-group">
-                    <a href="/api/v1/facilitator/capabilities" class="btn btn-primary" id="btn-capabilities">View JSON</a>
+                    <a href="/api/v1/facilitator/capabilities" class="btn btn-primary" id="btn-capabilities">Capabilities</a>
                     <a href="/api/v1/facilitator/supported" class="btn btn-secondary" id="btn-supported">Supported</a>
                 </div>
             </div>
@@ -487,10 +579,10 @@
             </div>
             <div class="terminal-body" id="terminal">
                 <div class="terminal-line">
-                    <span class="prompt">></span> Welcome to pr402 Facilitator.
+                    <span class="prompt">></span> pr402 · UniversalSettle vault PDAs + SLA-Escrow scheme metadata (see <span class="inline-code">schemes</span> in JSON).
                 </div>
                 <div class="terminal-line">
-                    <span class="prompt">></span> Enter a Solana wallet address to resolve deterministic vault PDAs.
+                    <span class="prompt">></span> Enter the seller / resource-provider wallet pubkey to preview addresses. Buyer agents: follow the buyer runbook for verify and settle.
                 </div>
                 <div class="terminal-input-line">
                     <span class="prompt">></span>
@@ -503,29 +595,74 @@
         <section class="discovery-docs">
             <div class="discovery-header">
                 <h2>API Inventory</h2>
-                <p class="tagline" style="font-size: 0.9rem;">Discovery version 2.1 • Solana Mainnet/Devnet</p>
+                <p class="tagline" style="font-size: 0.9rem;">HTTP API · x402 v2 · schema v1.0.0 (see /health)</p>
             </div>
             
             <div class="endpoint-list">
                 <div class="endpoint">
                     <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/health</span>
+                    <span class="description">rpc · db · schema · environment</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/capabilities</span>
+                    <span class="description">features, fee payer, endpoint index</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
                     <span class="path">/api/v1/facilitator/supported</span>
-                    <span class="description">List schemes and on-chain terms</span>
+                    <span class="description">schemes, signers, rail extras</span>
                 </div>
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="path">/api/v1/facilitator/verify</span>
-                    <span class="description">Cryptographic validation of proposed terms</span>
+                    <span class="description">validate payment proof (buyer flow)</span>
                 </div>
                 <div class="endpoint">
                     <span class="method post">POST</span>
                     <span class="path">/api/v1/facilitator/settle</span>
-                    <span class="description">Execute JIT vault provisioning & settlement</span>
+                    <span class="description">submit or confirm settlement</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/build-exact-payment-tx</span>
+                    <span class="description">unsigned UniversalSettle exact (buyer)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/build-sla-escrow-payment-tx</span>
+                    <span class="description">unsigned FundPayment (buyer)</span>
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="path">/api/v1/facilitator/onboard</span>
-                    <span class="description">Preview vault addresses for any wallet</span>
+                    <span class="description">preview PDAs &amp; fees (seller)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/onboard/build-tx</span>
+                    <span class="description">unsigned create_vault tx (seller)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/onboard/challenge</span>
+                    <span class="description">HMAC challenge for signed registry</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/onboard</span>
+                    <span class="description">submit wallet signature (seller registry)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/vault-snapshot</span>
+                    <span class="description">rpc vault balances (seller diagnostics)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/upgrade</span>
+                    <span class="description">expand lite 402 into full paymentrequired</span>
                 </div>
             </div>
         </section>
@@ -631,7 +768,7 @@
                                 <div><span class="output-label">Fee (BPS)</span><span class="output-val">${info.feeBps}</span></div>
                                 <div><span class="output-label">Deployment</span><span class="output-val">${info.status}</span></div>
                                 <div style="margin-top: 0.5rem; color: #475569; font-size: 0.7rem; font-style: italic;">
-                                    ${name === 'exact' ? "* Seller-centric: This vault is owned by the provider to bridge liquidity." : "* Protocol-centric: This is a shared system bank for the specific mint."}
+                                    ${name === 'exact' ? "* exact: UniversalSettle vault rail — put vault / sol-storage PDAs in x402 payTo per integrator docs." : "* sla-escrow: institutional escrow; payTo must be the Escrow PDA for mint+bank (see seller runbook / build-sla-escrow template)."}
                                 </div>
                             </div>
                         `;

@@ -3,7 +3,7 @@
   "info": {
     "title": "pr402 Facilitator API",
     "version": "1.0.0",
-    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Typical agent flow:** (1) `GET /supported` or `GET /capabilities` — schemes, networks, fee payer. (2) For SPL proofs the deployment can build shells: `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally (buyer/payer only; facilitator fills fee-payer slot at settle when applicable). (4) Replace `paymentPayload.payload.transaction` in `verifyBodyTemplate`, add `correlationId` if desired. (5) `POST /verify` then `POST /settle` with the **same** JSON body.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204 with `Access-Control-Allow-*`; JSON responses use `Access-Control-Allow-Origin: *`.\n\nCanonical machine-readable contract: `/openapi.json` on this host. Human-readable runbook: `/agent-integration.md` (Markdown).\n",
+    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Who uses this API:**\n- **Seller / resource provider agents** — onboard UniversalSettle vaults, preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` → Seller agents).\n- **Buyer / payer agents** — match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` → Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)—not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md`.\n",
     "license": { "name": "Apache-2.0" }
   },
   "externalDocs": {
@@ -20,7 +20,7 @@
     "/api/v1/facilitator/health": {
       "get": {
         "summary": "Health check",
-        "description": "Same response body as `/supported` (loads facilitator + schemes). Use for uptime and load balancers.",
+        "description": "Liveness and dependency snapshot: `status`, `schemaVersion`, `database` (connected | disabled | error), `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`. Not the same payload as `/supported`.",
         "operationId": "facilitatorHealth",
         "responses": {
           "200": {
@@ -242,7 +242,7 @@
     "/api/v1/facilitator/build-sla-escrow-payment-tx": {
       "post": {
         "summary": "Build unsigned SLA-Escrow FundPayment tx",
-        "description": "Default: facilitator pays Solana fees; buyer partially signs. Set `buyerPaysTransactionFees: true` for CLI-shaped single-signer shell.",
+        "description": "Default: facilitator pays Solana fees; buyer partially signs. Set `buyerPaysTransactionFees: true` for CLI-shaped single-signer shell. Response `verifyBodyTemplate` sets **`payTo`** to the canonical **Escrow PDA** (mint + bank) so it matches facilitator verification.",
         "operationId": "buildSlaEscrowPaymentTx",
         "requestBody": {
           "required": true,

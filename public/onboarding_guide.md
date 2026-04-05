@@ -1,5 +1,8 @@
 # X402 Resource Provider Onboarding Guide
 
+> **Buyer / payer agent?** Use the [Agent integration runbook](./agent-integration.md#buyer-agents-payers) (discover → build → sign → verify → settle).  
+> **Seller / resource provider?** You are in the right place.
+
 Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Resource Provider (Seller) using the **UniversalSettle** protocol with Institutional Neutrality.
 
 ## 1. Institutional Neutrality & Incentives
