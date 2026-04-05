@@ -934,6 +934,7 @@ async fn handle_capabilities(
         "agentManifest": {
             "openApi": "/openapi.json",
             "integrationGuide": "/agent-integration.md",
+            "sellerOnboardingGuide": "/onboarding_guide.md",
             "x402Spec": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"
         }
     });
