@@ -19,11 +19,11 @@ This section is for **buyer-side** code: wallets, automation, and agents that **
 
 1. **Receive** the `402` body from the resource: keep `paymentRequirements` and pick one matching `accepts[]` line.
 2. **Discover** your facilitator (same host the RP referenced, if any): `GET /api/v1/facilitator/capabilities` or `GET /api/v1/facilitator/supported`. Use `httpEndpoints` + `GET /openapi.json` for the machine-readable contract.
-3. **Build** (optional): if the RP relies on this facilitator for tx assembly, call **`POST .../build-exact-payment-tx`** when `scheme` is `exact`, or **`POST .../build-sla-escrow-payment-tx`** when `scheme` is `sla-escrow` — not both. You send `payer`, `accepted`, `resource`, and (escrow only) `slaHash` + `oracleAuthority`.
+3. **Build** (optional): if the RP relies on this facilitator for tx assembly, call **`POST .../build-exact-payment-tx`** when `scheme` is `exact` or `v2:solana:exact`, or **`POST .../build-sla-escrow-payment-tx`** when `scheme` is `sla-escrow` or `v2:solana:sla-escrow` — not both. You send `payer`, `accepted`, `resource`, and (escrow only) `slaHash` + `oracleAuthority`.
 4. **Sign** the unsigned `transaction` (base64 bincode) with the payer’s Solana signer, then put the signed bytes back into `paymentPayload.payload.transaction` inside the `verifyBodyTemplate` from the build response (see OpenAPI / runbook).
 5. **Verify** then **settle**: `POST .../verify` and `POST .../settle` with the **same** JSON body; reuse `correlationId` / `X-Correlation-ID` if the facilitator returned one on verify.
 
-If **BlockhashNotFound** appears on settle, repeat build → sign → verify → settle. If the RP already gave a fully built fund tx (some escrow CLI flows), skip step 3 and still use steps 4–5.
+Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blockhash expires. If the RP already gave a fully built fund tx (some escrow CLI flows), skip step 3 and still use steps 4–5.
 
 ### SDKs and docs
 

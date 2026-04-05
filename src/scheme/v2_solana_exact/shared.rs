@@ -459,9 +459,52 @@ pub async fn settle_transaction(
             UiTransactionError::from(TransactionError::SignatureFailure),
         ));
     }
-    let tx_sig = tx
+    let primary = tx.inner.signatures[0];
+
+    match provider
+        .rpc_client()
+        .get_signature_status_with_commitment(&primary, CommitmentConfig::confirmed())
+        .await
+    {
+        Ok(Some(Ok(()))) => return Ok(primary),
+        Ok(Some(Err(e))) => {
+            return Err(SolanaChainProviderError::Transport(format!(
+                "transaction failed on-chain: {:?}",
+                e
+            )));
+        }
+        Ok(None) | Err(_) => {}
+    }
+
+    let tx_sig = match tx
         .send_and_confirm(provider, CommitmentConfig::confirmed())
-        .await?;
+        .await
+    {
+        Ok(sig) => sig,
+        Err(e) => {
+            let msg = e.to_string();
+            if msg.contains("Blockhash not found") || msg.contains("blockhash not found") || msg.contains("BlockhashNotFound") {
+                return Err(SolanaChainProviderError::Transport(
+                    "retry build: transaction blockhash has expired or is invalid".to_string()
+                ));
+            }
+            if msg.contains("already been processed") || msg.contains("AlreadyProcessed") {
+                if matches!(
+                    provider
+                        .rpc_client()
+                        .get_signature_status_with_commitment(&primary, CommitmentConfig::confirmed())
+                        .await,
+                    Ok(Some(Ok(())))
+                ) {
+                    primary
+                } else {
+                    return Err(e);
+                }
+            } else {
+                return Err(e);
+            }
+        }
+    };
 
     if let Some(us_config) = provider.universalsettle() {
         let payer = *verification.payer.pubkey();

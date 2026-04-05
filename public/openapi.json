@@ -136,7 +136,7 @@
     "/api/v1/facilitator/settle": {
       "post": {
         "summary": "Settle payment",
-        "description": "Same JSON shape as `/verify`. Submits or confirms on-chain settlement (scheme-specific). Reuse the **same** body and correlation id as verify.",
+        "description": "Same JSON shape as `/verify`. Submits or confirms on-chain settlement (scheme-specific). Reuse the **same** body and correlation id as verify. Idempotent: if the transaction is already on-chain, returns success. Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blockhash expires.",
         "operationId": "facilitatorSettle",
         "parameters": [
           {
@@ -494,7 +494,7 @@
           "payer": { "type": "string", "description": "Buyer pubkey (base58)" },
           "accepted": {
             "type": "object",
-            "description": "One accepts[] line; scheme must be exact; must match deployment network"
+            "description": "One accepts[] line; scheme must be exact or v2:solana:exact; must match deployment network"
           },
           "resource": { "$ref": "#/components/schemas/ResourceRef" },
           "skipSourceBalanceCheck": { "type": "boolean", "default": false }
@@ -506,7 +506,7 @@
         "required": ["payer", "accepted", "resource", "slaHash", "oracleAuthority"],
         "properties": {
           "payer": { "type": "string" },
-          "accepted": { "type": "object", "description": "accepts[] line with scheme sla-escrow" },
+          "accepted": { "type": "object", "description": "accepts[] line with scheme sla-escrow or v2:solana:sla-escrow" },
           "resource": { "$ref": "#/components/schemas/ResourceRef" },
           "slaHash": { "type": "string", "description": "64 hex chars (32 bytes)" },
           "oracleAuthority": { "type": "string", "description": "Must appear in accepted.extra.oracleAuthorities" },

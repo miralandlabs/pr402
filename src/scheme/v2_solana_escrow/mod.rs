@@ -417,17 +417,23 @@ async fn settle_sla_escrow_fund_payment(
         Ok(sig) => Ok(sig),
         Err(e) => {
             let msg = e.to_string();
-            if msg.contains("already been processed") {
-                return Ok(primary);
+            if msg.contains("Blockhash not found") || msg.contains("blockhash not found") || msg.contains("BlockhashNotFound") {
+                return Err(crate::chain::solana::SolanaChainProviderError::Transport(
+                    "retry build: transaction blockhash has expired or is invalid".to_string(),
+                ).into());
             }
-            if matches!(
-                provider
-                    .rpc_client()
-                    .get_signature_status_with_commitment(&primary, CommitmentConfig::confirmed())
-                    .await,
-                Ok(Some(Ok(())))
-            ) {
-                Ok(primary)
+            if msg.contains("already been processed") || msg.contains("AlreadyProcessed") {
+                if matches!(
+                    provider
+                        .rpc_client()
+                        .get_signature_status_with_commitment(&primary, CommitmentConfig::confirmed())
+                        .await,
+                    Ok(Some(Ok(())))
+                ) {
+                    Ok(primary)
+                } else {
+                    Err(e.into())
+                }
             } else {
                 Err(e.into())
             }

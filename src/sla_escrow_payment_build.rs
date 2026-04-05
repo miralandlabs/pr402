@@ -188,9 +188,9 @@ pub async fn build_sla_escrow_fund_payment_tx(
         .get("scheme")
         .and_then(|x| x.as_str())
         .unwrap_or("");
-    if scheme != SLAEscrowScheme.as_ref() {
+    if scheme != SLAEscrowScheme.as_ref() && scheme != "v2:solana:sla-escrow" {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
-            "scheme must be {:?}, got {:?}",
+            "scheme must be {:?} or \"v2:solana:sla-escrow\", got {:?}",
             SLAEscrowScheme.as_ref(),
             scheme
         )));

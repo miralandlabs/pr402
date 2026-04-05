@@ -184,9 +184,9 @@ pub async fn build_exact_spl_payment_tx(
         .get("scheme")
         .and_then(|x| x.as_str())
         .unwrap_or("");
-    if scheme != "exact" {
+    if scheme != "exact" && scheme != "v2:solana:exact" {
         return Err(ExactPaymentBuildError::InvalidRequest(format!(
-            "scheme must be \"exact\", got {:?}",
+            "scheme must be \"exact\" or \"v2:solana:exact\", got {:?}",
             scheme
         )));
     }
