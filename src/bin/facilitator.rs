@@ -417,6 +417,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("GET", "/api/v1/facilitator/vault-snapshot") => {
                     handle_vault_snapshot(&query).await
                 }
+                ("GET", "/api/v1/facilitator/discovery") => {
+                    handle_discovery(facilitator.clone(), &query).await
+                }
                 ("POST", "/api/v1/facilitator/build-exact-payment-tx") => {
                     if let Some(limited) = check_build_rate_limit() {
                         limited
@@ -944,6 +947,48 @@ async fn handle_capabilities(
         .header("Content-Type", "application/json")
         .body(Body::Text(body.to_string()))
         .unwrap()
+}
+
+/// Programmatic Discovery: Find payTo address and extra metadata.
+/// Query: `wallet=<PUBKEY>&scheme=<SCHEME>&asset=<MINT>`.
+async fn handle_discovery(
+    facilitator: Arc<
+        dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,
+    >,
+    query: &str,
+) -> Response<Body> {
+    let wallet = query_param(query, "wallet");
+    let scheme = query_param(query, "scheme");
+    let asset = query_param(query, "asset");
+    let asset_opt = if asset.is_empty() {
+        None
+    } else {
+        Some(asset.as_str())
+    };
+
+    if wallet.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "Missing wallet parameter");
+    }
+    if scheme.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "Missing scheme parameter (e.g. exact or sla-escrow)",
+        );
+    }
+
+    match facilitator.discovery(&wallet, &scheme, asset_opt).await {
+        Ok(info) => facilitator_response!()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Body::Text(serde_json::to_string(&info).unwrap_or_else(
+                |_| r#"{"error":"serialization failed"}"#.to_string(),
+            )))
+            .unwrap(),
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("Discovery failed: {}", e),
+        ),
+    }
 }
 
 /// Public PDA preview only (no DB). Use challenge + POST `/onboard` to persist with proof-of-control.

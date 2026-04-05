@@ -43,6 +43,14 @@ pub trait Facilitator: Send + Sync {
         wallet: &str,
     ) -> Result<proto::v2::BuildPaymentTxResponse, Self::Error>;
 
+    /// Programmatic discovery of `payTo` address and required institutional `extra` metadata.
+    async fn discovery(
+        &self,
+        wallet: &str,
+        scheme: &str,
+        asset: Option<&str>,
+    ) -> Result<SchemeOnboardInfo, Self::Error>;
+
     /// Upgrades a Lite 402 challenge into a full Institutional PaymentRequired response.
     async fn upgrade(
         &self,
@@ -245,6 +253,25 @@ impl Facilitator for FacilitatorLocal {
         ))
     }
 
+    async fn discovery(
+        &self,
+        wallet: &str,
+        scheme: &str,
+        asset: Option<&str>,
+    ) -> Result<SchemeOnboardInfo, Self::Error> {
+        let handler = self.scheme_handlers.get(scheme).ok_or_else(|| {
+            FacilitatorLocalError::Discovery(X402SchemeFacilitatorError::OnchainFailure(format!(
+                "Unsupported scheme: {}",
+                scheme
+            )))
+        })?;
+
+        handler
+            .discovery(wallet, asset)
+            .await
+            .map_err(FacilitatorLocalError::Discovery)
+    }
+
     async fn upgrade(
         &self,
         request: &proto::PaymentRequired,
@@ -270,4 +297,6 @@ pub enum FacilitatorLocalError {
     Upgrade(X402SchemeFacilitatorError),
     #[error(transparent)]
     Onboard(X402SchemeFacilitatorError),
+    #[error(transparent)]
+    Discovery(X402SchemeFacilitatorError),
 }

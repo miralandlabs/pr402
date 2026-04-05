@@ -305,6 +305,16 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         })
     }
 
+    async fn discovery(
+        &self,
+        wallet: &str,
+        _asset: Option<&str>,
+    ) -> Result<crate::facilitator::SchemeOnboardInfo, X402SchemeFacilitatorError> {
+        // UniversalSettle / Exact is deterministic based on wallet address. Asset (mint) doesn't
+        // change the SplitVault address, though it might change which token accounts are JITed.
+        self.onboard(wallet).await
+    }
+
     async fn upgrade(
         &self,
         request: &proto::PaymentRequired,

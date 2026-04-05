@@ -25,6 +25,11 @@ pub trait X402SchemeFacilitator: Send + Sync {
         &self,
         wallet: &str,
     ) -> Result<proto::v2::BuildPaymentTxResponse, X402SchemeFacilitatorError>;
+    async fn discovery(
+        &self,
+        wallet: &str,
+        asset: Option<&str>,
+    ) -> Result<SchemeOnboardInfo, X402SchemeFacilitatorError>;
     async fn upgrade(
         &self,
         request: &proto::PaymentRequired,

@@ -287,6 +287,53 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         })
     }
 
+    async fn discovery(
+        &self,
+        wallet: &str,
+        asset: Option<&str>,
+    ) -> Result<crate::facilitator::SchemeOnboardInfo, X402SchemeFacilitatorError> {
+        let _seller = solana_pubkey::Pubkey::from_str(wallet)
+            .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?;
+        let escrow_config = self.provider.sla_escrow().ok_or_else(|| {
+            X402SchemeFacilitatorError::OnchainFailure("SLAEscrow not enabled".to_string())
+        })?;
+        let bank_pda = escrow_config.bank_address.ok_or_else(|| {
+            X402SchemeFacilitatorError::OnchainFailure("SLAEscrow bank not loaded".to_string())
+        })?;
+
+        // In SLA-Escrow, the "Vault" (payTo) is the Escrow account for a specific mint.
+        let mint = if let Some(a) = asset {
+            Pubkey::from_str(a)
+                .map_err(|e| X402SchemeFacilitatorError::InvalidPayload(e.to_string()))?
+        } else {
+            Pubkey::default() // Default to Native SOL discovery
+        };
+
+        let (escrow_pda, _) = self.provider.get_escrow_pda(mint, bank_pda);
+        let (sol_storage_pda, _) = self
+            .provider
+            .get_sla_escrow_sol_storage_pda(mint, bank_pda, escrow_pda);
+
+        Ok(crate::facilitator::SchemeOnboardInfo {
+            label: format!(
+                "SLA Escrow ({})",
+                if mint == Pubkey::default() {
+                    "SOL"
+                } else {
+                    "Asset"
+                }
+            ),
+            role: "Institutional Escrow".to_string(),
+            vault_pda: escrow_pda.to_string(), // CRITICAL: This is the payTo address
+            sol_storage_pda: sol_storage_pda.to_string(),
+            token_pda: None,
+            fee_bps: escrow_config.fee_bps.unwrap_or(0).into(),
+            status: "Active".to_string(),
+            is_sovereign: false,
+            provisioning_status: None,
+        })
+    }
+
     async fn upgrade(
         &self,
         request: &proto::PaymentRequired,
