@@ -111,18 +111,36 @@ fn associated_token_address(owner: &Pubkey, mint: &Pubkey, token_program: &Pubke
     .0
 }
 
+fn resolve_universalsettle_vault(
+    provider: &SolanaChainProvider,
+    pay_to: &Pubkey,
+    merchant_wallet: Option<Pubkey>,
+) -> Pubkey {
+    if let Some(identity) = merchant_wallet {
+        return provider.get_vault_pda(&identity).0;
+    }
+    let (vault_from_pay_to, _) = provider.get_vault_pda(pay_to);
+    if *pay_to == vault_from_pay_to {
+        // pay_to is already a vault PDA; avoid double-derivation.
+        *pay_to
+    } else {
+        vault_from_pay_to
+    }
+}
+
 fn spl_destination_ata(
     pay_to: &Pubkey,
     mint: &Pubkey,
-    universalsettle_program: Option<Pubkey>,
+    provider: &SolanaChainProvider,
+    merchant_wallet: Option<Pubkey>,
+    universalsettle_enabled: bool,
     token_program: &Pubkey,
 ) -> Pubkey {
-    match universalsettle_program {
-        Some(pid) => {
-            let (vault, _) = Pubkey::find_program_address(&[b"vault", pay_to.as_ref()], &pid);
-            associated_token_address(&vault, mint, token_program)
-        }
-        None => associated_token_address(pay_to, mint, token_program),
+    if universalsettle_enabled {
+        let vault = resolve_universalsettle_vault(provider, pay_to, merchant_wallet);
+        associated_token_address(&vault, mint, token_program)
+    } else {
+        associated_token_address(pay_to, mint, token_program)
     }
 }
 
@@ -159,10 +177,13 @@ fn system_transfer_ix(from: &Pubkey, to: &Pubkey, lamports: u64) -> Instruction 
 }
 
 /// Resolve the SOL destination: vault `sol_storage` PDA when UniversalSettle is active, otherwise `pay_to`.
-fn sol_destination(pay_to: &Pubkey, provider: &SolanaChainProvider) -> Pubkey {
+fn sol_destination(
+    pay_to: &Pubkey,
+    provider: &SolanaChainProvider,
+    merchant_wallet: Option<Pubkey>,
+) -> Pubkey {
     if let Some(us_config) = provider.universalsettle() {
-        let (vault, _) =
-            Pubkey::find_program_address(&[b"vault", pay_to.as_ref()], &us_config.program_id);
+        let vault = resolve_universalsettle_vault(provider, pay_to, merchant_wallet);
         let (sol_storage, _) =
             Pubkey::find_program_address(&[b"sol_storage", vault.as_ref()], &us_config.program_id);
         sol_storage
@@ -211,6 +232,12 @@ pub async fn build_exact_spl_payment_tx(
         .ok_or_else(|| ExactPaymentBuildError::InvalidRequest("accepted.payTo missing".into()))?;
     let pay_to = Pubkey::from_str(pay_to_str)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(e.to_string()))?;
+    let merchant_wallet = req
+        .accepted
+        .get("extra")
+        .and_then(|x| x.get("merchantWallet"))
+        .and_then(|x| x.as_str())
+        .and_then(|s| Pubkey::from_str(s).ok());
 
     let asset_str = req
         .accepted
@@ -243,8 +270,9 @@ pub async fn build_exact_spl_payment_tx(
         })?;
         let fee_bps = us_config.fee_bps.unwrap_or(100);
         let mint_for_setup = if is_native_sol { None } else { Some(pay_mint) };
+        let setup_identity = merchant_wallet.unwrap_or(pay_to);
         provider
-            .ensure_vault_setup(&pay_to, &fee_dest, fee_bps, mint_for_setup)
+            .ensure_vault_setup(&setup_identity, &fee_dest, fee_bps, mint_for_setup)
             .await
             .map_err(|e| {
                 ExactPaymentBuildError::Rpc(format!("ensure_vault_setup (pre-build): {e}"))
@@ -280,11 +308,11 @@ pub async fn build_exact_spl_payment_tx(
             }
         }
 
-        let dest = sol_destination(&pay_to, provider);
+        let dest = sol_destination(&pay_to, provider, merchant_wallet);
         ixs.push(system_transfer_ix(&payer_pk, &dest, amount));
     } else {
         // ── SPL token path: TransferChecked ─────────────────────────
-        let us_prog = provider.universalsettle().map(|c| c.program_id);
+        let us_enabled = provider.universalsettle().is_some();
 
         let mint_acc = provider
             .rpc_client()
@@ -309,7 +337,14 @@ pub async fn build_exact_spl_payment_tx(
         let decimals = mint_state.decimals;
 
         let source_ata = associated_token_address(&payer_pk, &pay_mint, &token_program);
-        let dest_ata = spl_destination_ata(&pay_to, &pay_mint, us_prog, &token_program);
+        let dest_ata = spl_destination_ata(
+            &pay_to,
+            &pay_mint,
+            provider,
+            merchant_wallet,
+            us_enabled,
+            &token_program,
+        );
 
         let auto_wrap = req.auto_wrap_sol.unwrap_or(false);
         const WSOL_MINT: Pubkey =
@@ -352,7 +387,7 @@ pub async fn build_exact_spl_payment_tx(
             }
         }
 
-        let need_create_dest = if us_prog.is_some() {
+        let need_create_dest = if us_enabled {
             false
         } else {
             provider.rpc_client().get_account(&dest_ata).await.is_err()
