@@ -153,13 +153,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_parameters_param_name ON parameters (para
 CREATE INDEX IF NOT EXISTS idx_parameters_inactive ON parameters (inactive ASC);
 
 -- =============================================================================
--- Default parameter seeds (sweep preflight floors; safe to re-run)
+-- Default parameter seeds (safe to re-run).
+--
+-- Notes (DB parameter precedence > env in this project):
+-- - PR402_SWEEP_CRON_TOKEN:
+--     Bearer token required by POST /api/v1/facilitator/sweep.
+--     Default below is a bootstrap placeholder; rotate immediately in production.
+-- - PR402_SWEEP_CRON_COOLDOWN_SEC (default 300):
+--     Min seconds between sweep attempts per provider rail.
+-- - PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC (default 86400):
+--     Candidate must have a successful settle within this window.
+-- - PR402_SWEEP_CRON_BATCH_LIMIT (default 50):
+--     Max provider rails processed per cron run.
+-- - PR402_SWEEP_MIN_SPENDABLE_LAMPORTS (default 30000000):
+--     SOL floor (0.03 SOL) before sweep.
+-- - PR402_SWEEP_MIN_SPL_RAW_DEFAULT (default 3000000):
+--     SPL raw floor fallback (e.g. 3.0 @ 6 decimals).
+-- - PR402_SWEEP_MIN_SPL_RAW_BY_MINT:
+--     Optional per-mint SPL raw floor map.
 -- =============================================================================
 
 INSERT INTO parameters (param_name, param_value) VALUES
     ('PR402_MAX_DAILY_PROVISION_COUNT', '50'),
     ('PR402_ONBOARD_HMAC_SECRET', 'AgenticEconomics'),
     ('PR402_ONBOARD_CHALLENGE_TTL_SEC', '600'),
+    ('PR402_SWEEP_CRON_TOKEN', 'CHANGE_ME_BEFORE_PRODUCTION'),
+    ('PR402_SWEEP_CRON_COOLDOWN_SEC', '300'),
+    ('PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC', '86400'),
+    ('PR402_SWEEP_CRON_BATCH_LIMIT', '50'),
     ('PR402_SWEEP_MIN_SPENDABLE_LAMPORTS', '30000000'),
     (
         'PR402_SWEEP_MIN_SPL_RAW_BY_MINT',

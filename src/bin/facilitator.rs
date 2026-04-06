@@ -17,6 +17,7 @@ use serde::Deserialize;
 use std::io::LineWriter;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
+use subtle::ConstantTimeEq;
 use tracing::{error, info, warn};
 use tracing_log::LogTracer;
 use tracing_subscriber::{fmt::format::FmtSpan, prelude::*};
@@ -71,6 +72,29 @@ struct BuildRateState {
     count: u64,
     /// Max requests per window (loaded from env once).
     limit: u64,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct SweepRequest {
+    limit: Option<u64>,
+    cooldown_seconds: Option<u64>,
+    require_recent_settle_within_seconds: Option<u64>,
+    dry_run: Option<bool>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SweepItemResult {
+    wallet: String,
+    settlement_mode: String,
+    spl_mint: Option<String>,
+    available_raw: u64,
+    threshold_raw: u64,
+    status: String,
+    action: String,
+    signature: Option<String>,
+    error: Option<String>,
 }
 
 impl BuildRateState {
@@ -347,6 +371,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 .get("X-Correlation-ID")
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_string);
+            let authorization_hdr: Option<String> = req
+                .headers()
+                .get("Authorization")
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_string);
 
             let accept = req
                 .headers()
@@ -433,6 +462,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     } else {
                         handle_build_sla_escrow_payment_tx(body).await
                     }
+                }
+                ("POST", "/api/v1/facilitator/sweep") => {
+                    handle_sweep(body, authorization_hdr.as_deref()).await
                 }
                 _ => {
                     warn!(
@@ -928,6 +960,7 @@ async fn handle_capabilities(
             "settle": { "method": "POST", "path": "/api/v1/facilitator/settle" },
             "buildExactPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-exact-payment-tx" },
             "buildSlaEscrowPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-sla-escrow-payment-tx" },
+            "sweep": { "method": "POST", "path": "/api/v1/facilitator/sweep", "auth": "bearer" },
             "onboard": { "method": "POST", "path": "/api/v1/facilitator/onboard" },
             "buildOnboardTx": { "method": "GET", "path": "/api/v1/facilitator/onboard/build-tx" },
             "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
@@ -1403,6 +1436,385 @@ async fn handle_build_sla_escrow_payment_tx(body: Body) -> Response<Body> {
             error_response(status, &e.to_string())
         }
     }
+}
+
+fn parse_bearer_token(header: Option<&str>) -> Option<&str> {
+    let raw = header?.trim();
+    raw.strip_prefix("Bearer ").map(str::trim)
+}
+
+fn timing_safe_eq(a: &str, b: &str) -> bool {
+    a.as_bytes().ct_eq(b.as_bytes()).into()
+}
+
+async fn authorize_sweep(header: Option<&str>) -> Result<(), Response<Body>> {
+    let expected = pr402::parameters::resolve_sweep_cron_token(pr402_db())
+        .await
+        .filter(|s| !s.trim().is_empty());
+    let Some(expected_token) = expected else {
+        return Err(error_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "PR402_SWEEP_CRON_TOKEN not configured",
+        ));
+    };
+    let Some(got_token) = parse_bearer_token(header) else {
+        return Err(error_response(
+            StatusCode::UNAUTHORIZED,
+            "Missing or invalid Authorization bearer token",
+        ));
+    };
+    if !timing_safe_eq(got_token, &expected_token) {
+        return Err(error_response(StatusCode::UNAUTHORIZED, "Unauthorized"));
+    }
+    Ok(())
+}
+
+async fn handle_sweep(body: Body, authorization_header: Option<&str>) -> Response<Body> {
+    if let Err(res) = authorize_sweep(authorization_header).await {
+        return res;
+    }
+
+    let cp = match CHAIN_PROVIDER.get() {
+        Some(c) => c,
+        None => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "chain provider not initialized",
+            );
+        }
+    };
+    let us_config = match cp.solana.universalsettle() {
+        Some(us) => us,
+        None => return error_response(StatusCode::BAD_REQUEST, "UniversalSettle not configured"),
+    };
+    let fee_destination = match us_config.fee_destination {
+        Some(d) => d,
+        None => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "UniversalSettle fee destination not configured",
+            )
+        }
+    };
+    let Some(db) = pr402_db() else {
+        return error_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "DATABASE_URL must be configured for cron sweep candidate polling",
+        );
+    };
+
+    pr402::parameters::refresh_parameters_from_db(Some(db)).await;
+
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => "{}".to_string(),
+    };
+    let req: SweepRequest = match serde_json::from_str(&body_str) {
+        Ok(r) => r,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
+    };
+
+    let configured_limit = pr402::parameters::resolve_sweep_cron_batch_limit(
+        Some(db),
+        pr402::parameters::DEFAULT_SWEEP_CRON_BATCH_LIMIT,
+    )
+    .await;
+    let configured_cooldown = pr402::parameters::resolve_sweep_cron_cooldown_sec(
+        Some(db),
+        pr402::parameters::DEFAULT_SWEEP_CRON_COOLDOWN_SEC,
+    )
+    .await;
+    let configured_recent_window = pr402::parameters::resolve_sweep_cron_recent_settle_window_sec(
+        Some(db),
+        pr402::parameters::DEFAULT_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC,
+    )
+    .await;
+
+    let limit = req.limit.unwrap_or(configured_limit).clamp(1, 500);
+    let cooldown_sec = req
+        .cooldown_seconds
+        .unwrap_or(configured_cooldown)
+        .clamp(1, 86_400);
+    let recent_window_sec = req
+        .require_recent_settle_within_seconds
+        .unwrap_or(configured_recent_window)
+        .clamp(60, 7 * 86_400);
+    let dry_run = req.dry_run.unwrap_or(false);
+
+    let candidates = match db
+        .list_sweep_candidates(cooldown_sec, recent_window_sec, limit)
+        .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("sweep candidate query failed: {}", e),
+            )
+        }
+    };
+
+    let mut attempted = 0u64;
+    let mut succeeded = 0u64;
+    let mut skipped_below_threshold = 0u64;
+    let mut failed = 0u64;
+    let mut items: Vec<SweepItemResult> = Vec::with_capacity(candidates.len());
+
+    for c in candidates.iter() {
+        let seller = match solana_pubkey::Pubkey::from_str(&c.wallet_pubkey) {
+            Ok(pk) => pk,
+            Err(_) => {
+                failed += 1;
+                items.push(SweepItemResult {
+                    wallet: c.wallet_pubkey.clone(),
+                    settlement_mode: c.settlement_mode.clone(),
+                    spl_mint: c.spl_mint.clone(),
+                    available_raw: 0,
+                    threshold_raw: 0,
+                    status: "failed".to_string(),
+                    action: "none".to_string(),
+                    signature: None,
+                    error: Some("invalid wallet_pubkey in resource_providers".to_string()),
+                });
+                continue;
+            }
+        };
+
+        let mint_opt = if c.settlement_mode == "spl" {
+            match c.spl_mint.as_deref() {
+                Some(m) => match solana_pubkey::Pubkey::from_str(m) {
+                    Ok(pk) => Some(pk),
+                    Err(_) => {
+                        failed += 1;
+                        items.push(SweepItemResult {
+                            wallet: c.wallet_pubkey.clone(),
+                            settlement_mode: c.settlement_mode.clone(),
+                            spl_mint: c.spl_mint.clone(),
+                            available_raw: 0,
+                            threshold_raw: 0,
+                            status: "failed".to_string(),
+                            action: "none".to_string(),
+                            signature: None,
+                            error: Some("invalid spl_mint in resource_providers".to_string()),
+                        });
+                        continue;
+                    }
+                },
+                None => {
+                    failed += 1;
+                    items.push(SweepItemResult {
+                        wallet: c.wallet_pubkey.clone(),
+                        settlement_mode: c.settlement_mode.clone(),
+                        spl_mint: c.spl_mint.clone(),
+                        available_raw: 0,
+                        threshold_raw: 0,
+                        status: "failed".to_string(),
+                        action: "none".to_string(),
+                        signature: None,
+                        error: Some("spl settlement_mode without spl_mint".to_string()),
+                    });
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+
+        let token_program_opt = if let Some(mint) = mint_opt {
+            match cp.solana.rpc_client().get_account(&mint).await {
+                Ok(mint_acc) if mint_acc.owner == pr402::chain::solana::TOKEN_2022_PROGRAM_ID => {
+                    Some(pr402::chain::solana::TOKEN_2022_PROGRAM_ID)
+                }
+                Ok(_) => Some(pr402::chain::solana::TOKEN_PROGRAM_ID),
+                Err(_) => Some(pr402::chain::solana::TOKEN_PROGRAM_ID),
+            }
+        } else {
+            None
+        };
+
+        let snap = match pr402::vault_balance::fetch_universalsettle_vault_snapshot(
+            cp.solana.rpc_client(),
+            us_config.program_id,
+            seller,
+            mint_opt,
+            token_program_opt,
+        )
+        .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                failed += 1;
+                items.push(SweepItemResult {
+                    wallet: c.wallet_pubkey.clone(),
+                    settlement_mode: c.settlement_mode.clone(),
+                    spl_mint: c.spl_mint.clone(),
+                    available_raw: 0,
+                    threshold_raw: 0,
+                    status: "failed".to_string(),
+                    action: "none".to_string(),
+                    signature: None,
+                    error: Some(format!("vault snapshot failed: {}", e)),
+                });
+                continue;
+            }
+        };
+
+        let provider_floor = c.sweep_threshold.unwrap_or(0);
+        let global_floor = if let Some(mint) = mint_opt {
+            pr402::parameters::resolve_sweep_min_spl_raw_for_mint(&mint)
+        } else {
+            pr402::parameters::resolve_u64_sync(
+                pr402::parameters::PR402_SWEEP_MIN_SPENDABLE_LAMPORTS,
+                pr402::parameters::PR402_SWEEP_MIN_SPENDABLE_LAMPORTS,
+                pr402::parameters::DEFAULT_SWEEP_MIN_SPENDABLE_LAMPORTS,
+            )
+        };
+        let threshold = std::cmp::max(provider_floor, global_floor);
+        let available = if mint_opt.is_some() {
+            snap.spl_amount_raw
+        } else {
+            snap.spendable_lamports
+        };
+
+        if available < threshold {
+            skipped_below_threshold += 1;
+            items.push(SweepItemResult {
+                wallet: c.wallet_pubkey.clone(),
+                settlement_mode: c.settlement_mode.clone(),
+                spl_mint: c.spl_mint.clone(),
+                available_raw: available,
+                threshold_raw: threshold,
+                status: "skipped".to_string(),
+                action: "below_threshold".to_string(),
+                signature: None,
+                error: None,
+            });
+            continue;
+        }
+
+        if dry_run {
+            items.push(SweepItemResult {
+                wallet: c.wallet_pubkey.clone(),
+                settlement_mode: c.settlement_mode.clone(),
+                spl_mint: c.spl_mint.clone(),
+                available_raw: available,
+                threshold_raw: threshold,
+                status: "eligible".to_string(),
+                action: "dry_run".to_string(),
+                signature: None,
+                error: None,
+            });
+            continue;
+        }
+
+        attempted += 1;
+        let is_sol = mint_opt.is_none();
+        let token_mint = mint_opt.unwrap_or_default();
+        let ix = pr402::chain::solana_universalsettle::build_sweep_instruction(
+            us_config.program_id,
+            cp.solana.pubkey(),
+            snap.split_vault_pda,
+            seller,
+            fee_destination,
+            token_mint,
+            available,
+            is_sol,
+            token_program_opt,
+        );
+
+        let send_result = async {
+            let (recent_blockhash, _) = cp
+                .solana
+                .rpc_client()
+                .get_latest_blockhash_with_commitment(
+                    solana_commitment_config::CommitmentConfig::confirmed(),
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            let sweep_tx = solana_transaction::versioned::VersionedTransaction::from(
+                solana_transaction::Transaction::new_signed_with_payer(
+                    &[ix],
+                    Some(&cp.solana.pubkey()),
+                    &[cp.solana.keypair()],
+                    recent_blockhash,
+                ),
+            );
+            cp.solana
+                .send_sweep_transaction(&sweep_tx)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        .await;
+
+        match send_result {
+            Ok(sig) => {
+                succeeded += 1;
+                if let Err(e) = db
+                    .record_sweep_attempt(
+                        &c.wallet_pubkey,
+                        &c.settlement_mode,
+                        c.spl_mint.as_deref(),
+                        Some(&sig.to_string()),
+                    )
+                    .await
+                {
+                    warn!(target: LOG_SERVER_LOG, error = %e, "record_sweep_attempt (success) failed");
+                }
+                items.push(SweepItemResult {
+                    wallet: c.wallet_pubkey.clone(),
+                    settlement_mode: c.settlement_mode.clone(),
+                    spl_mint: c.spl_mint.clone(),
+                    available_raw: available,
+                    threshold_raw: threshold,
+                    status: "ok".to_string(),
+                    action: "sweep_submitted".to_string(),
+                    signature: Some(sig.to_string()),
+                    error: None,
+                });
+            }
+            Err(e) => {
+                failed += 1;
+                if let Err(db_err) = db
+                    .record_sweep_attempt(
+                        &c.wallet_pubkey,
+                        &c.settlement_mode,
+                        c.spl_mint.as_deref(),
+                        None,
+                    )
+                    .await
+                {
+                    warn!(target: LOG_SERVER_LOG, error = %db_err, "record_sweep_attempt (failure) failed");
+                }
+                items.push(SweepItemResult {
+                    wallet: c.wallet_pubkey.clone(),
+                    settlement_mode: c.settlement_mode.clone(),
+                    spl_mint: c.spl_mint.clone(),
+                    available_raw: available,
+                    threshold_raw: threshold,
+                    status: "failed".to_string(),
+                    action: "sweep_error".to_string(),
+                    signature: None,
+                    error: Some(e),
+                });
+            }
+        }
+    }
+
+    let body = serde_json::json!({
+        "dryRun": dry_run,
+        "scanned": candidates.len(),
+        "attempted": attempted,
+        "succeeded": succeeded,
+        "skippedBelowThreshold": skipped_below_threshold,
+        "failed": failed,
+        "items": items
+    });
+    facilitator_response!()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Body::Text(body.to_string()))
+        .unwrap()
 }
 
 fn query_param(query: &str, key: &str) -> String {

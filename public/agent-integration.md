@@ -169,3 +169,45 @@ curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
 
 - x402 v2: [x402-specification-v2.md](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md)
 - Facilitator HTTP: **`/openapi.json`** and Markdown runbook **`/agent-integration.md`** on the deployment
+
+---
+
+## Internal ops: cron sweep (private)
+
+`POST /api/v1/facilitator/sweep` is an **internal-only** endpoint for scheduler/cron execution.
+
+- **Auth:** `Authorization: Bearer <token>`
+- **Token source:** `PR402_SWEEP_CRON_TOKEN` (`parameters` table takes precedence over env var).
+- **Purpose:** Drain eligible UniversalSettle vault balances without requiring a settlement request in the same invocation.
+- **Safety:** Use `{"dryRun": true}` first in cron rollout.
+
+### Sweep parameters (DB `parameters` keys)
+
+DB values override env values in this project.
+
+- `PR402_SWEEP_CRON_TOKEN`
+  - Bearer token for the private sweep endpoint.
+  - Seeded in `migrations/init.sql` as bootstrap placeholder (`CHANGE_ME_BEFORE_PRODUCTION`).
+- `PR402_SWEEP_CRON_COOLDOWN_SEC` (default: `300`)
+  - Minimum interval between sweep attempts per provider rail.
+- `PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC` (default: `86400`)
+  - Candidate must have a successful settle within this recent window.
+- `PR402_SWEEP_CRON_BATCH_LIMIT` (default: `50`)
+  - Maximum candidate rails processed per sweep run.
+- `PR402_SWEEP_MIN_SPENDABLE_LAMPORTS` (default: `30000000`)
+  - SOL threshold (0.03 SOL) before attempting sweep.
+- `PR402_SWEEP_MIN_SPL_RAW_DEFAULT` (default: `3000000`)
+  - Default SPL raw threshold when mint has no explicit override.
+- `PR402_SWEEP_MIN_SPL_RAW_BY_MINT`
+  - JSON map for per-mint SPL raw thresholds.
+
+### Suggested scheduler body
+
+```json
+{
+  "dryRun": false,
+  "limit": 50,
+  "cooldownSeconds": 300,
+  "requireRecentSettleWithinSeconds": 86400
+}
+```

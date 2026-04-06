@@ -483,9 +483,66 @@
           "400": { "description": "Bad request or program not configured" }
         }
       }
+    },
+    "/api/v1/facilitator/sweep": {
+      "post": {
+        "summary": "Internal cron sweep execution (private)",
+        "description": "Executes UniversalSettle sweep attempts for eligible provider rails. **Internal operations endpoint**: requires bearer auth and is intended for scheduler/cron use only. Supports `dryRun` for safe rollout.",
+        "operationId": "facilitatorSweep",
+        "security": [{ "sweep_bearer": [] }],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SweepRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sweep execution report",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SweepResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / not configured",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+              }
+            }
+          },
+          "503": {
+            "description": "Missing required sweep auth parameter",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
+    "securitySchemes": {
+      "sweep_bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Private scheduler token (`PR402_SWEEP_CRON_TOKEN`; DB parameter takes precedence over env)."
+      }
+    },
     "schemas": {
       "JsonError": {
         "type": "object",
@@ -648,6 +705,47 @@
           "splBalance": { "type": "string", "nullable": true },
           "isProvisioned": { "type": "boolean" }
         }
+      },
+      "SweepRequest": {
+        "type": "object",
+        "properties": {
+          "limit": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 },
+          "cooldownSeconds": { "type": "integer", "minimum": 1, "default": 300 },
+          "requireRecentSettleWithinSeconds": { "type": "integer", "minimum": 60, "default": 86400 },
+          "dryRun": { "type": "boolean", "default": false }
+        },
+        "additionalProperties": false
+      },
+      "SweepItemResult": {
+        "type": "object",
+        "properties": {
+          "wallet": { "type": "string" },
+          "settlementMode": { "type": "string", "enum": ["native_sol", "spl"] },
+          "splMint": { "type": "string", "nullable": true },
+          "availableRaw": { "type": "integer" },
+          "thresholdRaw": { "type": "integer" },
+          "status": { "type": "string", "enum": ["eligible", "ok", "skipped", "failed"] },
+          "action": { "type": "string" },
+          "signature": { "type": "string", "nullable": true },
+          "error": { "type": "string", "nullable": true }
+        },
+        "additionalProperties": false
+      },
+      "SweepResponse": {
+        "type": "object",
+        "properties": {
+          "dryRun": { "type": "boolean" },
+          "scanned": { "type": "integer" },
+          "attempted": { "type": "integer" },
+          "succeeded": { "type": "integer" },
+          "skippedBelowThreshold": { "type": "integer" },
+          "failed": { "type": "integer" },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SweepItemResult" }
+          }
+        },
+        "additionalProperties": false
       },
       "UniversalSettleExtra": {
         "type": "object",

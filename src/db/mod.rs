@@ -87,6 +87,15 @@ pub struct ResourceProviderInfo<'a> {
     pub rail: ResourceProviderRail<'a>,
 }
 
+/// One provider rail candidate for cron-driven sweep.
+#[derive(Debug, Clone)]
+pub struct SweepCandidate {
+    pub wallet_pubkey: String,
+    pub settlement_mode: String,
+    pub spl_mint: Option<String>,
+    pub sweep_threshold: Option<u64>,
+}
+
 impl Pr402Db {
     const WAIT: Duration = Duration::from_secs(15);
     const CREATE: Duration = Duration::from_secs(10);
@@ -1065,6 +1074,144 @@ impl Pr402Db {
             Ok(Ok(None)) => Ok(None),
             Ok(Err(e)) => {
                 error!(target: "server_log", error = %format_err_chain(&e), "get_resource_provider_sweep_threshold failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        if result.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        result
+    }
+
+    /// List active provider rails eligible for cron sweep checks.
+    pub async fn list_sweep_candidates(
+        &self,
+        cooldown_sec: u64,
+        recent_settle_window_sec: u64,
+        limit: u64,
+    ) -> Result<Vec<SweepCandidate>, DbError> {
+        const SQL: &str = r#"
+            SELECT
+                rp.wallet_pubkey,
+                rp.settlement_mode,
+                rp.spl_mint,
+                rp.sweep_threshold
+            FROM resource_providers rp
+            WHERE rp.inactive = false
+              AND rp.split_vault_pda IS NOT NULL
+              AND (
+                    rp.last_sweep_attempt_at IS NULL
+                    OR rp.last_sweep_attempt_at < NOW() - ($1::BIGINT * INTERVAL '1 second')
+              )
+              AND EXISTS (
+                    SELECT 1
+                    FROM payment_attempts pa
+                    WHERE pa.resource_provider_id = rp.id
+                      AND pa.settle_ok = true
+                      AND pa.settle_at IS NOT NULL
+                      AND pa.settle_at > NOW() - ($2::BIGINT * INTERVAL '1 second')
+              )
+            ORDER BY COALESCE(rp.last_sweep_attempt_at, TO_TIMESTAMP(0)) ASC
+            LIMIT $3
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query(
+                SQL,
+                &[
+                    &(cooldown_sec as i64),
+                    &(recent_settle_window_sec as i64),
+                    &(limit as i64),
+                ],
+            ),
+        )
+        .await
+        {
+            Ok(Ok(rows)) => {
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let threshold: Option<i64> = row.get("sweep_threshold");
+                    out.push(SweepCandidate {
+                        wallet_pubkey: row.get("wallet_pubkey"),
+                        settlement_mode: row.get("settlement_mode"),
+                        spl_mint: row.get("spl_mint"),
+                        sweep_threshold: threshold.map(|v| v as u64),
+                    });
+                }
+                Ok(out)
+            }
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "list_sweep_candidates failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        if result.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        result
+    }
+
+    /// Record that a sweep was attempted for a provider rail; optionally store successful signature.
+    pub async fn record_sweep_attempt(
+        &self,
+        wallet_pubkey: &str,
+        settlement_mode: &str,
+        spl_mint: Option<&str>,
+        sweep_signature: Option<&str>,
+    ) -> Result<(), DbError> {
+        const SQL: &str = r#"
+            UPDATE resource_providers
+            SET
+                last_sweep_attempt_at = NOW(),
+                last_sweep_signature = COALESCE($4, last_sweep_signature),
+                updated_at = NOW()
+            WHERE wallet_pubkey = $1
+              AND settlement_mode = $2
+              AND spl_mint IS NOT DISTINCT FROM $3
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.execute(
+                SQL,
+                &[
+                    &wallet_pubkey,
+                    &settlement_mode,
+                    &spl_mint,
+                    &sweep_signature,
+                ],
+            ),
+        )
+        .await
+        {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "record_sweep_attempt failed");
                 Err(DbError::Query(format_err_chain(&e)))
             }
             Err(_) => Err(DbError::Timeout),

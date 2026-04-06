@@ -101,6 +101,15 @@ pub const PR402_SWEEP_MIN_SPENDABLE_LAMPORTS: &str = "PR402_SWEEP_MIN_SPENDABLE_
 pub const PR402_SWEEP_MIN_SPL_RAW_DEFAULT: &str = "PR402_SWEEP_MIN_SPL_RAW_DEFAULT";
 /// JSON object: `{ "<mint_base58>": "<raw_u64>", ... }` for per-token sweep floors.
 pub const PR402_SWEEP_MIN_SPL_RAW_BY_MINT: &str = "PR402_SWEEP_MIN_SPL_RAW_BY_MINT";
+/// Bearer token for authenticated cron-driven sweep execution endpoint.
+pub const PR402_SWEEP_CRON_TOKEN: &str = "PR402_SWEEP_CRON_TOKEN";
+/// Minimum seconds between sweep attempts per provider rail when cron sweeper runs.
+pub const PR402_SWEEP_CRON_COOLDOWN_SEC: &str = "PR402_SWEEP_CRON_COOLDOWN_SEC";
+/// Only consider providers with successful settles within this recent window (seconds).
+pub const PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC: &str =
+    "PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC";
+/// Max provider rails processed per cron sweep run.
+pub const PR402_SWEEP_CRON_BATCH_LIMIT: &str = "PR402_SWEEP_CRON_BATCH_LIMIT";
 
 /// Fallback when `PR402_SWEEP_MIN_SPENDABLE_LAMPORTS` is unset (0.03 SOL).
 pub const DEFAULT_SWEEP_MIN_SPENDABLE_LAMPORTS: u64 = 30_000_000;
@@ -110,6 +119,9 @@ pub const DEFAULT_SWEEP_MIN_SPL_RAW_DEFAULT: u64 = 3_000_000;
 
 /// Fallback when `PR402_MAX_DAILY_PROVISION_COUNT` is unset.
 pub const DEFAULT_MAX_DAILY_PROVISION_COUNT: u64 = 50;
+pub const DEFAULT_SWEEP_CRON_COOLDOWN_SEC: u64 = 300;
+pub const DEFAULT_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC: u64 = 86_400;
+pub const DEFAULT_SWEEP_CRON_BATCH_LIMIT: u64 = 50;
 
 /// Read cache then env (no async DB fetch). Call [`refresh_parameters_from_db`] before settle so cache is warm.
 pub fn resolve_string_sync(param_key: &str, env_key: &str) -> Option<String> {
@@ -233,4 +245,44 @@ pub async fn resolve_allowed_payment_mints(db: Option<&Pr402Db>) -> Vec<String> 
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+pub async fn resolve_sweep_cron_token(db: Option<&Pr402Db>) -> Option<String> {
+    resolve_string(db, PR402_SWEEP_CRON_TOKEN, Some(PR402_SWEEP_CRON_TOKEN)).await
+}
+
+pub async fn resolve_sweep_cron_cooldown_sec(db: Option<&Pr402Db>, default: u64) -> u64 {
+    resolve_string(
+        db,
+        PR402_SWEEP_CRON_COOLDOWN_SEC,
+        Some(PR402_SWEEP_CRON_COOLDOWN_SEC),
+    )
+    .await
+    .and_then(|s| s.parse::<u64>().ok())
+    .unwrap_or(default)
+}
+
+pub async fn resolve_sweep_cron_recent_settle_window_sec(
+    db: Option<&Pr402Db>,
+    default: u64,
+) -> u64 {
+    resolve_string(
+        db,
+        PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC,
+        Some(PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC),
+    )
+    .await
+    .and_then(|s| s.parse::<u64>().ok())
+    .unwrap_or(default)
+}
+
+pub async fn resolve_sweep_cron_batch_limit(db: Option<&Pr402Db>, default: u64) -> u64 {
+    resolve_string(
+        db,
+        PR402_SWEEP_CRON_BATCH_LIMIT,
+        Some(PR402_SWEEP_CRON_BATCH_LIMIT),
+    )
+    .await
+    .and_then(|s| s.parse::<u64>().ok())
+    .unwrap_or(default)
 }
