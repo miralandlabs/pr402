@@ -12,7 +12,7 @@ Runbook for two kinds of autonomous clients:
 
 **Important (pr402 ≠ simple wallet `payTo`):** This facilitator settles through **UniversalSettle** (`v2:solana:exact`) and/or **SLA-Escrow** (`v2:solana:sla-escrow`). Your 402 **`payTo`** (and matching proof destinations) must be the **on-chain PDA** your buyers pay into—not a bare seller wallet for settlement proofs:
 
-- **`exact`**: use the UniversalSettle **split-vault / rail PDAs** from seller onboarding (`GET /api/v1/facilitator/onboard?wallet=…`) or your integrator’s docs.
+- **`exact`**: use the UniversalSettle **split-vault / rail PDAs** from seller discovery (`GET /api/v1/facilitator/discovery?wallet=…&scheme=exact`) or your integrator’s docs.
 - **`sla-escrow`**: **`payTo` must be the Escrow PDA** for the asset mint and facilitator bank (the facilitator verifies this). The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** sets the canonical `payTo` for you.
 
 ---
@@ -29,11 +29,11 @@ If you receive payment for resources and want **Sovereign** status (95 bps fee t
      2. **Sign**: Sign the returned `VersionedTransaction` (base64 bincode) with your seller key.
      3. **Send**: Broadcast to Solana.
    - **Incentive**: Proactive vault creation earns an ongoing **5 bps** protocol fee discount.
-3. **Status**: Preview PDAs and fees:
+3. **Status**: Discover your `payTo` (vault PDA) and metadata:
    ```bash
-   curl -sS "https://<facilitator-url>/api/v1/facilitator/onboard?wallet=<YOUR_PUBKEY>" | jq .
+   curl -sS "https://<facilitator-url>/api/v1/facilitator/discovery?wallet=<YOUR_PUBKEY>&scheme=exact" | jq .
    ```
-   Try the **Vault Explorer** on the facilitator `/` landing page for the same resolution.
+   Try the **Vault Explorer** on the facilitator `/` landing page for the same resolution. (Note: `/onboard` is for institutional status and proactive onboarding).
 4. **Off-chain registry (optional)**: `GET /api/v1/facilitator/onboard/challenge?wallet=…` then `POST /api/v1/facilitator/onboard` with the signed payload (requires `DATABASE_URL` + HMAC secret on the server). Persists verified vault metadata for discovery.
 5. **Publishing x402**: See [Publishing a Payment Required line](#publishing-a-payment-required-line-sellers) so your `accepts[]` matches what this facilitator verifies.
 
@@ -50,7 +50,7 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
    Call **`GET /api/v1/facilitator/supported`** (or read **`supported`** inside **`GET /capabilities`**). Copy the structure of a `kinds[]` entry for your rail (`v2:solana:exact` or `v2:solana:sla-escrow`): `network`, `scheme`, and especially **`extra`** (fee payer, program IDs, oracle lists, bank/config PDAs). Your **`accepts[]`** lines should be consistent with that shape so buyers can call builders without guessing.
 
 3. **`v2:solana:exact` (UniversalSettle)**  
-   - **`payTo`**: Must identify the **vault rail** the facilitator checks on-chain (split-vault / SOL storage / vault ATA semantics per deployment). Use PDAs from **`GET /onboard?wallet=<your_seller_pubkey>`** (`vaultPda`, `solStoragePda`, and token rail as your integration requires). Do **not** publish only your personal wallet as `payTo` unless that is explicitly the derived rail for your deployment.  
+   - **`payTo`**: Must identify the **vault rail** the facilitator checks on-chain (split-vault / SOL storage / vault ATA semantics per deployment). Use PDAs from **`GET /api/v1/facilitator/discovery?wallet=<your_seller_pubkey>&scheme=exact`** (`vaultPda`, `solStoragePda`, etc.). Do **not** publish only your personal wallet as `payTo` unless that is explicitly the derived rail for your deployment.  
    - **`extra`**: Should align with the **`supported`** kind (e.g. `feePayer`, `programId`, `configAddress`, `merchantWallet`, `beneficiary` as your product uses them). Buyers’ proofs are checked against `paymentRequirements` and the wire transaction.
 
 4. **`v2:solana:sla-escrow`**  
@@ -67,10 +67,11 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 ### Seller agent checklist (automation)
 
 1. **Discovery**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Onboard tx is under `httpEndpoints.buildOnboardTx`.
-2. **State**: `GET /api/v1/facilitator/onboard?wallet=<PUBKEY>`. If `isSovereign: true`, you already have the discount path where applicable.
-3. **Create vault tx**: `GET /api/v1/facilitator/onboard/build-tx?wallet=<PUBKEY>`.
-4. **Sign & send** the unsigned shell; then re-check onboard JSON for sovereign / provisioning fields.
-5. **Balances (debug)**: `GET /api/v1/facilitator/vault-snapshot?wallet=<PUBKEY>` (UniversalSettle deployments).
+2. **State**: `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact`. If `isSovereign: true`, you already have the discount path where applicable.
+3. **Full Onboarding**: `GET /api/v1/facilitator/onboard?wallet=<PUBKEY>` for all schemes.
+4. **Create vault tx**: `GET /api/v1/facilitator/onboard/build-tx?wallet=<PUBKEY>`.
+5. **Sign & send** the unsigned shell; then re-check onboard JSON for sovereign / provisioning fields.
+6. **Balances (debug)**: `GET /api/v1/facilitator/vault-snapshot?wallet=<PUBKEY>` (UniversalSettle deployments).
 
 ---
 
@@ -109,6 +110,8 @@ Walk this in order when a seller returns **402** JSON:
 6. **Sign** all required signer slots (see response **`notes`**; partial sign first when facilitator is fee payer, then facilitator signs at settle if applicable).
 7. **Fill template** — Paste the **signed** tx base64 into **`verifyBodyTemplate`**. Keep **`paymentPayload.accepted`** and **`paymentRequirements`** **byte-for-byte identical** (same JSON object).
 8. **`POST /verify`** then **`POST /settle`** with the **same** body; reuse **`X-Correlation-ID`** / body `correlationId` if the seller or your agent needs audit linkage (facilitator may mint an id on successful verify when DB is enabled).
+9. **Authorized Access (Resource Provider)**: Submit the finalized JSON proof to the resource provider in the **`X-PAYMENT`** header.
+     - **Optimization**: You can send the raw JSON string directly (preferred) or Base64-encode it. All X402 v2-compliant servers now support both.
 
 **Expiry:** Solana blockhashes expire—if verify/simulate fails with blockhash errors, **rebuild** the unsigned tx and re-sign.
 

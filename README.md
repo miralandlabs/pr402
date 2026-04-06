@@ -7,7 +7,7 @@
 Sellers can onboard either **Proactively** (Protocol Onboarding) to receive a fee discount, or **Just-In-Time** (Facilitated) with a small setup recovery fee.
 
 **Agentic Onboarding Flow:**
-1. **Discover**: Check status at `GET /api/v1/facilitator/onboard?wallet=<PUBKEY>`.
+1. **Discover**: Find your `payTo` (vault PDA) address via `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact`.
 2. **On-Chain Provisioning**: Build a sovereign vault tx via `GET /api/v1/facilitator/onboard/build-tx?wallet=<PUBKEY>`. Sign & Send locally to receive the 95 bps rate.
 3. **Registry (Off-Chain)**: Use `/onboard/challenge` to persist verified metadata for high-fidelity discovery.
 
@@ -100,13 +100,14 @@ To ensure the highest level of transparency for the Agentic Economy, the facilit
 - `POST /api/v1/facilitator/verify`: Validates transactions against the protocol requirements and the agent's selected oracle.
 - `POST /api/v1/facilitator/settle`: Relays the signed transaction to the blockchain.
 - `GET /api/v1/facilitator/health` — Same handler as `supported` (load balancer / uptime check).
-- `GET /api/v1/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags (UniversalSettle, escrow, unsigned tx build, buildOnboardTx), and relative HTTP endpoint paths.
+- `GET /api/v1/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags, and relative HTTP endpoint paths.
+- `GET /api/v1/facilitator/discovery?wallet=...&scheme=...&asset=...` — Lightweight programmatic discovery of `payTo` address and institutional metadata for a specific scheme and asset. (Preferred for resource provider configuration).
 - **Onboarding (Sellers)**:
     - `GET /api/v1/facilitator/onboard?wallet=...` — Preview current status and "Sovereign" eligibility.
     - `GET /api/v1/facilitator/onboard/build-tx?wallet=...` — Build an unsigned `create_vault` tx for proactive agents.
     - `GET /api/v1/facilitator/onboard/challenge?wallet=...` — Receive a unique message for DB registration.
     - `POST /api/v1/facilitator/onboard` — Submit checked challenge to persist seller metadata.
-- `POST /api/v1/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL payment transaction (compute budget + optional merchant ATA create + `TransferChecked`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"? }`. Response includes `transaction` (base64 bincode) and `verify_body_template` (replace `paymentPayload.payload.transaction` after the payer signs). Same layout as the local `x402_pr402_pay` helper in spl-token-balance-serverless; **native SOL** mint is rejected here (use a different path). **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/v1/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.
+- `POST /api/v1/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL or native SOL payment transaction (compute budget + optional merchant ATA create + `TransferChecked` / `SystemTransfer`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"? }`. Response includes `transaction` (base64 bincode) and `verify_body_template` (replace `paymentPayload.payload.transaction` after the payer signs). Same layout as the local `x402_pr402_pay` helper in spl-token-balance-serverless. **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/v1/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.
 - `POST /api/v1/facilitator/build-sla-escrow-payment-tx` — Build an **unsigned** SLA-Escrow **`FundPayment`** transaction (compute budget + optional escrow vault ATA create + fund). Body: `payer`, `accepted` (`scheme: "sla-escrow"`), `resource`, **`slaHash`** (64 hex), **`oracleAuthority`**, optional `paymentUid`, optional `skipSourceBalanceCheck`, optional **`buyerPaysTransactionFees`** (default `false`). **Default:** facilitator pays Solana fees (same signer layout as `build-exact-payment-tx`; buyer partially signs, facilitator completes at `/settle`). **`buyerPaysTransactionFees: true`:** buyer fee payer / one signer (CLI-compatible). Requires `ESCROW_PROGRAM_ID` / SLA escrow config. Classic SPL Token mints only in this builder (Token-2022 and native SOL fund layouts: use `sla-escrow` CLI or extend the builder).
 
 ### Vercel deployment

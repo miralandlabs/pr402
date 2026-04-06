@@ -396,6 +396,45 @@
         }
       }
     },
+    "/api/v1/facilitator/discovery": {
+      "get": {
+        "summary": "Lightweight scheme discovery",
+        "description": "Programmatic discovery of `payTo` address and required institutional `extra` metadata for a specific scheme and asset. Much lighter than `/onboard`.",
+        "operationId": "facilitatorDiscovery",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "description": "Seller wallet pubkey (base58)" }
+          },
+          {
+            "name": "scheme",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "example": "exact", "description": "Payment scheme (e.g. exact or sla-escrow)" }
+          },
+          {
+            "name": "asset",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "description": "Optional mint address for token-specific discovery" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheme discovery information",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SchemeOnboardInfo" }
+              }
+            }
+          },
+          "400": { "description": "Missing parameters" },
+          "500": { "description": "Discovery failed" }
+        }
+      }
+    },
     "/api/v1/facilitator/vault-snapshot": {
       "get": {
         "summary": "UniversalSettle vault snapshot (read-only RPC)",
