@@ -530,6 +530,7 @@
                 <ul class="card-links">
                     <li><a href="/agent-integration.md#seller-agents-resource-providers">Seller runbook →</a></li>
                     <li><a href="/agent-integration.md#publishing-a-payment-required-line-sellers">Publishing <span class="inline-code">accepts[]</span> →</a></li>
+                    <li><a href="/api/v1/facilitator/discovery?wallet=...&scheme=exact">GET /discovery (resolve payTo)</a></li>
                     <li><a href="/onboarding_guide.md">Onboarding guide →</a></li>
                 </ul>
                 <div class="btn-group">
@@ -633,6 +634,11 @@
                     <span class="method post">POST</span>
                     <span class="path">/api/v1/facilitator/build-sla-escrow-payment-tx</span>
                     <span class="description">unsigned FundPayment (buyer)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/discovery</span>
+                    <span class="description">resolve canonical payTo for 402 (seller)</span>
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
