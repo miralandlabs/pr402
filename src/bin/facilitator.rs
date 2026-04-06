@@ -466,6 +466,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("POST", "/api/v1/facilitator/sweep") => {
                     handle_sweep(body, authorization_hdr.as_deref()).await
                 }
+                ("GET", "/api/v1/facilitator/sweep-cron") => {
+                    handle_sweep_cron(authorization_hdr.as_deref()).await
+                }
                 _ => {
                     warn!(
                         target: LOG_SERVER_LOG,
@@ -961,6 +964,7 @@ async fn handle_capabilities(
             "buildExactPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-exact-payment-tx" },
             "buildSlaEscrowPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-sla-escrow-payment-tx" },
             "sweep": { "method": "POST", "path": "/api/v1/facilitator/sweep", "auth": "bearer" },
+            "sweepCron": { "method": "GET", "path": "/api/v1/facilitator/sweep-cron", "auth": "bearer" },
             "onboard": { "method": "POST", "path": "/api/v1/facilitator/onboard" },
             "buildOnboardTx": { "method": "GET", "path": "/api/v1/facilitator/onboard/build-tx" },
             "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
@@ -1470,6 +1474,24 @@ async fn authorize_sweep(header: Option<&str>) -> Result<(), Response<Body>> {
 }
 
 async fn handle_sweep(body: Body, authorization_header: Option<&str>) -> Response<Body> {
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => "{}".to_string(),
+    };
+    let req: SweepRequest = match serde_json::from_str(&body_str) {
+        Ok(r) => r,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
+    };
+    execute_sweep(req, authorization_header).await
+}
+
+/// Vercel cron helper (GET-compatible): runs sweep with configured defaults.
+async fn handle_sweep_cron(authorization_header: Option<&str>) -> Response<Body> {
+    execute_sweep(SweepRequest::default(), authorization_header).await
+}
+
+async fn execute_sweep(req: SweepRequest, authorization_header: Option<&str>) -> Response<Body> {
     if let Err(res) = authorize_sweep(authorization_header).await {
         return res;
     }
@@ -1504,16 +1526,6 @@ async fn handle_sweep(body: Body, authorization_header: Option<&str>) -> Respons
     };
 
     pr402::parameters::refresh_parameters_from_db(Some(db)).await;
-
-    let body_str = match body {
-        Body::Text(s) => s,
-        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
-        Body::Empty => "{}".to_string(),
-    };
-    let req: SweepRequest = match serde_json::from_str(&body_str) {
-        Ok(r) => r,
-        Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
-    };
 
     let configured_limit = pr402::parameters::resolve_sweep_cron_batch_limit(
         Some(db),

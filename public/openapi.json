@@ -533,6 +533,40 @@
           }
         }
       }
+    },
+    "/api/v1/facilitator/sweep-cron": {
+      "get": {
+        "summary": "Vercel cron sweep execution (private)",
+        "description": "GET wrapper for serverless schedulers that cannot issue POST (e.g., Vercel Cron). Uses configured defaults equivalent to empty `POST /api/v1/facilitator/sweep` body.",
+        "operationId": "facilitatorSweepCron",
+        "security": [{ "sweep_bearer": [] }],
+        "responses": {
+          "200": {
+            "description": "Sweep execution report",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SweepResponse" }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+              }
+            }
+          },
+          "503": {
+            "description": "Missing required sweep auth parameter",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

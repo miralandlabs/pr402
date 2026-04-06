@@ -181,6 +181,14 @@ curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
 - **Purpose:** Drain eligible UniversalSettle vault balances without requiring a settlement request in the same invocation.
 - **Safety:** Use `{"dryRun": true}` first in cron rollout.
 
+### Vercel Cron note
+
+Vercel Cron sends **GET** requests. Use:
+
+- `GET /api/v1/facilitator/sweep-cron` (private, bearer-auth)
+
+This route runs the same sweep engine with configured defaults (equivalent to an empty POST body).
+
 ### Sweep parameters (DB `parameters` keys)
 
 DB values override env values in this project.
