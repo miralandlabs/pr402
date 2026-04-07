@@ -57,6 +57,10 @@
       "dest": "/public/onboarding_guide.md"
     },
     {
+      "src": "/seller-quick-start.md",
+      "dest": "/public/seller-quick-start.md"
+    },
+    {
       "src": "/api/v1/facilitator/verify",
       "dest": "/src/bin/facilitator",
       "methods": ["POST", "OPTIONS"]
