@@ -31,7 +31,11 @@ macro_rules! facilitator_response {
             .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             .header(
                 "Access-Control-Allow-Headers",
-                "Content-Type, Authorization, X-Correlation-ID, X-API-Version",
+                "Content-Type, Authorization, X-Correlation-ID, X-API-Version, PAYMENT-SIGNATURE, PAYMENT-RESPONSE",
+            )
+            .header(
+                "Access-Control-Expose-Headers",
+                "X-Correlation-ID, X-API-Version, PAYMENT-RESPONSE",
             )
     };
 }
@@ -969,11 +973,14 @@ async fn handle_capabilities(
             "buildOnboardTx": { "method": "GET", "path": "/api/v1/facilitator/onboard/build-tx" },
             "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
             "health": { "method": "GET", "path": "/api/v1/facilitator/health" },
-            "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" }
+            "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" },
+            "discovery": { "method": "GET", "path": "/api/v1/facilitator/discovery" },
+            "upgrade": { "method": "POST", "path": "/api/v1/facilitator/upgrade" }
         },
         "agentManifest": {
             "openApi": "/openapi.json",
             "integrationGuide": "/agent-integration.md",
+            "sellerQuickStart": "/seller-quick-start.md",
             "sellerOnboardingGuide": "/onboarding_guide.md",
             "x402Spec": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"
         }

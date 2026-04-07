@@ -6,6 +6,24 @@
     "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Who uses this API:**\n- **Seller / resource provider agents** — onboard UniversalSettle vaults, preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` → Seller agents).\n- **Buyer / payer agents** — match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` → Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)—not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md`.\n",
     "license": { "name": "Apache-2.0" }
   },
+  "tags": [
+    {
+      "name": "x402 Core",
+      "description": "Standard x402 v2 facilitator endpoints: verify, settle, supported, and discovery. These are the endpoints defined by the x402 protocol specification."
+    },
+    {
+      "name": "pr402 Extension: Tx Build",
+      "description": "pr402-specific unsigned transaction builders. These are value-added endpoints that eliminate blockchain SDK dependencies for buyer agents."
+    },
+    {
+      "name": "pr402 Extension: Seller Onboarding",
+      "description": "Seller registration, vault provisioning, and PDA discovery. These endpoints help sellers prepare their `accepts[]` lines and manage vault lifecycle."
+    },
+    {
+      "name": "pr402 Extension: Operations",
+      "description": "Internal and operational endpoints (sweep, vault snapshot). Typically used by schedulers or dashboards, not by buyer/seller agents."
+    }
+  ],
   "externalDocs": {
     "description": "x402 HTTP payment standard (v2)",
     "url": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"
@@ -19,6 +37,7 @@
   "paths": {
     "/api/v1/facilitator/health": {
       "get": {
+        "tags": ["x402 Core"],
         "summary": "Health check",
         "description": "Liveness and dependency snapshot: `status`, `schemaVersion`, `database` (connected | disabled | error), `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`. Not the same payload as `/supported`.",
         "operationId": "facilitatorHealth",
@@ -44,8 +63,9 @@
     },
     "/api/v1/facilitator/supported": {
       "get": {
+        "tags": ["x402 Core"],
         "summary": "Supported payment kinds (x402 discovery)",
-        "description": "Returns active schemes (`kinds[]`), extensions, and signer hints for the configured chain.",
+        "description": "Returns active schemes (`kinds[]`), extensions, and signer hints for the configured chain. Scheme names are canonical short form: `exact` for UniversalSettle, `sla-escrow` for SLA-Escrow.",
         "operationId": "facilitatorSupported",
         "responses": {
           "200": {
@@ -69,6 +89,7 @@
     },
     "/api/v1/facilitator/capabilities": {
       "get": {
+        "tags": ["x402 Core"],
         "summary": "Discovery bundle",
         "description": "JSON with `schemaVersion`, `x402Version`, `chainId`, `feePayer`, embedded `supported`, feature flags, `httpEndpoints`, `openApi`, and x402 spec link.",
         "operationId": "facilitatorCapabilities",
@@ -94,6 +115,7 @@
     },
     "/api/v1/facilitator/verify": {
       "post": {
+        "tags": ["x402 Core"],
         "summary": "Verify payment payload",
         "description": "Validates the x402 v2 proof against `paymentRequirements`. Optional `X-Correlation-ID` or body `correlationId` for DB audit linking.",
         "operationId": "facilitatorVerify",
@@ -135,6 +157,7 @@
     },
     "/api/v1/facilitator/settle": {
       "post": {
+        "tags": ["x402 Core"],
         "summary": "Settle payment",
         "description": "Same JSON shape as `/verify`. Submits or confirms on-chain settlement (scheme-specific). Reuse the **same** body and correlation id as verify. Idempotent: if the transaction is already on-chain, returns success. Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blockhash expires.",
         "operationId": "facilitatorSettle",
@@ -192,8 +215,9 @@
     },
     "/api/v1/facilitator/build-exact-payment-tx": {
       "post": {
+        "tags": ["pr402 Extension: Tx Build"],
         "summary": "Build unsigned exact (UniversalSettle) payment tx",
-        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) and `verifyBodyTemplate`. Payer signs token authority; facilitator is fee payer at `/settle` when `feePayer` in extra matches deployment.",
+        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) and `verifyBodyTemplate`. Payer signs token authority; facilitator is fee payer at `/settle` when `feePayer` in extra matches deployment. Scheme: `exact` (canonical) or `v2:solana:exact` (accepted alias).",
         "operationId": "buildExactPaymentTx",
         "requestBody": {
           "required": true,
@@ -241,8 +265,9 @@
     },
     "/api/v1/facilitator/build-sla-escrow-payment-tx": {
       "post": {
+        "tags": ["pr402 Extension: Tx Build"],
         "summary": "Build unsigned SLA-Escrow FundPayment tx",
-        "description": "Default: facilitator pays Solana fees; buyer partially signs. Set `buyerPaysTransactionFees: true` for CLI-shaped single-signer shell. Response `verifyBodyTemplate` sets **`payTo`** to the canonical **Escrow PDA** (mint + bank) so it matches facilitator verification.",
+        "description": "Default: facilitator pays Solana fees; buyer partially signs. Set `buyerPaysTransactionFees: true` for CLI-shaped single-signer shell. Response `verifyBodyTemplate` sets **`payTo`** to the canonical **Escrow PDA** (mint + bank) so it matches facilitator verification. Scheme: `sla-escrow` (canonical) or `v2:solana:sla-escrow` (accepted alias).",
         "operationId": "buildSlaEscrowPaymentTx",
         "requestBody": {
           "required": true,
@@ -290,8 +315,9 @@
     },
     "/api/v1/facilitator/onboard/challenge": {
       "get": {
+        "tags": ["pr402 Extension: Seller Onboarding"],
         "summary": "Onboard signing challenge",
-        "description": "Returns a message to sign for proof-of-control. Requires `PR402_ONBOARD_HMAC_SECRET` on server.",
+        "description": "Returns a message to sign for proof-of-control (wallet ownership). Required for `POST /onboard` (DB registration). Requires `PR402_ONBOARD_HMAC_SECRET` on server.",
         "operationId": "facilitatorOnboardChallenge",
         "parameters": [
           {
@@ -317,8 +343,9 @@
     },
     "/api/v1/facilitator/onboard/build-tx": {
       "get": {
+        "tags": ["pr402 Extension: Seller Onboarding"],
         "summary": "Build agent-native onboarding tx",
-        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) for UniversalSettle SplitVault creation. Sign and send to receive the 95 bps institutional discount.",
+        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) for UniversalSettle SplitVault creation. Sign and send to receive the 95 bps institutional discount (Sovereign status).",
         "operationId": "facilitatorOnboardBuildTx",
         "parameters": [
           {
@@ -344,8 +371,9 @@
     },
     "/api/v1/facilitator/onboard": {
       "get": {
-        "summary": "Onboard preview (status & incentives)",
-        "description": "Public vault/sol_storage preview for UniversalSettle. Clearly delivers fee rules and ROI status for proactive sellers.",
+        "tags": ["pr402 Extension: Seller Onboarding"],
+        "summary": "Onboard preview — all schemes (read-only)",
+        "description": "Returns vault/sol_storage preview for **all** registered schemes (exact + sla-escrow if configured). No DB writes. For lightweight single-scheme lookup, prefer `GET /discovery`. For DB-persisted registration, use the challenge → POST flow.",
         "operationId": "facilitatorOnboardPreview",
         "parameters": [
           {
@@ -369,8 +397,9 @@
         }
       },
       "post": {
-        "summary": "Submit signed onboard proof",
-        "description": "Body: wallet, message, signature (from challenge flow). Persists verified resource provider vaults when `DATABASE_URL` is set.",
+        "tags": ["pr402 Extension: Seller Onboarding"],
+        "summary": "Submit signed onboard proof (DB registration)",
+        "description": "Body: wallet, message, signature (from `/onboard/challenge` flow). Verifies proof-of-control and persists verified resource provider vaults to DB when `DATABASE_URL` is set. This is the full registration step — unlike `GET /onboard` (preview) or `GET /discovery` (lightweight lookup), this writes to the database.",
         "operationId": "facilitatorOnboardSubmit",
         "requestBody": {
           "required": true,
@@ -398,8 +427,9 @@
     },
     "/api/v1/facilitator/discovery": {
       "get": {
-        "summary": "Lightweight scheme discovery",
-        "description": "Programmatic discovery of `payTo` address and required institutional `extra` metadata for a specific scheme and asset. Much lighter than `/onboard`.",
+        "tags": ["pr402 Extension: Seller Onboarding"],
+        "summary": "Lightweight single-scheme discovery (read-only)",
+        "description": "Programmatic discovery of `payTo` address (vault PDA) and metadata for a **single** scheme. Read-only, no DB writes, no auth. Prefer this over `GET /onboard` when you only need one scheme's `payTo`. Returns `SchemeOnboardInfo` with `vaultPda`, `feeBps`, `isSovereign`, etc.",
         "operationId": "facilitatorDiscovery",
         "parameters": [
           {
@@ -437,6 +467,7 @@
     },
     "/api/v1/facilitator/vault-snapshot": {
       "get": {
+        "tags": ["pr402 Extension: Operations"],
         "summary": "UniversalSettle vault snapshot (read-only RPC)",
         "description": "Query vault balances for a seller wallet. Requires UniversalSettle configured on deployment.",
         "operationId": "facilitatorVaultSnapshot",
@@ -486,6 +517,7 @@
     },
     "/api/v1/facilitator/sweep": {
       "post": {
+        "tags": ["pr402 Extension: Operations"],
         "summary": "Internal cron sweep execution (private)",
         "description": "Executes UniversalSettle sweep attempts for eligible provider rails. **Internal operations endpoint**: requires bearer auth and is intended for scheduler/cron use only. Supports `dryRun` for safe rollout.",
         "operationId": "facilitatorSweep",
@@ -534,8 +566,49 @@
         }
       }
     },
+    "/api/v1/facilitator/upgrade": {
+      "post": {
+        "tags": ["pr402 Extension: Seller Onboarding"],
+        "summary": "Upgrade a Lite 402 to institutional format",
+        "description": "Transforms a naive `PaymentRequired` body (where `payTo` is a bare seller wallet) into a fully institutional response with correct PDA-derived `payTo` and injected `extra` metadata. For `exact`: replaces `payTo` with the UniversalSettle SplitVault PDA and injects `feePayer`, `programId`, `configAddress`, `merchantWallet`. For `sla-escrow`: replaces `payTo` with the Escrow PDA and injects `oracleAuthorities`, `bankAddress`, `escrowProgramId`. Useful for sellers who want the facilitator to handle PDA derivation.",
+        "operationId": "facilitatorUpgrade",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "PaymentRequired body with bare seller wallet as payTo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upgraded PaymentRequired with PDAs and extra metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "PaymentRequired body with vault/escrow PDA as payTo and institutional extra"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or upgrade failure",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/facilitator/sweep-cron": {
       "get": {
+        "tags": ["pr402 Extension: Operations"],
         "summary": "Vercel cron sweep execution (private)",
         "description": "GET wrapper for serverless schedulers that cannot issue POST (e.g., Vercel Cron). Uses configured defaults equivalent to empty `POST /api/v1/facilitator/sweep` body.",
         "operationId": "facilitatorSweepCron",
@@ -624,7 +697,7 @@
           "payer": { "type": "string", "description": "Buyer pubkey (base58)" },
           "accepted": {
             "type": "object",
-            "description": "One accepts[] line; scheme must be exact or v2:solana:exact; must match deployment network"
+            "description": "One accepts[] line; scheme: `exact` (canonical) or `v2:solana:exact` (accepted alias); must match deployment network"
           },
           "resource": { "$ref": "#/components/schemas/ResourceRef" },
           "skipSourceBalanceCheck": { "type": "boolean", "default": false }
@@ -636,7 +709,7 @@
         "required": ["payer", "accepted", "resource", "slaHash", "oracleAuthority"],
         "properties": {
           "payer": { "type": "string" },
-          "accepted": { "type": "object", "description": "accepts[] line with scheme sla-escrow or v2:solana:sla-escrow" },
+          "accepted": { "type": "object", "description": "accepts[] line; scheme: `sla-escrow` (canonical) or `v2:solana:sla-escrow` (accepted alias)" },
           "resource": { "$ref": "#/components/schemas/ResourceRef" },
           "slaHash": { "type": "string", "description": "64 hex chars (32 bytes)" },
           "oracleAuthority": { "type": "string", "description": "Must appear in accepted.extra.oracleAuthorities" },

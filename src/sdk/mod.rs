@@ -50,5 +50,8 @@ pub const FACILITATOR_OPENAPI_PATH: &str = "/openapi.json";
 /// `GET /agent-integration.md` — Markdown agent runbook (static `public/agent-integration.md`, like `openapi.json`); linked from `capabilities.httpEndpoints.agentIntegration`.
 pub const FACILITATOR_AGENT_INTEGRATION_PATH: &str = "/agent-integration.md";
 
+/// `GET /seller-quick-start.md` — Language-agnostic seller onboarding guide (static `public/seller-quick-start.md`).
+pub const FACILITATOR_SELLER_QUICK_START_PATH: &str = "/seller-quick-start.md";
+
 #[cfg(feature = "facilitator-http")]
 pub mod http;

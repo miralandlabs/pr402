@@ -8,6 +8,14 @@ Runbook for two kinds of autonomous clients:
 | **Buyer / payer agent** (you call paid resources and settle via x402) | [Buyer agents](#buyer-agents-payers) |
 | **I have a 402 `accepts[]` line from a seller — what now?** | [Payment pipeline](#payment-pipeline-from-accepts-to-settlement) · [pr402 vs spec](#how-pr402-differs-from-the-generic-x402-spec) |
 
+> **x402 v2 Header Convention** (per [HTTP transport spec](https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md)):
+>
+> | Header | Direction | Description |
+> |--------|-----------|-------------|
+> | `PAYMENT-REQUIRED` | Server → Client | Base64-encoded `PaymentRequired` JSON (on HTTP 402) |
+> | `PAYMENT-SIGNATURE` | Client → Server | Payment proof (raw JSON or base64) — replaces V1 `X-PAYMENT` |
+> | `PAYMENT-RESPONSE` | Server → Client | Base64-encoded settlement result (on HTTP 200 or 402 after settle) |
+
 **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL.
 
 **Important (pr402 ≠ simple wallet `payTo`):** This facilitator settles through **UniversalSettle** (`v2:solana:exact`) and/or **SLA-Escrow** (`v2:solana:sla-escrow`). Your 402 **`payTo`** (and matching proof destinations) must be the **on-chain PDA** your buyers pay into—not a bare seller wallet for settlement proofs:
@@ -110,8 +118,9 @@ Walk this in order when a seller returns **402** JSON:
 6. **Sign** all required signer slots (see response **`notes`**; partial sign first when facilitator is fee payer, then facilitator signs at settle if applicable).
 7. **Fill template** — Paste the **signed** tx base64 into **`verifyBodyTemplate`**. Keep **`paymentPayload.accepted`** and **`paymentRequirements`** **byte-for-byte identical** (same JSON object).
 8. **`POST /verify`** then **`POST /settle`** with the **same** body; reuse **`X-Correlation-ID`** / body `correlationId` if the seller or your agent needs audit linkage (facilitator may mint an id on successful verify when DB is enabled).
-9. **Authorized Access (Resource Provider)**: Submit the finalized JSON proof to the resource provider in the **`X-PAYMENT`** header.
+9. **Authorized Access (Resource Provider)**: Submit the finalized JSON proof to the resource provider in the **`PAYMENT-SIGNATURE`** header (x402 v2). Legacy `X-PAYMENT` is still accepted by most servers for backward compatibility.
      - **Optimization**: You can send the raw JSON string directly (preferred) or Base64-encode it. All X402 v2-compliant servers now support both.
+     - **`PAYMENT-RESPONSE`**: After settlement, x402 v2 compliant sellers return a `PAYMENT-RESPONSE` header (base64-encoded JSON) containing the settlement result (`success`, `transaction`, `network`, `payer`). Buyer agents can inspect this header to confirm on-chain finality without polling.
 
 **Expiry:** Solana blockhashes expire—if verify/simulate fails with blockhash errors, **rebuild** the unsigned tx and re-sign.
 
@@ -165,10 +174,41 @@ curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
 
 ---
 
+## Scheme naming
+
+pr402 uses **short canonical names** on the wire:
+
+| Canonical (use this) | Qualified alias (also accepted) | Description |
+|--------|-----------|-------------|
+| `exact` | `v2:solana:exact` | UniversalSettle instant settlement |
+| `sla-escrow` | `v2:solana:sla-escrow` | SLA-Escrow time-bound settlement |
+
+In `accepts[]`, `paymentRequirements.scheme`, and builder request `accepted.scheme`, use the **canonical** name. The qualified forms are accepted for backward compatibility.
+
+---
+
+## Design highlights (what makes pr402 different)
+
+These are deliberate design choices that differentiate pr402 from a generic x402 facilitator:
+
+| Feature | Benefit |
+|---------|---------|
+| **`verifyBodyTemplate`** | Build endpoints return a ready-to-use verify/settle body template. Buyers just sign and slot the tx in — no manual JSON construction, no mismatched fields. |
+| **Idempotent `/settle`** | If the transaction is already confirmed on-chain, settle returns success. Safe for retries, agent loops, and network interruptions. |
+| **`/upgrade` (Lite → Full 402)** | Sellers can post a naive 402 body with bare wallet `payTo` and receive back a fully institutional response with PDA-derived addresses and `extra` metadata. Eliminates PDA math on the seller side. |
+| **Dual scheme support** | Both `exact` (instant UniversalSettle) and `sla-escrow` (time-bound escrow with oracle adjudication) are supported from a single facilitator deployment. |
+| **`/discovery` (lightweight)** | Single-scheme, read-only lookup of `payTo` PDA. No auth, no DB. Sellers can call this from any language with a simple HTTP GET. |
+| **CORS `Access-Control-Expose-Headers`** | `PAYMENT-RESPONSE`, `X-Correlation-ID`, and `X-API-Version` are exposed so browser-based agents can read settlement results. |
+| **Toxic asset protection** | Configurable mint allowlist (`PR402_ALLOWED_PAYMENT_MINTS`) prevents settlement with worthless spam tokens. |
+| **Seller quick start** | Language-agnostic guide at [`/seller-quick-start.md`](/seller-quick-start.md) with pseudocode and examples in Rust, Python, JS/TS, and Go. |
+
+---
+
 ## Technical specs
 
 - x402 v2: [x402-specification-v2.md](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md)
 - Facilitator HTTP: **`/openapi.json`** and Markdown runbook **`/agent-integration.md`** on the deployment
+- Seller integration: **`/seller-quick-start.md`** on the deployment
 
 ---
 
