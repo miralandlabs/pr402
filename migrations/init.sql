@@ -7,7 +7,7 @@ DROP TABLE IF EXISTS payment_attempts CASCADE;
 DROP TABLE IF EXISTS resource_providers CASCADE;
 
 
--- pr402 facilitator: consolidated PostgreSQL bootstrap (PostgreSQL 14+).
+-- pr402 facilitator: consolidated PostgreSQL bootstrap (PostgreSQL 15+; NULLS NOT DISTINCT).
 -- Run once: psql "$DATABASE_URL" -f migrations/init.sql
 -- Idempotent: CREATE IF NOT EXISTS + parameter seeds use ON CONFLICT DO UPDATE.
 --
@@ -20,7 +20,7 @@ DROP TABLE IF EXISTS resource_providers CASCADE;
 
 CREATE TABLE IF NOT EXISTS resource_providers (
     id                  BIGSERIAL PRIMARY KEY,
-    wallet_pubkey       TEXT NOT NULL UNIQUE,
+    wallet_pubkey       TEXT NOT NULL,
     -- native_sol | spl (one settlement rail per row; spl_mint set when spl)
     settlement_mode     TEXT NOT NULL DEFAULT 'native_sol',
     spl_mint            TEXT,
