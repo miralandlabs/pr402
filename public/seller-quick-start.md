@@ -75,7 +75,7 @@ curl -sS "https://preview.agent.pay402.me/api/v1/facilitator/discovery?wallet=YO
     }
   ],
   "error": "Payment Required",
-  "description": "Access to this endpoint costs 0.05 USDC"
+  "description": "Pay 0.05 USDC to access this endpoint"
 }
 ```
 
