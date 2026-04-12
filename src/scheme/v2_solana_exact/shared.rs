@@ -671,6 +671,8 @@ pub async fn settle_transaction(
                         }
 
                         if !skip_sweep {
+                            // On-chain Sweep: `amount == 0` sweeps all spendable vault balance (same as
+                            // batch/cron sweep). Do not pass `details.amount` (single payment size).
                             instructions.push(
                                 crate::chain::solana_universalsettle::build_sweep_instruction(
                                     us_config.program_id,
@@ -679,7 +681,7 @@ pub async fn settle_transaction(
                                     final_beneficiary,
                                     fee_dest,
                                     token_mint,
-                                    details.amount,
+                                    0,
                                     is_sol_sweep,
                                     details.token_program,
                                 ),

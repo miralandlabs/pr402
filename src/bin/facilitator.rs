@@ -1730,6 +1730,7 @@ async fn execute_sweep(req: SweepRequest, authorization_header: Option<&str>) ->
         attempted += 1;
         let is_sol = mint_opt.is_none();
         let token_mint = mint_opt.unwrap_or_default();
+        // Full sweep at execution time (`0`); threshold eligibility used `available` from snapshot above.
         let ix = pr402::chain::solana_universalsettle::build_sweep_instruction(
             us_config.program_id,
             cp.solana.pubkey(),
@@ -1737,7 +1738,7 @@ async fn execute_sweep(req: SweepRequest, authorization_header: Option<&str>) ->
             seller,
             fee_destination,
             token_mint,
-            available,
+            0,
             is_sol,
             token_program_opt,
         );

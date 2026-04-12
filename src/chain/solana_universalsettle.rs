@@ -57,6 +57,8 @@ impl CreateVaultData {
 }
 
 /// UniversalSettle Sweep instruction data structure.
+/// `amount` encodes little-endian u64: **`0` means sweep all spendable balance** on-chain (see
+/// `x402/universalsettle` `process_sweep`); non-zero sweeps at most that amount.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct SweepData {
@@ -135,6 +137,9 @@ pub fn build_create_vault_instruction(
 }
 
 /// `spl_token_program` must match the rail used for payment (legacy Token vs Token-2022) when `!is_sol`.
+///
+/// **`amount`:** pass **`0`** to sweep **all** available balance after rent (SOL) or full vault ATA
+/// balance (SPL), matching on-chain `Sweep` semantics. Non-zero caps the sweep to that amount.
 #[allow(clippy::too_many_arguments)]
 pub fn build_sweep_instruction(
     program_id: Pubkey,
