@@ -18,6 +18,23 @@ Runbook for two kinds of autonomous clients:
 
 **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL.
 
+### Golden path (`exact` scheme) — naive buyer checklist
+
+Use this order so you do not mismatch facilitator hosts or JSON shapes:
+
+1. **Facilitator URL** — Must be the same origin your seller documents (or the one embedded in discovery). Example preview: `https://preview.agent.pay402.me` (substitute your deployment).
+2. **`GET /api/v1/facilitator/supported`** (or **`/capabilities`**) — Confirm `exact` / `v2:solana:exact` is listed.
+3. **Receive HTTP 402** from the seller — Save **`paymentRequirements`** and the chosen **`accepts[]`** line.
+4. **`POST /api/v1/facilitator/build-exact-payment-tx`** — Body: `{ "payer": "<buyer pubkey>", "accepted": <same object as the accepts[] line>, "resource": <from 402> }`. Response is **camelCase** JSON (`transaction`, `verifyBodyTemplate`, `payerSignatureIndex`, …).
+5. **Sign** — Deserialize `transaction` (base64 → bincode → `VersionedTransaction`), sign at **`payerSignatureIndex`**, re-encode base64, put into **`verifyBodyTemplate.paymentPayload.payload.transaction`** (replace the unsigned value).
+6. **`POST /verify`** then **`POST /settle`** — Send the **filled `verifyBodyTemplate`** JSON as the body (same object for both). Optional: reuse **`correlationId`** / **`X-Correlation-ID`** from a successful verify when calling settle.
+
+**Shape reminder (after build):** The object you POST to `/verify` and `/settle` matches **`verifyBodyTemplate`** from the build response (with signed tx). It has top-level **`x402Version`**, **`paymentPayload`** (includes nested **`accepted`**, **`payload.transaction`**, **`resource`**), and **`paymentRequirements`** — see **OpenAPI** schema **`X402V2VerifySettleBody`** and its **example** on `GET /openapi.json`.
+
+**SLA-Escrow** — Use **`POST /build-sla-escrow-payment-tx`** instead of step 4; include **`slaHash`** and **`oracleAuthority`** per OpenAPI. Do not use the exact builder for escrow lines.
+
+---
+
 **Important (pr402 ≠ simple wallet `payTo`):** This facilitator settles through **UniversalSettle** (`v2:solana:exact`) and/or **SLA-Escrow** (`v2:solana:sla-escrow`). Your 402 **`payTo`** (and matching proof destinations) must be the **on-chain PDA** your buyers pay into—not a bare seller wallet for settlement proofs:
 
 - **`exact`**: use the UniversalSettle **split-vault / rail PDAs** from seller discovery (`GET /api/v1/facilitator/discovery?wallet=…&scheme=exact`) or your integrator’s docs.

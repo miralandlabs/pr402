@@ -30,13 +30,18 @@ For autonomous agents and backend services:
 **Registry (Off-Chain Discovery)**: After provisioning your vault on-chain, use the Facilitator API (`/onboard/challenge`) to persist your verified metadata in the database for high-fidelity discovery.
 
 ### Path B: Facilitated Onboarding (Shadow/JIT)
-If you have no SOL and want a seamless start:
-1. Simply publish your wallet address as your payment destination.
-2. When the first customer pays you, the **Facilitator** automatically "Provisions" your vault on-chain.
-3. The Facilitator pays the initial Solana rent for you (~0.002 SOL).
-4. **Standard Model**:
-   - **Standard Fee**: You are charged the standard protocol fee (**1.00%**).
-   - **Provisioning Recovery**: The protocol will automatically recover the setup cost ($1.00 USD equivalent) from your first revenue streams. Once recovered, you receive 100% of future payments (minus standard protocol fees).
+If you have no SOL up front, the **facilitator** can still **provision** the UniversalSettle SplitVault when buyers start paying (subject to deployment limits—see facilitator logs for JIT / quota behavior). You do **not** need to self-fund `create_vault` first.
+
+**Important for your HTTP 402 body:** Buyers must pay into the **SplitVault rail PDAs** this facilitator verifies—not a bare wallet address in `payTo`. Before publishing `accepts[]`:
+
+1. Resolve canonical addresses with **`GET /api/v1/facilitator/discovery?wallet=<YOUR_PUBKEY>&scheme=exact`**, **or**
+2. Post a minimal draft body to **`POST /api/v1/facilitator/upgrade`** so the response injects the correct **`payTo`** vault PDA and `extra` metadata.
+
+Put your **merchant identity** in **`extra.merchantWallet`**; keep **`payTo`** as the vault PDA from discovery/upgrade. The buyer’s payment flow may call **`build-exact-payment-tx`**, which runs **vault setup** (`ensure_vault_setup`) when UniversalSettle is configured—see pr402 `exact_payment_build`.
+
+**Standard Model (fees / recovery):**
+   - **Standard Fee**: You are charged the standard protocol fee (**1.00%**) until sovereign discount applies.
+   - **Provisioning Recovery**: The protocol recovers facilitator-paid setup costs from your revenue per on-chain `SplitVault` / config rules. See on-chain state and facilitator discovery for live numbers.
 
 ---
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "pr402 Facilitator API",
     "version": "1.0.0",
-    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Who uses this API:**\n- **Seller / resource provider agents** — onboard UniversalSettle vaults, preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` → Seller agents).\n- **Buyer / payer agents** — match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` → Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)—not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md`.\n",
+    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Who uses this API:**\n- **Seller / resource provider agents** — onboard UniversalSettle vaults, preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` → Seller agents).\n- **Buyer / payer agents** — match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` → Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)—not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**Examples:** Schema **`X402V2VerifySettleBody`** includes a worked **`example`** (exact rail). **`BuildExactPaymentTxRequest`** includes an **`example`** request for the builder.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md` (includes **Golden path** section for naive integrators).\n",
     "license": { "name": "Apache-2.0" }
   },
   "tags": [
@@ -43,7 +43,7 @@
         "operationId": "facilitatorHealth",
         "responses": {
           "200": {
-            "description": "Supported payment kinds (same as GET /supported)",
+            "description": "Health snapshot: `status`, `schemaVersion`, `database`, `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork` (camelCase JSON). Distinct from `GET /supported`.",
             "content": {
               "application/json": {
                 "schema": { "type": "object", "additionalProperties": true }
@@ -678,7 +678,47 @@
           "paymentRequirements": { "type": "object", "additionalProperties": true },
           "correlationId": { "type": "string" }
         },
-        "additionalProperties": true
+        "additionalProperties": true,
+        "example": {
+          "x402Version": 2,
+          "paymentPayload": {
+            "x402Version": 2,
+            "accepted": {
+              "scheme": "exact",
+              "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+              "amount": "50000",
+              "payTo": "<SplitVault PDA from seller discovery — not a bare wallet>",
+              "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+              "maxTimeoutSeconds": 300,
+              "extra": {
+                "merchantWallet": "<seller identity pubkey>",
+                "feePayer": "<facilitator fee payer>",
+                "programId": "<UniversalSettle program id>",
+                "configAddress": "<config PDA>"
+              }
+            },
+            "payload": {
+              "transaction": "<base64(bincode(VersionedTransaction)) — replace with signed tx from build-exact response>"
+            },
+            "resource": {
+              "url": "https://seller.example/api/premium",
+              "description": "Paid API",
+              "mimeType": "application/json"
+            },
+            "extensions": {}
+          },
+          "paymentRequirements": {
+            "scheme": "exact",
+            "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            "amount": "50000",
+            "payTo": "<SplitVault PDA — must match proof>",
+            "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "merchantWallet": "<seller identity pubkey>"
+            }
+          }
+        }
       },
       "ResourceRef": {
         "type": "object",
@@ -702,7 +742,24 @@
           "resource": { "$ref": "#/components/schemas/ResourceRef" },
           "skipSourceBalanceCheck": { "type": "boolean", "default": false }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "example": {
+          "payer": "<buyer pubkey base58>",
+          "accepted": {
+            "scheme": "exact",
+            "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            "amount": "50000",
+            "payTo": "<SplitVault PDA>",
+            "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+            "maxTimeoutSeconds": 300,
+            "extra": {}
+          },
+          "resource": {
+            "url": "https://seller.example/api/premium",
+            "description": "Paid API",
+            "mimeType": "application/json"
+          }
+        }
       },
       "BuildSlaEscrowPaymentTxRequest": {
         "type": "object",
@@ -721,6 +778,7 @@
       },
       "BuildPaymentTxResponse": {
         "type": "object",
+        "description": "Returned by build-exact and build-sla-escrow. Exact builds always include payerSignatureIndex and recentBlockhashExpiresAt; sla-escrow builds include paymentUid and omit those two.",
         "required": [
           "x402Version",
           "transaction",
@@ -738,7 +796,16 @@
           "recentBlockhash": { "type": "string" },
           "feePayer": { "type": "string" },
           "payer": { "type": "string" },
-          "paymentUid": { "type": "string", "description": "Present for sla-escrow build" },
+          "payerSignatureIndex": {
+            "type": "integer",
+            "description": "Exact build only: index in VersionedTransaction.signatures[] for the payer (buyer) signature"
+          },
+          "recentBlockhashExpiresAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Exact build only: estimated UNIX epoch (seconds) when the embedded blockhash expires"
+          },
+          "paymentUid": { "type": "string", "description": "SLA-Escrow build: payment reference" },
           "verifyBodyTemplate": {
             "type": "object",
             "description": "Replace paymentPayload.payload.transaction after signing"

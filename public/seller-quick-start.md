@@ -164,7 +164,7 @@ function handle_paid_request(request):
 
 ### Rust (Axum)
 
-See the complete working example in [x402-seller-starter](https://github.com/miraland-labs/x402/tree/main/x402-seller-starter):
+See the complete working example in [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter):
 
 ```rust
 let proof = extract_payment_header_value(&headers);
@@ -292,4 +292,4 @@ Cache the result and return it as your 402 response.
 
 **Canonical API spec**: `GET /openapi.json` on your facilitator deployment.
 **Full integration runbook**: `GET /agent-integration.md` on your facilitator deployment.
-**Reference implementation**: [x402-seller-starter](https://github.com/miraland-labs/x402/tree/main/x402-seller-starter) (Rust + Axum).
+**Reference implementation**: [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter) (Rust + Axum).
