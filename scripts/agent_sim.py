@@ -13,8 +13,8 @@ USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 FACILITATOR_URL = os.getenv("PR402_BASE_URL", "https://preview.agent.pay402.me")
 
 # Program IDs
-SLA_ESCROW_ID = "s1jWKnB1QwKKKZUDq3bZCmqvwEf8UQpQCbkEtQzHknS"
-UNIVERSALSETTLE_ID = "u5kv5wqJqHVLbdp9Vrd5pBsFswJ9MzpotoaxYNn39MN"
+SLA_ESCROW_ID = "s3kp2kAjqmpxoBeMFXCFCRDmuboPn5m4stC9Ro8sKMX"
+UNIVERSALSETTLE_ID = "u61Wu57T8jma6LiFehd3ECG6jEcTBMnQGXqwTFfZdBC"
 
 # Keypairs (Placeholder: assuming the user has them configured in solana CLI)
 def get_address(label="id.json"):
@@ -35,8 +35,8 @@ print(f"Seller Address: {SELLER_ADDR}")
 print(f"Buyer Address:  {BUYER_ADDR}")
 print("-"*60)
 print("📝 Prerequisites for Cloud Deployment:")
-print("  1. ESCROW_PROGRAM_ID: s1jWKnB1QwKKKZUDq3bZCmqvwEf8UQpQCbkEtQzHknS")
-print("  2. UNIVERSALSETTLE_PROGRAM_ID: u5kv5wqJqHVLbdp9Vrd5pBsFswJ9MzpotoaxYNn39MN")
+print("  1. ESCROW_PROGRAM_ID: s3kp2kAjqmpxoBeMFXCFCRDmuboPn5m4stC9Ro8sKMX")
+print("  2. UNIVERSALSETTLE_PROGRAM_ID: u61Wu57T8jma6LiFehd3ECG6jEcTBMnQGXqwTFfZdBC")
 print("  3. ORACLE_AUTHORITIES: <Pubkeys for candidates, comma-separated>")
 print("-"*60)
 

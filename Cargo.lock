@@ -3568,9 +3568,9 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "sla-escrow-api"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0c51a3b72dd48b8da2c7d8d39cd6edeca13f3fa70bf9b5216e7bbda7be75c65"
+checksum = "73f2e03205f943729195f8499610e1ae2aa8f5687a8a8a5d139c96f77007bc05"
 dependencies = [
  "bincode",
  "borsh 0.10.4",
@@ -7495,9 +7495,9 @@ dependencies = [
 
 [[package]]
 name = "universalsettle-api"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc2848a5d67f37b7ef79a33f5deb191511da1aabc6509df7f83c92775e11d764"
+checksum = "d8d347f1239a8f153349ea8c03a2300f3c152f2d95f336bb4291b9109cc1c09c"
 dependencies = [
  "bytemuck",
  "const-crypto",

@@ -54,7 +54,7 @@ curl -s -X POST "$FACILITATOR_URL/api/v1/facilitator/verify" \
         "extra": {
           "bankAddress": "8aNEFX3A6p4e1PqKDkcL6xVa1X5zdHj2BgXh8QitqdX6",
           "configAddress": "B3SchPvtYtFwseZGkgxdhyt3z1dLVs6AbhEv1gGJt8Rj",
-          "escrowProgramId": "s1jWKnB1QwKKKZUDq3bZCmqvwEf8UQpQCbkEtQzHknS",
+          "escrowProgramId": "s3kp2kAjqmpxoBeMFXCFCRDmuboPn5m4stC9Ro8sKMX",
           "feeBps": 100,
           "feePayer": "FaciLFwHjbW9V1PtF3vAweL1K1hgin9mvXNXatEQKJdu",
           "oracleAuthorities": ["FaciLFwHjbW9V1PtF3vAweL1K1hgin9mvXNXatEQKJdu"],
