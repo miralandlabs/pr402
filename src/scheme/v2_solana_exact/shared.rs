@@ -1,5 +1,7 @@
 //! Shared Solana verification and settlement logic for v2:solana:exact.
 
+use std::mem::size_of;
+
 use solana_client::rpc_response::UiTransactionError;
 use solana_commitment_config::CommitmentConfig;
 use solana_compute_budget_interface::ID as ComputeBudgetInstructionId;
@@ -11,6 +13,7 @@ use solana_transaction::TransactionError;
 use tracing::error;
 
 use crate::chain::solana::{Address, SolanaChainProvider, SolanaChainProviderError};
+use crate::chain::solana_universalsettle::{self, Config as OnchainUsConfig};
 use crate::proto::PaymentVerificationError;
 use crate::util::{
     decode_versioned_transaction_from_bincode, reject_versioned_tx_with_address_lookup_tables,
@@ -671,6 +674,38 @@ pub async fn settle_transaction(
                         }
 
                         if !skip_sweep {
+                            let (fee_sol_recv, fee_token_owner) = match provider
+                                .rpc_client()
+                                .get_account(&provider.get_config_pda(&us_config.program_id).0)
+                                .await
+                            {
+                                Ok(acc) if acc.data.len() >= 8 + size_of::<OnchainUsConfig>() => {
+                                    let cfg: &OnchainUsConfig = bytemuck::from_bytes(
+                                        &acc.data[8..8 + size_of::<OnchainUsConfig>()],
+                                    );
+                                    if cfg.fee_destination != fee_dest {
+                                        tracing::warn!(
+                                            configured_fee_dest = %fee_dest,
+                                            chain_fee_dest = %cfg.fee_destination,
+                                            "UniversalSettle sweep: env fee_destination differs from on-chain config.fee_destination; routing fees using on-chain treasury + shard flags"
+                                        );
+                                    }
+                                    solana_universalsettle::sweep_fee_destinations(
+                                        &us_config.program_id,
+                                        &cfg.fee_destination,
+                                        &merchant_identity,
+                                        cfg.use_fee_shard,
+                                        cfg.shard_count,
+                                    )
+                                }
+                                Ok(_) | Err(_) => {
+                                    tracing::warn!(
+                                        "UniversalSettle sweep: could not load config PDA; defaulting fee leg to configured fee_destination (fee sharding may fail if enabled on-chain)"
+                                    );
+                                    (fee_dest, fee_dest)
+                                }
+                            };
+
                             // On-chain Sweep: `amount == 0` sweeps all spendable vault balance (same as
                             // batch/cron sweep). Do not pass `details.amount` (single payment size).
                             instructions.push(
@@ -679,7 +714,8 @@ pub async fn settle_transaction(
                                     provider.pubkey(),
                                     vault_pda,
                                     final_beneficiary,
-                                    fee_dest,
+                                    fee_sol_recv,
+                                    fee_token_owner,
                                     token_mint,
                                     0,
                                     is_sol_sweep,

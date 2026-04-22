@@ -15,6 +15,7 @@ use pr402::{
 };
 use serde::Deserialize;
 use std::io::LineWriter;
+use std::mem::size_of;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use subtle::ConstantTimeEq;
@@ -1525,6 +1526,38 @@ async fn execute_sweep(req: SweepRequest, authorization_header: Option<&str>) ->
             )
         }
     };
+
+    let (cfg_pda, _) = cp.solana.get_config_pda(&us_config.program_id);
+    let onchain_us: pr402::chain::solana_universalsettle::Config =
+        match cp.solana.rpc_client().get_account(&cfg_pda).await {
+            Ok(acc) => {
+                let need = 8 + size_of::<pr402::chain::solana_universalsettle::Config>();
+                if acc.data.len() < need {
+                    return error_response(
+                        StatusCode::BAD_GATEWAY,
+                        "UniversalSettle config account data too small for current layout",
+                    );
+                }
+                *bytemuck::from_bytes::<pr402::chain::solana_universalsettle::Config>(
+                    &acc.data[8..need],
+                )
+            }
+            Err(e) => {
+                return error_response(
+                    StatusCode::BAD_GATEWAY,
+                    &format!("failed to load UniversalSettle config: {}", e),
+                );
+            }
+        };
+    if onchain_us.fee_destination != fee_destination {
+        warn!(
+            target: LOG_SERVER_LOG,
+            env_fee_dest = %fee_destination,
+            chain_fee_dest = %onchain_us.fee_destination,
+            "UniversalSettle cron sweep: configured fee_destination differs from on-chain treasury; using on-chain values for fee routing"
+        );
+    }
+
     let Some(db) = pr402_db() else {
         return error_response(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -1730,13 +1763,22 @@ async fn execute_sweep(req: SweepRequest, authorization_header: Option<&str>) ->
         attempted += 1;
         let is_sol = mint_opt.is_none();
         let token_mint = mint_opt.unwrap_or_default();
+        let (fee_sol_recv, fee_token_owner) =
+            pr402::chain::solana_universalsettle::sweep_fee_destinations(
+                &us_config.program_id,
+                &onchain_us.fee_destination,
+                &seller,
+                onchain_us.use_fee_shard,
+                onchain_us.shard_count,
+            );
         // Full sweep at execution time (`0`); threshold eligibility used `available` from snapshot above.
         let ix = pr402::chain::solana_universalsettle::build_sweep_instruction(
             us_config.program_id,
             cp.solana.pubkey(),
             snap.split_vault_pda,
             seller,
-            fee_destination,
+            fee_sol_recv,
+            fee_token_owner,
             token_mint,
             0,
             is_sol,

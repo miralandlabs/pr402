@@ -202,12 +202,12 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
                                 &c_data[8..8 + std::mem::size_of::<USConfig>()],
                             );
                             let sol_recovered = u64::from_le_bytes(vault.sol_recovered);
-                            let sol_target = u64::from_le_bytes(config.provisioning_fee_sol);
+                            let sol_target = config.provisioning_fee_sol;
 
                             let spl_recovered = u64::from_le_bytes(vault.spl_recovered);
-                            let spl_target = u64::from_le_bytes(config.provisioning_fee_spl);
+                            let spl_target = config.provisioning_fee_spl;
 
-                            current_fee_bps = u16::from_le_bytes(config.fee_bps);
+                            current_fee_bps = config.fee_bps;
 
                             if sol_recovered > 0 || (spl_recovered == 0) {
                                 provisioning_status =
@@ -235,7 +235,7 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
                             let config: &USConfig = bytemuck::from_bytes(
                                 &c_data[8..8 + std::mem::size_of::<USConfig>()],
                             );
-                            current_fee_bps = u16::from_le_bytes(config.discounted_fee_bps);
+                            current_fee_bps = config.discounted_fee_bps;
                         }
                     }
                 }

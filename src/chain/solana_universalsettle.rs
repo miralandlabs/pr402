@@ -14,6 +14,8 @@ const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5
 pub const VAULT: &[u8] = b"vault";
 pub const SOL_STORAGE: &[u8] = b"sol_storage";
 pub const CONFIG: &[u8] = b"config";
+pub const FEE_SHARD: &[u8] = b"fee_shard";
+pub const FEE_SHARD_SOL: &[u8] = b"fee_shard_sol";
 
 fn associated_token_address(wallet: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(
@@ -41,6 +43,11 @@ pub enum UniversalSettleInstruction {
     UpdateMinFeeAmountSol = 105,
     UpdateProvisioningFee = 106,
     UpdateDiscountedFeeRate = 107,
+    AcceptAuthority = 108,
+    CancelAuthorityProposal = 109,
+    InitShard = 110,
+    CollectFromShard = 111,
+    UpdateShardConfig = 112,
 }
 
 /// UniversalSettle CreateVault instruction data structure.
@@ -79,35 +86,76 @@ impl SweepData {
     }
 }
 
-/// UniversalSettle Config account structure (matches universalsettle/api/src/state/config.rs).
-/// Corrected to 112-byte layout for v0.1.3.
+/// UniversalSettle Config account body (matches `universalsettle/api/src/state/config.rs`, after the
+/// 8-byte account discriminator).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct Config {
-    pub authority: Pubkey,             // 32
-    pub fee_destination: Pubkey,       // 32
-    pub updated_at: [u8; 8],           // 8
-    pub min_fee_amount: [u8; 8],       // 8
-    pub min_fee_amount_sol: [u8; 8],   // 8
-    pub provisioning_fee_sol: [u8; 8], // 8
-    pub provisioning_fee_spl: [u8; 8], // 8
-    pub fee_bps: [u8; 2],              // 2
-    pub discounted_fee_bps: [u8; 2],   // 2
-    pub _padding: [u8; 4],             // 4
+    pub authority: Pubkey,
+    pub fee_destination: Pubkey,
+    pub updated_at: i64,
+    pub min_fee_amount: u64,
+    pub min_fee_amount_sol: u64,
+    pub provisioning_fee_sol: u64,
+    pub provisioning_fee_spl: u64,
+    pub fee_bps: u16,
+    pub discounted_fee_bps: u16,
+    pub use_fee_shard: u8,
+    pub shard_count: u8,
+    pub _padding: [u8; 2],
 }
 
 /// UniversalSettle SplitVault account structure (matches universalsettle/api/src/state/split_vault.rs).
-/// Corrected to 56-byte layout.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct SplitVault {
-    pub seller: Pubkey,         // 32
-    pub sol_recovered: [u8; 8], // 8
-    pub spl_recovered: [u8; 8], // 8
-    pub is_provisioned: u8,     // 1
-    pub bump: u8,               // 1
-    pub is_sovereign: u8,       // 1
-    pub _padding: [u8; 5],      // 5
+    pub seller: Pubkey,
+    pub sol_recovered: [u8; 8],
+    pub spl_recovered: [u8; 8],
+    pub is_provisioned: u8,
+    pub bump: u8,
+    pub is_sovereign: u8,
+    pub _padding: [u8; 5],
+}
+
+/// Shard index for a seller (same rule as `universalsettle_api::state::derive_shard_index`).
+pub fn derive_shard_index(seller: &Pubkey, shard_count: u8) -> u64 {
+    if shard_count == 0 {
+        return 0;
+    }
+    (seller.to_bytes()[0] % shard_count) as u64
+}
+
+pub fn fee_shard_pda(program_id: &Pubkey, index: u64) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[FEE_SHARD, &index.to_le_bytes()], program_id)
+}
+
+pub fn fee_shard_sol_storage_pda(program_id: &Pubkey, shard_pda: Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[FEE_SHARD_SOL, shard_pda.as_ref()], program_id)
+}
+
+/// Fee leg destinations for [`build_sweep_instruction`].
+///
+/// When fee sharding is enabled (`use_fee_shard == 1` and `shard_count > 0`), protocol fees must be
+/// credited to the seller’s shard SOL storage (native) or to the fee ATA owned by the shard PDA
+/// (SPL), not directly to the treasury wallet.
+///
+/// Returns `(fee_sol_lamports_receiver, spl_fee_token_account_owner)`.
+pub fn sweep_fee_destinations(
+    program_id: &Pubkey,
+    treasury: &Pubkey,
+    seller: &Pubkey,
+    use_fee_shard: u8,
+    shard_count: u8,
+) -> (Pubkey, Pubkey) {
+    if use_fee_shard == 1 && shard_count > 0 {
+        let idx = derive_shard_index(seller, shard_count);
+        let (shard_pda, _) = fee_shard_pda(program_id, idx);
+        let (shard_sol_storage, _) = fee_shard_sol_storage_pda(program_id, shard_pda);
+        (shard_sol_storage, shard_pda)
+    } else {
+        (*treasury, *treasury)
+    }
 }
 
 pub fn build_create_vault_instruction(
@@ -138,6 +186,12 @@ pub fn build_create_vault_instruction(
 
 /// `spl_token_program` must match the rail used for payment (legacy Token vs Token-2022) when `!is_sol`.
 ///
+/// **`fee_sol_receiver`:** writable account that receives the facilitator’s native SOL fee (treasury
+/// wallet when sharding is off, or **fee-shard SOL storage PDA** when on).
+///
+/// **`fee_token_owner`:** owner pubkey for the facilitator fee ATA when sweeping SPL (treasury when
+/// sharding is off, or **fee-shard PDA** when on).
+///
 /// **`amount`:** pass **`0`** to sweep **all** available balance after rent (SOL) or full vault ATA
 /// balance (SPL), matching on-chain `Sweep` semantics. Non-zero caps the sweep to that amount.
 #[allow(clippy::too_many_arguments)]
@@ -146,11 +200,11 @@ pub fn build_sweep_instruction(
     payer: Pubkey,
     vault: Pubkey,
     seller: Pubkey,
-    fee_destination: Pubkey,
+    fee_sol_receiver: Pubkey,
+    fee_token_owner: Pubkey,
     token_mint: Pubkey,
     amount: u64,
     is_sol: bool,
-    // SPL program for vault/seller/fee ATAs when `!is_sol`; `None` uses legacy Token program.
     spl_token_program: Option<Pubkey>,
 ) -> Instruction {
     let (config_pda, _) = derive_config_pda(&program_id);
@@ -175,18 +229,19 @@ pub fn build_sweep_instruction(
         let (vault_sol_storage, _) = derive_sol_storage_pda(&vault, &program_id);
         accounts.push(AccountMeta::new(vault_sol_storage, false));
         accounts.push(AccountMeta::new(seller, false));
-        accounts.push(AccountMeta::new(fee_destination, false));
+        accounts.push(AccountMeta::new(fee_sol_receiver, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
     } else {
         let token_program = spl_token_program.unwrap_or(spl_token::id());
         let vault_tokens = associated_token_address(&vault, &token_mint, &token_program);
         let seller_tokens = associated_token_address(&seller, &token_mint, &token_program);
         let fee_dest_tokens =
-            associated_token_address(&fee_destination, &token_mint, &token_program);
+            associated_token_address(&fee_token_owner, &token_mint, &token_program);
 
         accounts.push(AccountMeta::new(vault_tokens, false));
         accounts.push(AccountMeta::new(seller_tokens, false));
         accounts.push(AccountMeta::new(fee_dest_tokens, false));
+        accounts.push(AccountMeta::new_readonly(token_mint, false));
         accounts.push(AccountMeta::new_readonly(token_program, false));
     }
 
