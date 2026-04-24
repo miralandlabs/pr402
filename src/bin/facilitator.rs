@@ -638,10 +638,8 @@ fn error_response_with_optional_correlation(
     }
 
     // Canonical error response fields: `error` (human-readable), `code` (machine-readable).
-    // `message` is a DEPRECATED alias of `error` — kept for backward compatibility.
     let json = serde_json::json!({
         "error": message,
-        "message": message,  // @deprecated: use `error`
         "code": machine_code,
         "correlationId": correlation_id
     });

@@ -843,18 +843,15 @@
       },
       "FacilitatorErrorBody": {
         "type": "object",
-        "description": "Typical error JSON from facilitator (shape includes error, message, code, and correlationId)",
+        "description": "Error response from the facilitator.",
         "required": [
           "error",
-          "message",
           "code"
         ],
         "properties": {
           "error": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable error description"
           },
           "code": {
             "type": "string",
@@ -863,8 +860,7 @@
           "correlationId": {
             "type": "string"
           }
-        },
-        "additionalProperties": true
+        }
       },
       "X402V2VerifySettleBody": {
         "type": "object",

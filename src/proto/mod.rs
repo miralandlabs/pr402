@@ -186,8 +186,7 @@ impl VerifyResponse {
     }
 }
 
-/// Wrapper for a payment payload and requirements sent by the client to a facilitator
-/// to be verified.
+/// Response from settlement execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettleResponse {

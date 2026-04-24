@@ -18,6 +18,7 @@
 pub use crate::exact_payment_build::{
     build_exact_spl_payment_tx, BuildExactPaymentTxRequest, ExactPaymentBuildError,
 };
+pub use crate::proto::v2::BuildPaymentTxResponse;
 pub use crate::sla_escrow_payment_build::{
     build_sla_escrow_fund_payment_tx, BuildSlaEscrowPaymentTxRequest, SlaEscrowPaymentBuildError,
 };
