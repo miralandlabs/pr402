@@ -155,30 +155,76 @@ impl VerifyRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerifyResponse(serde_json::Value);
+#[serde(rename_all = "camelCase")]
+pub struct VerifyResponse {
+    pub is_valid: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invalid_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payer: Option<String>,
+}
 
 impl VerifyResponse {
-    pub fn new(value: serde_json::Value) -> Self {
-        Self(value)
+    pub fn valid(payer: String) -> Self {
+        Self {
+            is_valid: true,
+            invalid_reason: None,
+            payer: Some(payer),
+        }
+    }
+
+    pub fn invalid(reason: String) -> Self {
+        Self {
+            is_valid: false,
+            invalid_reason: Some(reason),
+            payer: None,
+        }
     }
 
     pub fn into_json(self) -> serde_json::Value {
-        self.0
+        serde_json::to_value(self).unwrap()
     }
 }
 
 /// Wrapper for a payment payload and requirements sent by the client to a facilitator
 /// to be verified.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SettleResponse(serde_json::Value);
+#[serde(rename_all = "camelCase")]
+pub struct SettleResponse {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transaction: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+}
 
 impl SettleResponse {
-    pub fn new(value: serde_json::Value) -> Self {
-        Self(value)
+    pub fn success(payer: String, transaction: String, network: String) -> Self {
+        Self {
+            success: true,
+            error_reason: None,
+            payer: Some(payer),
+            transaction: Some(transaction),
+            network: Some(network),
+        }
+    }
+
+    pub fn error(reason: String, network: String) -> Self {
+        Self {
+            success: false,
+            error_reason: Some(reason),
+            payer: None,
+            transaction: None,
+            network: Some(network),
+        }
     }
 
     pub fn into_json(self) -> serde_json::Value {
-        self.0
+        serde_json::to_value(self).unwrap()
     }
 }
 

@@ -68,7 +68,7 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         self.validate_mint(request.payment_requirements.asset.pubkey())
             .await?;
         let verification = verify_transfer(&self.provider, &request).await?;
-        Ok(proto::v2::VerifyResponse::valid(verification.payer.to_string()).into())
+        Ok(proto::VerifyResponse::valid(verification.payer.to_string()))
     }
 
     async fn settle(
@@ -108,12 +108,11 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             self.db.as_ref(),
         )
         .await?;
-        Ok(proto::v2::SettleResponse::Success {
+        Ok(proto::SettleResponse::success(
             payer,
-            transaction: tx_sig.to_string(),
-            network: self.provider.chain_id().to_string(),
-        }
-        .into())
+            tx_sig.to_string(),
+            self.provider.chain_id().to_string(),
+        ))
     }
 
     async fn supported(&self) -> Result<proto::SupportedResponse, X402SchemeFacilitatorError> {
