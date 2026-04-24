@@ -67,18 +67,19 @@ impl VerifyResponse {
 
 impl From<VerifyResponse> for proto::VerifyResponse {
     fn from(val: VerifyResponse) -> Self {
-        // x402 v2 spec §7.1: `isValid`, `invalidReason` (camelCase). Keep `valid`/`reason` for older clients.
+        // x402 v2 spec §7.1: canonical fields are `isValid` and `invalidReason` (camelCase).
+        // Legacy fields `valid` and `reason` are kept for backward compatibility but DEPRECATED.
         let json = match val {
             VerifyResponse::Valid { payer } => serde_json::json!({
                 "isValid": true,
-                "valid": true,
+                "valid": true,  // @deprecated: use `isValid`
                 "payer": payer,
             }),
             VerifyResponse::Invalid { reason } => serde_json::json!({
                 "isValid": false,
-                "valid": false,
+                "valid": false,  // @deprecated: use `isValid`
                 "invalidReason": reason,
-                "reason": reason,
+                "reason": reason,  // @deprecated: use `invalidReason`
             }),
         };
         proto::VerifyResponse::new(json)
@@ -100,6 +101,8 @@ pub enum SettleResponse {
 
 impl From<SettleResponse> for proto::SettleResponse {
     fn from(val: SettleResponse) -> Self {
+        // Canonical fields: `success`, `errorReason` (camelCase).
+        // Legacy `error_reason` (snake_case) is DEPRECATED — use `errorReason`.
         let json = match val {
             SettleResponse::Success {
                 payer,
@@ -114,7 +117,7 @@ impl From<SettleResponse> for proto::SettleResponse {
             SettleResponse::Error { reason, network } => serde_json::json!({
                 "success": false,
                 "errorReason": reason,
-                "error_reason": reason,
+                "error_reason": reason,  // @deprecated: use `errorReason`
                 "network": network,
             }),
         };

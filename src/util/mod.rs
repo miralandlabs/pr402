@@ -2,6 +2,7 @@
 
 pub mod b64;
 pub mod tx_bincode;
+pub mod tx_builder;
 
 pub use b64::*;
 pub use tx_bincode::{

@@ -24,11 +24,14 @@ use solana_transaction::{
     versioned::VersionedTransaction, AccountMeta, Address, Instruction, Message, Transaction,
 };
 
-use crate::chain::solana::{
-    SolanaChainProvider, ASSOCIATED_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID,
-};
+use crate::chain::solana::{SolanaChainProvider, SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID};
 use crate::chain::solana_sla_escrow::build_fund_payment_instruction;
 use crate::scheme::v2_solana_escrow::types::SLAEscrowScheme;
+use crate::util::tx_builder::{
+    associated_token_address, compute_budget_ix_set_limit, compute_budget_ix_set_price,
+    create_associated_token_account_idempotent_ix, estimate_blockhash_expiry_unix,
+    parse_u64_from_json,
+};
 use sla_escrow_api::consts::{MAX_TTL_SECONDS, MIN_TTL_SECONDS};
 
 use spl_token::solana_program::program_pack::Pack;
@@ -75,6 +78,9 @@ pub struct BuildSlaEscrowPaymentTxResponse {
     pub fee_payer: String,
     pub payer: String,
     pub payment_uid: String,
+    /// Index into `VersionedTransaction.signatures[]` where the **buyer** must place their ed25519
+    /// signature. Matches `payerSignatureIndex` from `build-exact-payment-tx` for SDK parity.
+    pub payer_signature_index: usize,
     /// POST to `/verify` / `/settle` after replacing `paymentPayload.payload.transaction` with the
     /// **signed** tx (same message hash / blockhash).
     pub verify_body_template: serde_json::Value,
@@ -96,53 +102,9 @@ pub enum SlaEscrowPaymentBuildError {
     Rpc(String),
 }
 
-fn compute_budget_ix_set_limit(units: u32) -> Instruction {
-    let mut data = vec![2u8];
-    data.extend_from_slice(&units.to_le_bytes());
-    Instruction {
-        program_id: solana_compute_budget_interface::ID,
-        accounts: vec![],
-        data,
-    }
-}
+// compute_budget and associated_token_address helpers moved to crate::util::tx_builder
 
-fn compute_budget_ix_set_price(microlamports_per_cu: u64) -> Instruction {
-    let mut data = vec![3u8];
-    data.extend_from_slice(&microlamports_per_cu.to_le_bytes());
-    Instruction {
-        program_id: solana_compute_budget_interface::ID,
-        accounts: vec![],
-        data,
-    }
-}
-
-fn associated_token_address(owner: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[owner.as_ref(), token_program.as_ref(), mint.as_ref()],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    )
-    .0
-}
-
-fn create_associated_token_account_idempotent_ix(
-    funding: &Pubkey,
-    owner: &Pubkey,
-    mint: &Pubkey,
-    token_program: &Pubkey,
-) -> Instruction {
-    Instruction {
-        program_id: ASSOCIATED_TOKEN_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*funding, true),
-            AccountMeta::new(associated_token_address(owner, mint, token_program), false),
-            AccountMeta::new_readonly(*owner, false),
-            AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-            AccountMeta::new_readonly(*token_program, false),
-        ],
-        data: vec![1],
-    }
-}
+// create_associated_token_account_idempotent_ix moved to crate::util::tx_builder
 
 fn parse_sla_hash_hex(s: &str) -> Result<[u8; 32], SlaEscrowPaymentBuildError> {
     if s.len() != 64 {
@@ -189,23 +151,7 @@ fn resolve_fund_payment_seller_pk(
     Ok(pk)
 }
 
-fn parse_u64_from_json(
-    v: &serde_json::Value,
-    ctx: &str,
-) -> Result<u64, SlaEscrowPaymentBuildError> {
-    match v {
-        serde_json::Value::String(s) => s.parse().map_err(|_| {
-            SlaEscrowPaymentBuildError::InvalidRequest(format!("{}: invalid u64 string", ctx))
-        }),
-        serde_json::Value::Number(n) => n
-            .as_u64()
-            .ok_or_else(|| SlaEscrowPaymentBuildError::InvalidRequest(format!("{}: not u64", ctx))),
-        _ => Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
-            "{}: expected string or number",
-            ctx
-        ))),
-    }
-}
+// parse_u64_from_json moved to crate::util::tx_builder
 
 /// Build an unsigned SLA-Escrow fund-payment transaction and verify-body template.
 ///
@@ -278,14 +224,16 @@ pub async fn build_sla_escrow_fund_payment_tx(
             SlaEscrowPaymentBuildError::InvalidRequest("accepted.amount missing".into())
         })?,
         "accepted.amount",
-    )?;
+    )
+    .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
 
     let ttl_seconds_i64 = parse_u64_from_json(
         req.accepted.get("maxTimeoutSeconds").ok_or_else(|| {
             SlaEscrowPaymentBuildError::InvalidRequest("accepted.maxTimeoutSeconds missing".into())
         })?,
         "accepted.maxTimeoutSeconds",
-    )? as i64;
+    )
+    .map_err(SlaEscrowPaymentBuildError::InvalidRequest)? as i64;
 
     if ttl_seconds_i64 < MIN_TTL_SECONDS {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
@@ -407,14 +355,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
         .await
         .map_err(|e| SlaEscrowPaymentBuildError::Rpc(e.to_string()))?;
 
-    let recent_blockhash_expires_at = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        now + 60
-    };
+    let recent_blockhash_expires_at = estimate_blockhash_expiry_unix();
 
     let source_ata = associated_token_address(&payer_pk, &mint, &token_program);
 
@@ -522,6 +463,19 @@ pub async fn build_sla_escrow_fund_payment_tx(
     let message = Message::new_with_blockhash(&ixs, Some(&fee_payer_addr), &blockhash);
     let tx = Transaction::new_unsigned(message);
     let vtx = VersionedTransaction::from(tx);
+
+    // Payer signature index: matches exact builder pattern for SDK parity.
+    let payer_signature_index = vtx
+        .message
+        .static_account_keys()
+        .iter()
+        .position(|k| *k == payer_pk)
+        .ok_or_else(|| {
+            SlaEscrowPaymentBuildError::InvalidRequest(
+                "internal: payer pubkey missing from transaction signers".into(),
+            )
+        })?;
+
     let wire = bincode::serialize(&vtx).map_err(|e| {
         SlaEscrowPaymentBuildError::InvalidRequest(format!("bincode serialize: {}", e))
     })?;
@@ -569,6 +523,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
         fee_payer: fee_payer_pk.to_string(),
         payer: payer_pk.to_string(),
         payment_uid,
+        payer_signature_index,
         verify_body_template,
         notes,
     })

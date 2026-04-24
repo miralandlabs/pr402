@@ -168,6 +168,69 @@ struct HealthResponse {
     solana_network: String,
 }
 
+/// Typed capabilities discovery response — stabilizes the contract for agents.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CapabilitiesResponse {
+    schema_version: &'static str,
+    x402_version: u8,
+    name: &'static str,
+    chain_id: String,
+    fee_payer: String,
+    supported: serde_json::Value,
+    features: CapabilitiesFeatures,
+    http_endpoints: CapabilitiesHttpEndpoints,
+    agent_manifest: AgentManifest,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CapabilitiesFeatures {
+    universal_settle_exact: bool,
+    sla_escrow: bool,
+    unsigned_exact_payment_tx_build: bool,
+    unsigned_sla_escrow_payment_tx_build: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HttpEndpointInfo {
+    method: &'static str,
+    path: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auth: Option<&'static str>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CapabilitiesHttpEndpoints {
+    verify: HttpEndpointInfo,
+    settle: HttpEndpointInfo,
+    build_exact_payment_tx: HttpEndpointInfo,
+    build_sla_escrow_payment_tx: HttpEndpointInfo,
+    sweep: HttpEndpointInfo,
+    sweep_cron: HttpEndpointInfo,
+    onboard: HttpEndpointInfo,
+    build_onboard_tx: HttpEndpointInfo,
+    supported: HttpEndpointInfo,
+    health: HttpEndpointInfo,
+    capabilities: HttpEndpointInfo,
+    discovery: HttpEndpointInfo,
+    upgrade: HttpEndpointInfo,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentManifest {
+    open_api: &'static str,
+    pay_to_semantics: &'static str,
+    integration_guide: &'static str,
+    seller_quick_start: &'static str,
+    seller_onboarding_guide: &'static str,
+    buyer_quick_start: &'static str,
+    x402_spec: &'static str,
+}
+
 fn with_api_version_v1(mut res: Response<Body>, correlation_id: Option<&str>) -> Response<Body> {
     res.headers_mut().insert(
         http::HeaderName::from_static("x-api-version"),
@@ -950,48 +1013,101 @@ async fn handle_capabilities(
         );
     };
 
-    let body = serde_json::json!({
-        "schemaVersion": SCHEMA_VERSION,
-        "x402Version": 2,
-        "name": "pr402 facilitator",
-        "chainId": chain_id,
-        "feePayer": fee_payer,
-        "supported": supported_json,
-        "features": {
-            "universalSettleExact": universal_settle,
-            "slaEscrow": sla_escrow,
-            "unsignedExactPaymentTxBuild": true,
-            "unsignedSlaEscrowPaymentTxBuild": sla_escrow
+    let body = CapabilitiesResponse {
+        schema_version: SCHEMA_VERSION,
+        x402_version: 2,
+        name: "pr402 facilitator",
+        chain_id,
+        fee_payer,
+        supported: supported_json,
+        features: CapabilitiesFeatures {
+            universal_settle_exact: universal_settle,
+            sla_escrow,
+            unsigned_exact_payment_tx_build: true,
+            unsigned_sla_escrow_payment_tx_build: sla_escrow,
         },
-        "httpEndpoints": {
-            "verify": { "method": "POST", "path": "/api/v1/facilitator/verify" },
-            "settle": { "method": "POST", "path": "/api/v1/facilitator/settle" },
-            "buildExactPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-exact-payment-tx" },
-            "buildSlaEscrowPaymentTx": { "method": "POST", "path": "/api/v1/facilitator/build-sla-escrow-payment-tx" },
-            "sweep": { "method": "POST", "path": "/api/v1/facilitator/sweep", "auth": "bearer" },
-            "sweepCron": { "method": "GET", "path": "/api/v1/facilitator/sweep-cron", "auth": "bearer" },
-            "onboard": { "method": "POST", "path": "/api/v1/facilitator/onboard" },
-            "buildOnboardTx": { "method": "GET", "path": "/api/v1/facilitator/onboard/build-tx" },
-            "supported": { "method": "GET", "path": "/api/v1/facilitator/supported" },
-            "health": { "method": "GET", "path": "/api/v1/facilitator/health" },
-            "capabilities": { "method": "GET", "path": "/api/v1/facilitator/capabilities" },
-            "discovery": { "method": "GET", "path": "/api/v1/facilitator/discovery" },
-            "upgrade": { "method": "POST", "path": "/api/v1/facilitator/upgrade" }
+        http_endpoints: CapabilitiesHttpEndpoints {
+            verify: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/verify",
+                auth: None,
+            },
+            settle: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/settle",
+                auth: None,
+            },
+            build_exact_payment_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-exact-payment-tx",
+                auth: None,
+            },
+            build_sla_escrow_payment_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-sla-escrow-payment-tx",
+                auth: None,
+            },
+            sweep: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/sweep",
+                auth: Some("bearer"),
+            },
+            sweep_cron: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/sweep-cron",
+                auth: Some("bearer"),
+            },
+            onboard: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/onboard",
+                auth: None,
+            },
+            build_onboard_tx: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/onboard/build-tx",
+                auth: None,
+            },
+            supported: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/supported",
+                auth: None,
+            },
+            health: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/health",
+                auth: None,
+            },
+            capabilities: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/capabilities",
+                auth: None,
+            },
+            discovery: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/discovery",
+                auth: None,
+            },
+            upgrade: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/upgrade",
+                auth: None,
+            },
         },
-        "agentManifest": {
-            "openApi": "/openapi.json",
-            "payToSemantics": "/agent-payTo-semantics.json",
-            "integrationGuide": "/agent-integration.md",
-            "sellerQuickStart": "/seller-quick-start.md",
-            "sellerOnboardingGuide": "/onboarding_guide.md",
-            "x402Spec": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"
-        }
-    });
+        agent_manifest: AgentManifest {
+            open_api: "/openapi.json",
+            pay_to_semantics: "/agent-payTo-semantics.json",
+            integration_guide: "/agent-integration.md",
+            seller_quick_start: "/seller-quick-start.md",
+            seller_onboarding_guide: "/onboarding_guide.md",
+            buyer_quick_start: "/quickstart-buyer.md",
+            x402_spec: "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md",
+        },
+    };
 
     facilitator_response!()
         .status(StatusCode::OK)
         .header("Content-Type", "application/json")
-        .body(Body::Text(body.to_string()))
+        .body(Body::Text(serde_json::to_string(&body).unwrap_or_default()))
         .unwrap()
 }
 
@@ -1939,9 +2055,11 @@ fn error_response_with_optional_correlation(
         );
     }
 
+    // Canonical error response fields: `error` (human-readable), `code` (machine-readable).
+    // `message` is a DEPRECATED alias of `error` — kept for backward compatibility.
     let json = serde_json::json!({
         "error": message,
-        "message": message,
+        "message": message,  // @deprecated: use `error`
         "code": machine_code,
         "correlationId": correlation_id
     });

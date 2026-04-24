@@ -24,6 +24,10 @@ export const FACILITATOR_OPENAPI_PATH = "/openapi.json";
 export const FACILITATOR_AGENT_INTEGRATION_PATH = "/agent-integration.md";
 /** Machine-readable `payTo` + mint-allowlist metadata; also `agentManifest.payToSemantics` on `GET .../capabilities`. */
 export const FACILITATOR_AGENT_PAYTO_SEMANTICS_PATH = "/agent-payTo-semantics.json";
+/** Concise 6-step buyer quick start (static `public/quickstart-buyer.md`). */
+export const FACILITATOR_QUICKSTART_BUYER_PATH = "/quickstart-buyer.md";
+/** Concise 5-step seller quick start with `/upgrade` as default path (static `public/quickstart-seller.md`). */
+export const FACILITATOR_QUICKSTART_SELLER_PATH = "/quickstart-seller.md";
 
 export type BuildExactPaymentTxRequest = {
   payer: string;
@@ -72,6 +76,8 @@ export type BuildSlaEscrowPaymentTxResponse = {
   feePayer: string;
   payer: string;
   paymentUid: string;
+  /** Index into `VersionedTransaction.signatures[]` where the buyer must sign. Same semantics as exact builder. */
+  payerSignatureIndex: number;
   verifyBodyTemplate: unknown;
   notes?: string[];
 };

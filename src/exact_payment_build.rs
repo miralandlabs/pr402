@@ -18,11 +18,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use solana_pubkey::Pubkey;
 use solana_transaction::{
-    versioned::VersionedTransaction, AccountMeta, Address, Instruction, Message, Transaction,
+    versioned::VersionedTransaction, Address, Instruction, Message, Transaction,
 };
 
-use crate::chain::solana::{
-    SolanaChainProvider, ASSOCIATED_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID,
+use crate::chain::solana::{SolanaChainProvider, TOKEN_2022_PROGRAM_ID};
+use crate::util::tx_builder::{
+    associated_token_address, compute_budget_ix_set_limit, compute_budget_ix_set_price,
+    create_associated_token_account_idempotent_ix, estimate_blockhash_expiry_unix,
+    system_transfer_ix,
 };
 
 use spl_token::solana_program::program_pack::Pack;
@@ -83,33 +86,9 @@ pub enum ExactPaymentBuildError {
     Rpc(String),
 }
 
-fn compute_budget_ix_set_limit(units: u32) -> Instruction {
-    let mut data = vec![2u8];
-    data.extend_from_slice(&units.to_le_bytes());
-    Instruction {
-        program_id: solana_compute_budget_interface::ID,
-        accounts: vec![],
-        data,
-    }
-}
+// compute_budget helpers moved to crate::util::tx_builder
 
-fn compute_budget_ix_set_price(microlamports_per_cu: u64) -> Instruction {
-    let mut data = vec![3u8];
-    data.extend_from_slice(&microlamports_per_cu.to_le_bytes());
-    Instruction {
-        program_id: solana_compute_budget_interface::ID,
-        accounts: vec![],
-        data,
-    }
-}
-
-fn associated_token_address(owner: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[owner.as_ref(), token_program.as_ref(), mint.as_ref()],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    )
-    .0
-}
+// associated_token_address moved to crate::util::tx_builder
 
 fn resolve_universalsettle_vault(
     provider: &SolanaChainProvider,
@@ -144,37 +123,9 @@ fn spl_destination_ata(
     }
 }
 
-fn create_associated_token_account_idempotent_ix(
-    funding: &Pubkey,
-    owner: &Pubkey,
-    mint: &Pubkey,
-    token_program: &Pubkey,
-) -> Instruction {
-    Instruction {
-        program_id: ASSOCIATED_TOKEN_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*funding, true),
-            AccountMeta::new(associated_token_address(owner, mint, token_program), false),
-            AccountMeta::new_readonly(*owner, false),
-            AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-            AccountMeta::new_readonly(*token_program, false),
-        ],
-        data: vec![1],
-    }
-}
+// create_associated_token_account_idempotent_ix moved to crate::util::tx_builder
 
-/// Build a `SystemProgram::Transfer` instruction for native SOL.
-fn system_transfer_ix(from: &Pubkey, to: &Pubkey, lamports: u64) -> Instruction {
-    let mut data = Vec::with_capacity(12);
-    data.extend_from_slice(&2u32.to_le_bytes()); // Transfer discriminator
-    data.extend_from_slice(&lamports.to_le_bytes());
-    Instruction {
-        program_id: SYSTEM_PROGRAM_ID,
-        accounts: vec![AccountMeta::new(*from, true), AccountMeta::new(*to, false)],
-        data,
-    }
-}
+// system_transfer_ix moved to crate::util::tx_builder
 
 /// Resolve the SOL destination: vault `sol_storage` PDA when UniversalSettle is active, otherwise `pay_to`.
 fn sol_destination(
@@ -447,14 +398,7 @@ pub async fn build_exact_spl_payment_tx(
         })?;
 
     // BUY-3: Estimate blockhash expiry (~60s conservative, Solana slots are ~400ms).
-    let recent_blockhash_expires_at = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        now + 60 // conservative: Solana blockhashes last ~60-90s
-    };
+    let recent_blockhash_expires_at = estimate_blockhash_expiry_unix();
 
     let wire = bincode::serialize(&vtx)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("bincode serialize: {}", e)))?;

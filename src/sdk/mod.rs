@@ -55,5 +55,11 @@ pub const FACILITATOR_AGENT_INTEGRATION_PATH: &str = "/agent-integration.md";
 /// `GET /seller-quick-start.md` — Language-agnostic seller onboarding guide (static `public/seller-quick-start.md`).
 pub const FACILITATOR_SELLER_QUICK_START_PATH: &str = "/seller-quick-start.md";
 
+/// `GET /quickstart-buyer.md` — Concise 6-step buyer agent guide (static `public/quickstart-buyer.md`).
+pub const FACILITATOR_QUICKSTART_BUYER_PATH: &str = "/quickstart-buyer.md";
+
+/// `GET /quickstart-seller.md` — Concise 5-step seller guide with `/upgrade` as default path (static `public/quickstart-seller.md`).
+pub const FACILITATOR_QUICKSTART_SELLER_PATH: &str = "/quickstart-seller.md";
+
 #[cfg(feature = "facilitator-http")]
 pub mod http;

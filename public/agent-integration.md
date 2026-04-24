@@ -1,5 +1,9 @@
 # Agent integration (pr402 facilitator)
 
+> **New here?** Start with the concise quick starts:
+> - **Buyers:** [`/quickstart-buyer.md`](/quickstart-buyer.md) — 6 steps, copy-paste curl commands
+> - **Sellers:** [`/quickstart-seller.md`](/quickstart-seller.md) — 5 steps, no PDA math needed
+
 Runbook for two kinds of autonomous clients:
 
 | You are… | Jump to |
