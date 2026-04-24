@@ -171,12 +171,24 @@ CREATE INDEX IF NOT EXISTS idx_parameters_inactive ON parameters (inactive ASC);
 --     SPL raw floor fallback (e.g. 3.0 @ 6 decimals).
 -- - PR402_SWEEP_MIN_SPL_RAW_BY_MINT:
 --     Optional per-mint SPL raw floor map.
+-- - PR402_ALLOWED_PAYMENT_MINTS:
+--     Comma- or whitespace-separated base58 mint pubkeys. Parsed in Rust by splitting on commas
+--     and ASCII whitespace (see `parameters::resolve_allowed_payment_mints`).
+--     Include native SOL explicitly as 11111111111111111111111111111111 (matches x402/Solana
+--     convention for `asset` on native SOL lines). WSOL uses mint So11111111111111111111111111111111111111112.
+--     Use exactly one USDC mint for your cluster (mainnet EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v;
+--     devnet 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU). Do not mix cluster mints on one deploy.
+--     Empty / omitted = allowlist disabled (permissive; not for production).
 -- =============================================================================
 
 INSERT INTO parameters (param_name, param_value) VALUES
     ('PR402_MAX_DAILY_PROVISION_COUNT', '50'),
     ('PR402_ONBOARD_HMAC_SECRET', 'AgenticEconomics'),
     ('PR402_ONBOARD_CHALLENGE_TTL_SEC', '600'),
+    (
+        'PR402_ALLOWED_PAYMENT_MINTS',
+        '11111111111111111111111111111111,So11111111111111111111111111111111111111112,4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'
+    ),
     ('PR402_SWEEP_CRON_TOKEN', 'SHARE_SAME_VALUE_BTW_CRON_SECRET_AND_CRON_TOKEN'),
     ('PR402_SWEEP_CRON_COOLDOWN_SEC', '300'),
     ('PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC', '86400'),

@@ -83,8 +83,11 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
    - **`extra`**: Must include **`bankAddress`**, **`escrowProgramId`**, **`oracleAuthorities`**, and related fields consistent with **`supported`** for `sla-escrow`. **`extra.bankAddress` must match** the facilitator’s configured bank.  
    - Optional but recommended: **`merchantWallet`** in `extra` for seller identity in metadata (and for your own dashboards).
 
-5. **Operational constraints your buyers will hit**  
-   If the deployment enables a **mint allowlist** (`PR402_ALLOWED_PAYMENT_MINTS` / parameters table), unsupported mints fail verify/settle. Document which stablecoins or SPL mints you support.
+5. **Operational constraints your buyers will hit — payment mint allowlist**  
+   Deployments may set **`PR402_ALLOWED_PAYMENT_MINTS`** (comma / whitespace‑separated base58 mints; env or `parameters` table — include **`11111111111111111111111111111111`** if native SOL lines must pass).  
+   - **Non-empty list:** `exact` **and** `sla-escrow` **`/verify`**, **`/settle`**, **`build-exact-payment-tx`**, and **`build-sla-escrow-payment-tx`** reject any `accepted.asset` / `paymentRequirements.asset` not in the list (same error text as verify).  
+   - **Empty / unset:** permissive (all mints). The facilitator logs a **one-time** warning at first check in that mode — do not rely on this in production.  
+   - **`POST /upgrade`:** when an allowlist is configured, the server **warns** (non-blocking) if any **`accepts[].asset`** is missing from the list so you can fix 402 bodies before buyers hit hard failures.
 
 6. **Minimal mental model**  
    You are not only “pasting Coinbase x402 examples”; you are **pinning** your resource to **this facilitator’s** Solana rails. When in doubt, reproduce a happy path with **`build-exact-payment-tx`** / **`build-sla-escrow-payment-tx`** locally, then mirror the `accepted` object in your live `accepts[]`.
@@ -116,6 +119,7 @@ The [x402 v2 spec](https://github.com/coinbase/x402/blob/main/specs/x402-specifi
 | **Versioned tx features** | Not specified | Transactions that use **address lookup tables** (loaded addresses) are **rejected** until explicitly supported; use static-account-key shells only. |
 | **Who signs** | Varies | Often **two signers** when the facilitator pays Solana fees (fee payer + payer authority); see build response **`notes`** and OpenAPI. |
 | **Facilitator URL** | May be implied | You must call the **same deployment** the seller used to define rails (check seller docs or **`capabilities`** on that host). |
+| **Payment mint allowlist** | Not in the abstract spec | If configured, your **`accepted.asset`** must be listed or **`build-*`** / **`/verify`** / **`/settle`** fail early with an explicit “not supported … Approved assets: …” message. |
 
 If verification fails with **recipient / asset / amount** errors, the usual cause is **`accepts[]`** not matching the **PDA layout** this facilitator checks—not a bug in your wallet.
 

@@ -4,7 +4,8 @@
 use crate::db::Pr402Db;
 use solana_pubkey::Pubkey;
 use std::collections::HashMap;
-use std::sync::{OnceLock, RwLock};
+use std::str::FromStr;
+use std::sync::{Once, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tracing::warn;
 
@@ -245,6 +246,77 @@ pub async fn resolve_allowed_payment_mints(db: Option<&Pr402Db>) -> Vec<String> 
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect()
+}
+
+static PAYMENT_MINT_ALLOWLIST_PERMISSIVE_WARNED: Once = Once::new();
+
+fn warn_payment_mint_allowlist_permissive_once() {
+    PAYMENT_MINT_ALLOWLIST_PERMISSIVE_WARNED.call_once(|| {
+        warn!(
+            target: "server_log",
+            "PR402_ALLOWED_PAYMENT_MINTS is unset or empty — all payment mints are accepted (permissive). Set a comma-separated list in env or the `parameters` table (same key) before production."
+        );
+    });
+}
+
+/// Enforce [`PR402_ALLOWED_PAYMENT_MINTS`] when non-empty (DB via [`resolve_string`], then env).
+/// Empty / missing → permissive (all mints); logs once per process in that mode.
+///
+/// Returns the same user-visible message as verify/settle `InvalidPayload` for disallowed mints.
+pub async fn ensure_allowed_payment_mint(
+    db: Option<&Pr402Db>,
+    mint: &Pubkey,
+) -> Result<(), String> {
+    let allowed = resolve_allowed_payment_mints(db).await;
+    if allowed.is_empty() {
+        warn_payment_mint_allowlist_permissive_once();
+        return Ok(());
+    }
+
+    let mint_str = mint.to_string();
+    if allowed.iter().any(|m| m == &mint_str) {
+        return Ok(());
+    }
+
+    warn!(
+        target: "server_log",
+        mint = %mint_str,
+        "payment mint not in PR402_ALLOWED_PAYMENT_MINTS"
+    );
+    Err(format!(
+        "Mint {} is not supported for payment by this facilitator. Approved assets: {}.",
+        mint_str,
+        allowed.join(", ")
+    ))
+}
+
+/// Stage A (non-blocking): when an allowlist is configured, warn if any `accepts[].asset` is absent from it.
+pub async fn warn_accepts_assets_not_in_allowlist(
+    db: Option<&Pr402Db>,
+    payment_required: &crate::proto::PaymentRequired,
+) {
+    let allowed = resolve_allowed_payment_mints(db).await;
+    if allowed.is_empty() {
+        return;
+    }
+    let crate::proto::PaymentRequired::V2(body) = payment_required;
+    for (i, accept) in body.accepts.iter().enumerate() {
+        let Some(asset_str) = accept.get("asset").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Ok(pk) = Pubkey::from_str(asset_str) else {
+            continue;
+        };
+        let mint_str = pk.to_string();
+        if !allowed.iter().any(|m| m == &mint_str) {
+            warn!(
+                target: "server_log",
+                accepts_index = i,
+                asset = %mint_str,
+                "accepts[] asset is not listed in PR402_ALLOWED_PAYMENT_MINTS — verify, settle, and build-* endpoints will reject this rail for buyers"
+            );
+        }
+    }
 }
 
 pub async fn resolve_sweep_cron_token(db: Option<&Pr402Db>) -> Option<String> {

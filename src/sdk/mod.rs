@@ -3,8 +3,10 @@
 //! ## What is always available
 //!
 //! - **Path constants** and **local** unsigned transaction builders ([`build_exact_spl_payment_tx`],
-//!   [`build_sla_escrow_fund_payment_tx`]) used by the serverless binary and tests. **No** extra HTTP
-//!   dependencies.
+//!   [`build_sla_escrow_fund_payment_tx`]) used by the serverless binary and tests. `db` controls whether
+//!   the **`parameters`** table is consulted (with env as fallback); `db: None` still applies
+//!   **`PR402_ALLOWED_PAYMENT_MINTS`** from the process environment when set. Pass the deployment pool when
+//!   you want DB-backed parameter rows to match the live facilitator. **No** extra HTTP dependencies.
 //!
 //! ## Optional HTTPS client (`facilitator-http`)
 //!

@@ -71,6 +71,18 @@ pub struct SchemeOnboardInfo {
     pub status: String,
     pub is_sovereign: bool,
     pub provisioning_status: Option<ProvisioningStatus>,
+    /// SLA-Escrow bank PDA (same as `supported.kinds[].extra.bankAddress`). Omitted for exact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bank_pda: Option<String>,
+    /// Agent-oriented: `splitVault` (exact) or `escrowPda` (sla-escrow) — x402 `payTo` must match this kind of address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pay_to_kind: Option<String>,
+    /// How agents should resolve `payTo`: `onboard.vaultPda` | `discovery.vaultPda` (query includes `asset` mint).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pay_to_resolve: Option<String>,
+    /// When `pay_to_kind` is `escrowPda`, mint (base58) that `vaultPda` was derived for; omit if N/A (exact).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vault_pda_preview_mint: Option<String>,
 }
 
 /// Recovery progress for JIT provisioned vaults.
@@ -94,6 +106,7 @@ pub struct OnboardResponse {
 /// Local facilitator implementation supporting multiple Solana schemes.
 pub struct FacilitatorLocal {
     scheme_handlers: HashMap<String, Arc<dyn X402SchemeFacilitator>>,
+    db: Option<crate::db::Pr402Db>,
 }
 
 impl FacilitatorLocal {
@@ -132,7 +145,10 @@ impl FacilitatorLocal {
             }
         }
 
-        Ok(Self { scheme_handlers })
+        Ok(Self {
+            scheme_handlers,
+            db,
+        })
     }
 }
 
@@ -283,6 +299,7 @@ impl Facilitator for FacilitatorLocal {
                 .await
                 .map_err(FacilitatorLocalError::Upgrade)?;
         }
+        crate::parameters::warn_accepts_assets_not_in_allowlist(self.db.as_ref(), &upgraded).await;
         Ok(upgraded)
     }
 }

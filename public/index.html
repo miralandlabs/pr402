@@ -515,7 +515,8 @@
                 <strong style="color: var(--text); font-weight: 500;">Seller agents</strong> (resource providers) onboard vaults and publish correct
                 <span class="inline-code">payTo</span> PDAs.
                 <strong style="color: var(--text); font-weight: 500;">Buyer agents</strong> discover <span class="inline-code">accepts[]</span>, build and sign proofs, then call verify and settle.
-                Full runbook: <a href="/agent-integration.md" style="color: var(--primary);">/agent-integration.md</a>
+                Machine <span class="inline-code">payTo</span> rules: <a href="/agent-payTo-semantics.json" style="color: var(--primary);">/agent-payTo-semantics.json</a>
+                — full runbook: <a href="/agent-integration.md" style="color: var(--primary);">/agent-integration.md</a>
                 — sellers: <a href="/agent-integration.md#publishing-a-payment-required-line-sellers" style="color: var(--primary);">publish 402</a>;
                 buyers routed from a 402: <a href="/agent-integration.md#payment-pipeline-from-accepts-to-settlement" style="color: var(--primary);">pipeline</a>,
                 <a href="/agent-integration.md#how-pr402-differs-from-the-generic-x402-spec" style="color: var(--primary);">vs spec</a>.
@@ -562,6 +563,7 @@
                 <p>Machine-readable <span class="inline-code">features</span>, <span class="inline-code">feePayer</span>, <span class="inline-code">chainId</span>, and endpoint index. Use for agent bootstrapping and probes.</p>
                 <ul class="card-links">
                     <li><a href="/api/v1/facilitator/capabilities">GET /capabilities</a></li>
+                    <li><a href="/agent-payTo-semantics.json">payTo semantics (JSON)</a></li>
                     <li><a href="/api/v1/facilitator/health">GET /health</a></li>
                 </ul>
                 <div class="btn-group">
@@ -609,7 +611,12 @@
                 <div class="endpoint">
                     <span class="method get">GET</span>
                     <span class="path">/api/v1/facilitator/capabilities</span>
-                    <span class="description">features, fee payer, endpoint index</span>
+                    <span class="description">features, fee payer, endpoint index, agentManifest.payToSemantics</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/agent-payTo-semantics.json</span>
+                    <span class="description">agent: payTo rules per rail (also under capabilities agentManifest)</span>
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
@@ -775,7 +782,7 @@
                                 <div><span class="output-label">Fee (BPS)</span><span class="output-val">${info.feeBps}</span></div>
                                 <div><span class="output-label">Deployment</span><span class="output-val">${info.status}</span></div>
                                 <div style="margin-top: 0.5rem; color: #475569; font-size: 0.7rem; font-style: italic;">
-                                    ${name === 'exact' ? "* exact: UniversalSettle vault rail — put vault / sol-storage PDAs in x402 payTo per integrator docs." : "* sla-escrow: institutional escrow; payTo must be the Escrow PDA for mint+bank (see seller runbook / build-sla-escrow template)."}
+                                    ${name === 'exact' ? "* exact: UniversalSettle — x402 payTo = SplitVault (vaultPda)." : "* sla-escrow: x402 payTo = escrow PDA for each mint; use GET /discovery?scheme=sla-escrow&asset=<mint>. See /agent-payTo-semantics.json."}
                                 </div>
                             </div>
                         `;

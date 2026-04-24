@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "1",
+  "x402Version": 2,
+  "payTo": {
+    "exact": {
+      "kind": "splitVault",
+      "resolve": "onboard.vaultPda",
+      "verifyMatches": "UniversalSettle destination for the signed transfer"
+    },
+    "sla-escrow": {
+      "kind": "escrowPda",
+      "resolve": "GET /api/v1/facilitator/discovery?wallet=<seller>&scheme=sla-escrow&asset=<mint> → vaultPda",
+      "fundPaymentSeller": "extra.merchantWallet or extra.beneficiary (seller payout wallet; not payTo)",
+      "bankPda": "supported.kinds[].extra.bankAddress (instruction account; not payTo)",
+      "verifyMatches": "payTo equals derive_escrow_pda(mint, bank) for payment asset"
+    }
+  },
+  "onboardNote": "GET /onboard returns per-scheme previews. For sla-escrow, vaultPda is escrow for preview mint only; use discovery with each accepts.asset.",
+  "paymentMintAllowlist": {
+    "parameter": "PR402_ALLOWED_PAYMENT_MINTS",
+    "permissiveWhenEmpty": true,
+    "enforcedOn": [
+      "POST /api/v1/facilitator/verify",
+      "POST /api/v1/facilitator/settle",
+      "POST /api/v1/facilitator/build-exact-payment-tx",
+      "POST /api/v1/facilitator/build-sla-escrow-payment-tx"
+    ],
+    "upgradeWarning": "POST /api/v1/facilitator/upgrade logs when accepts[].asset is not allowlisted (non-blocking)"
+  }
+}

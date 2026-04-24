@@ -52,7 +52,7 @@ impl X402SchemeFacilitatorBuilder for V2SolanaSLAEscrow {
         &self,
         provider: ChainProvider,
         _config: Option<serde_json::Value>,
-        _db: Option<crate::db::Pr402Db>,
+        db: Option<crate::db::Pr402Db>,
     ) -> Result<Box<dyn X402SchemeFacilitator>, Box<dyn Error>> {
         // SLAEscrow requires SLAEscrowConfig to be present
         if provider.solana.sla_escrow().is_none() {
@@ -60,12 +60,14 @@ impl X402SchemeFacilitatorBuilder for V2SolanaSLAEscrow {
         }
         Ok(Box::new(V2SolanaSLAEscrowFacilitator {
             provider: provider.solana,
+            db,
         }))
     }
 }
 
 pub struct V2SolanaSLAEscrowFacilitator {
     provider: Arc<SolanaChainProvider>,
+    db: Option<crate::db::Pr402Db>,
 }
 
 #[async_trait::async_trait]
@@ -75,6 +77,12 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         request: &proto::VerifyRequest,
     ) -> Result<proto::VerifyResponse, X402SchemeFacilitatorError> {
         let request_v2 = types::VerifyRequest::from_proto(request.clone())?;
+        crate::parameters::ensure_allowed_payment_mint(
+            self.db.as_ref(),
+            request_v2.payment_requirements.asset.pubkey(),
+        )
+        .await
+        .map_err(X402SchemeFacilitatorError::InvalidPayload)?;
         let verification = verify_transfer(&self.provider, &request_v2).await?;
 
         // Escrow audit rows (`escrow_details`) are persisted in `bin/facilitator.rs` *after*
@@ -89,6 +97,12 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         request: &proto::SettleRequest,
     ) -> Result<proto::SettleResponse, X402SchemeFacilitatorError> {
         let request_v2 = types::SettleRequest::from_proto(request.clone())?;
+        crate::parameters::ensure_allowed_payment_mint(
+            self.db.as_ref(),
+            request_v2.payment_requirements.asset.pubkey(),
+        )
+        .await
+        .map_err(X402SchemeFacilitatorError::InvalidPayload)?;
         let verification = verify_transfer(&self.provider, &request_v2).await?;
         let payer = verification.payer.to_string();
 
@@ -218,24 +232,27 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         })?;
         let fee_bps = escrow_config.fee_bps.unwrap_or(0);
 
-        // In SLA-Escrow, the "Vault" is the Escrow account for a specific mint.
-        // Onboarding returns the info for the native SOL escrow by default.
-        // Note: This is an idempotent singleton account per Mint/Bank, not per wallet.
-        let (escrow_pda, _) = self.provider.get_escrow_pda(Pubkey::default(), bank_pda);
+        // Preview: per-mint escrow PDA for the facilitator's default mint (native path uses default pubkey).
+        let preview_mint = Pubkey::default();
+        let (escrow_pda, _) = self.provider.get_escrow_pda(preview_mint, bank_pda);
         let (sol_storage_pda, _) =
             self.provider
-                .get_sla_escrow_sol_storage_pda(Pubkey::default(), bank_pda, escrow_pda);
+                .get_sla_escrow_sol_storage_pda(preview_mint, bank_pda, escrow_pda);
 
         Ok(crate::facilitator::SchemeOnboardInfo {
-            label: "SLA Escrow Bank".to_string(),
+            label: "SLA Escrow (preview)".to_string(),
             role: "Institutional Escrow".to_string(),
-            vault_pda: bank_pda.to_string(),
+            vault_pda: escrow_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
             token_pda: None,
             fee_bps: fee_bps.into(),
             status: "Active".to_string(),
             is_sovereign: false,
             provisioning_status: None,
+            bank_pda: Some(bank_pda.to_string()),
+            pay_to_kind: Some("escrowPda".to_string()),
+            pay_to_resolve: Some("discovery.vaultPda".to_string()),
+            vault_pda_preview_mint: Some(preview_mint.to_string()),
         })
     }
 
@@ -324,13 +341,17 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                 }
             ),
             role: "Institutional Escrow".to_string(),
-            vault_pda: escrow_pda.to_string(), // CRITICAL: This is the payTo address
+            vault_pda: escrow_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
             token_pda: None,
             fee_bps: escrow_config.fee_bps.unwrap_or(0).into(),
             status: "Active".to_string(),
             is_sovereign: false,
             provisioning_status: None,
+            bank_pda: Some(bank_pda.to_string()),
+            pay_to_kind: Some("escrowPda".to_string()),
+            pay_to_resolve: Some("this.vaultPda".to_string()),
+            vault_pda_preview_mint: Some(mint.to_string()),
         })
     }
 

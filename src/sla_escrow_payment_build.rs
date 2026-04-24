@@ -208,8 +208,13 @@ fn parse_u64_from_json(
 }
 
 /// Build an unsigned SLA-Escrow fund-payment transaction and verify-body template.
+///
+/// [`crate::parameters::PR402_ALLOWED_PAYMENT_MINTS`] matches `/verify` / `/settle`: resolved from the
+/// **`parameters`** table when `db` is `Some`, otherwise from env only. `db: None` does **not** disable
+/// an env-configured allowlist.
 pub async fn build_sla_escrow_fund_payment_tx(
     provider: &SolanaChainProvider,
+    db: Option<&crate::db::Pr402Db>,
     req: BuildSlaEscrowPaymentTxRequest,
 ) -> Result<BuildSlaEscrowPaymentTxResponse, SlaEscrowPaymentBuildError> {
     let escrow_cfg = provider
@@ -255,6 +260,10 @@ pub async fn build_sla_escrow_fund_payment_tx(
         })?;
     let mint = Pubkey::from_str(asset_str)
         .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(e.to_string()))?;
+
+    if let Err(msg) = crate::parameters::ensure_allowed_payment_mint(db, &mint).await {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(msg));
+    }
 
     const NATIVE_SOL_MINT: Pubkey = solana_pubkey::pubkey!("11111111111111111111111111111111");
     if mint == Pubkey::default() || mint == NATIVE_SOL_MINT {

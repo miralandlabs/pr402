@@ -193,8 +193,14 @@ fn sol_destination(
 }
 
 /// Build an unsigned payment transaction and a verify-body template.
+///
+/// [`crate::parameters::PR402_ALLOWED_PAYMENT_MINTS`] is enforced like `/verify` and `/settle`: non-empty
+/// allowlist from the **`parameters`** table (if `db` is set) or from the **`PR402_ALLOWED_PAYMENT_MINTS`**
+/// env var. `db: None` only means “no Postgres row source”; env allowlists still apply. The serverless
+/// binary passes `pr402_db()` so table and env both behave like production.
 pub async fn build_exact_spl_payment_tx(
     provider: &SolanaChainProvider,
+    db: Option<&crate::db::Pr402Db>,
     req: BuildExactPaymentTxRequest,
 ) -> Result<BuildExactPaymentTxResponse, ExactPaymentBuildError> {
     let payer_pk = Pubkey::from_str(&req.payer)
@@ -246,6 +252,10 @@ pub async fn build_exact_spl_payment_tx(
         .ok_or_else(|| ExactPaymentBuildError::InvalidRequest("accepted.asset missing".into()))?;
     let pay_mint = Pubkey::from_str(asset_str)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(e.to_string()))?;
+
+    if let Err(msg) = crate::parameters::ensure_allowed_payment_mint(db, &pay_mint).await {
+        return Err(ExactPaymentBuildError::InvalidRequest(msg));
+    }
 
     let amount: u64 = match req.accepted.get("amount") {
         Some(v) if v.as_str().is_some() => v.as_str().unwrap().parse().map_err(|_| {

@@ -980,6 +980,7 @@ async fn handle_capabilities(
         },
         "agentManifest": {
             "openApi": "/openapi.json",
+            "payToSemantics": "/agent-payTo-semantics.json",
             "integrationGuide": "/agent-integration.md",
             "sellerQuickStart": "/seller-quick-start.md",
             "sellerOnboardingGuide": "/onboarding_guide.md",
@@ -1372,7 +1373,8 @@ async fn handle_build_exact_payment_tx(body: Body) -> Response<Body> {
                 return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
             }
         };
-    match pr402::exact_payment_build::build_exact_spl_payment_tx(&cp.solana, req).await {
+    match pr402::exact_payment_build::build_exact_spl_payment_tx(&cp.solana, pr402_db(), req).await
+    {
         Ok(out) => facilitator_response!()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
@@ -1424,7 +1426,13 @@ async fn handle_build_sla_escrow_payment_tx(body: Body) -> Response<Body> {
             "SLA-Escrow facilitator-paid Solana fees are disabled on this deployment. Set PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP to true (or 1) to allow facilitatorPaysTransactionFees: true.",
         );
     }
-    match pr402::sla_escrow_payment_build::build_sla_escrow_fund_payment_tx(&cp.solana, req).await {
+    match pr402::sla_escrow_payment_build::build_sla_escrow_fund_payment_tx(
+        &cp.solana,
+        pr402_db(),
+        req,
+    )
+    .await
+    {
         Ok(out) => facilitator_response!()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")

@@ -20,6 +20,11 @@
       "source": "/api/v1/facilitator/onboarding_guide.md",
       "destination": "/onboarding_guide.md",
       "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/agent-payTo-semantics.json",
+      "destination": "/agent-payTo-semantics.json",
+      "permanent": false
     }
   ],
   "builds": [
@@ -55,6 +60,10 @@
     {
       "src": "/onboarding_guide.md",
       "dest": "/public/onboarding_guide.md"
+    },
+    {
+      "src": "/agent-payTo-semantics.json",
+      "dest": "/public/agent-payTo-semantics.json"
     },
     {
       "src": "/seller-quick-start.md",

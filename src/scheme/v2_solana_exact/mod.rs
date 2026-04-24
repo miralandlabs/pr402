@@ -256,6 +256,10 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             },
             is_sovereign,
             provisioning_status,
+            bank_pda: None,
+            pay_to_kind: Some("splitVault".to_string()),
+            pay_to_resolve: Some("onboard.vaultPda".to_string()),
+            vault_pda_preview_mint: None,
         })
     }
 
@@ -328,32 +332,14 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
 }
 
 impl V2SolanaExactFacilitator {
-    /// Protect against "Toxic Assets" (worthless SpamTokens).
+    /// Protect against disallowed mints ([`crate::parameters::PR402_ALLOWED_PAYMENT_MINTS`]).
     async fn validate_mint(
         &self,
         mint: &solana_pubkey::Pubkey,
     ) -> Result<(), X402SchemeFacilitatorError> {
-        use crate::parameters::resolve_allowed_payment_mints;
-
-        let allowed = resolve_allowed_payment_mints(self.db.as_ref()).await;
-        if allowed.is_empty() {
-            // If the whitelist is not set in DB or Env, we permit all assets (permissive testnet mode).
-            return Ok(());
-        }
-
-        let mint_str = mint.to_string();
-        if allowed.contains(&mint_str) {
-            return Ok(());
-        }
-
-        // Special case: Native SOL.
-        // We ensure a human-friendly error if SOL is requested but not in the whitelist.
-        tracing::error!(mint = %mint_str, "Unauthorized mint attempted for settlement");
-        Err(X402SchemeFacilitatorError::InvalidPayload(format!(
-            "Mint {} is not supported for payment by this facilitator. Approved assets: {}.",
-            mint_str,
-            allowed.join(", ")
-        )))
+        crate::parameters::ensure_allowed_payment_mint(self.db.as_ref(), mint)
+            .await
+            .map_err(X402SchemeFacilitatorError::InvalidPayload)
     }
 }
 
