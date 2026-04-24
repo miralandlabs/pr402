@@ -28,6 +28,7 @@ export type BuildExactPaymentTxRequest = {
   accepted: unknown;
   resource: unknown;
   skipSourceBalanceCheck?: boolean;
+  autoWrapSol?: boolean;
 };
 
 export type BuildSlaEscrowPaymentTxRequest = {
@@ -41,21 +42,58 @@ export type BuildSlaEscrowPaymentTxRequest = {
   /**
    * false/omit (default): buyer pays Solana network fees (single signer).
    * true: facilitator fee payer, buyer signs FundPayment (two-signer; same idea as build-exact).
+   * HTTP: rejected unless deployment sets PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP.
    */
   facilitatorPaysTransactionFees?: boolean;
   autoWrapSol?: boolean;
 };
 
-export type BuildPaymentTxResponse = {
+/** `POST .../build-exact-payment-tx` — see OpenAPI `BuildExactPaymentTxResponse`. */
+export type BuildExactPaymentTxResponse = {
   x402Version: number;
   transaction: string;
   recentBlockhash: string;
   feePayer: string;
   payer: string;
-  verifyBodyTemplate?: unknown;
-  paymentUid?: string;
+  payerSignatureIndex: number;
+  recentBlockhashExpiresAt: number;
+  verifyBodyTemplate: unknown;
   notes?: string[];
 };
+
+/** `POST .../build-sla-escrow-payment-tx` — see OpenAPI `BuildSlaEscrowPaymentTxResponse`. */
+export type BuildSlaEscrowPaymentTxResponse = {
+  x402Version: number;
+  transaction: string;
+  recentBlockhash: string;
+  recentBlockhashExpiresAt: number;
+  feePayer: string;
+  payer: string;
+  paymentUid: string;
+  verifyBodyTemplate: unknown;
+  notes?: string[];
+};
+
+/** `GET .../onboard/build-tx` — see OpenAPI `BuildOnboardTxResponse`. */
+export type BuildOnboardTxResponse = {
+  x402Version: number;
+  transaction: string;
+  recentBlockhash: string;
+  feePayer: string;
+  payer: string;
+  paymentUid?: string | null;
+  verifyBodyTemplate: unknown;
+  notes?: string[];
+};
+
+/**
+ * @deprecated Prefer `BuildExactPaymentTxResponse`, `BuildSlaEscrowPaymentTxResponse`, or
+ * `BuildOnboardTxResponse` — OpenAPI uses separate schemas per endpoint.
+ */
+export type BuildPaymentTxResponse =
+  | BuildExactPaymentTxResponse
+  | BuildSlaEscrowPaymentTxResponse
+  | BuildOnboardTxResponse;
 
 /** x402 v2 verify/settle POST body (superset; see OpenAPI `X402V2VerifySettleBody`). */
 export type X402V2VerifySettleBody = {
@@ -124,14 +162,14 @@ export function getCapabilities(facilitatorBaseUrl: string): Promise<unknown> {
   return getJson(facilitatorBaseUrl, FACILITATOR_CAPABILITIES_PATH);
 }
 
-/** `POST .../verify` — optional `` header. */
+/** `POST .../verify` — optional `X-Correlation-ID` header. */
 export function verifyPayment(
   facilitatorBaseUrl: string,
   body: X402V2VerifySettleBody,
   correlationId?: string,
 ): Promise<unknown> {
   const headers: Record<string, string> = {};
-  if (correlationId) headers[""] = correlationId;
+  if (correlationId) headers["X-Correlation-ID"] = correlationId;
   return postJson(facilitatorBaseUrl, FACILITATOR_VERIFY_PATH, body, headers);
 }
 
@@ -142,7 +180,7 @@ export function settlePayment(
   correlationId?: string,
 ): Promise<unknown> {
   const headers: Record<string, string> = {};
-  if (correlationId) headers[""] = correlationId;
+  if (correlationId) headers["X-Correlation-ID"] = correlationId;
   return postJson(facilitatorBaseUrl, FACILITATOR_SETTLE_PATH, body, headers);
 }
 
@@ -150,7 +188,7 @@ export function settlePayment(
 export function buildExactPaymentTx(
   facilitatorBaseUrl: string,
   body: BuildExactPaymentTxRequest,
-): Promise<BuildPaymentTxResponse> {
+): Promise<BuildExactPaymentTxResponse> {
   return postJson(facilitatorBaseUrl, BUILD_EXACT_PAYMENT_TX_PATH, body);
 }
 
@@ -158,6 +196,6 @@ export function buildExactPaymentTx(
 export function buildSlaEscrowPaymentTx(
   facilitatorBaseUrl: string,
   body: BuildSlaEscrowPaymentTxRequest,
-): Promise<BuildPaymentTxResponse> {
+): Promise<BuildSlaEscrowPaymentTxResponse> {
   return postJson(facilitatorBaseUrl, BUILD_SLA_ESCROW_PAYMENT_TX_PATH, body);
 }
