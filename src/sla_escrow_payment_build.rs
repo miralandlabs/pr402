@@ -18,7 +18,6 @@ use std::str::FromStr;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use solana_pubkey::Pubkey;
 use solana_transaction::{
     versioned::VersionedTransaction, AccountMeta, Address, Instruction, Message, Transaction,
@@ -43,7 +42,8 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     /// Buyer pubkey; signs `FundPayment` (second signer when the facilitator is fee payer).
     pub payer: String,
     /// One element from `402 accepts[]` (`scheme: "sla-escrow"`).
-    pub accepted: serde_json::Value,
+    pub accepted:
+        crate::proto::v2::PaymentRequirements<String, serde_json::Value, String, serde_json::Value>,
     /// From the `402` body `resource` field.
     pub resource: serde_json::Value,
     /// 32-byte SLA terms hash as 64 hex chars (may be all zeros for testing).
@@ -65,28 +65,7 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     pub auto_wrap_sol: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BuildSlaEscrowPaymentTxResponse {
-    pub x402_version: u8,
-    /// Base64 `bincode` [`VersionedTransaction`], **unsigned** (default: facilitator + buyer signer slots).
-    pub transaction: String,
-    pub recent_blockhash: String,
-    /// Conservative UNIX estimate when `recentBlockhash` is likely stale (~60s; same idea as build-exact-payment-tx).
-    pub recent_blockhash_expires_at: u64,
-    /// Network fee payer pubkey (`facilitator` by default; `payer` when `buyerPaysTransactionFees`).
-    pub fee_payer: String,
-    pub payer: String,
-    pub payment_uid: String,
-    /// Index into `VersionedTransaction.signatures[]` where the **buyer** must place their ed25519
-    /// signature. Matches `payerSignatureIndex` from `build-exact-payment-tx` for SDK parity.
-    pub payer_signature_index: usize,
-    /// POST to `/verify` / `/settle` after replacing `paymentPayload.payload.transaction` with the
-    /// **signed** tx (same message hash / blockhash).
-    pub verify_body_template: serde_json::Value,
-    #[serde(default)]
-    pub notes: Vec<String>,
-}
+// Response struct was unified into `crate::proto::v2::BuildPaymentTxResponse`.
 
 #[derive(Debug, thiserror::Error)]
 pub enum SlaEscrowPaymentBuildError {
@@ -162,7 +141,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
     provider: &SolanaChainProvider,
     db: Option<&crate::db::Pr402Db>,
     req: BuildSlaEscrowPaymentTxRequest,
-) -> Result<BuildSlaEscrowPaymentTxResponse, SlaEscrowPaymentBuildError> {
+) -> Result<crate::proto::v2::BuildPaymentTxResponse, SlaEscrowPaymentBuildError> {
     let escrow_cfg = provider
         .sla_escrow()
         .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?;
@@ -171,11 +150,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
     let payer_pk = Pubkey::from_str(&req.payer)
         .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("payer: {}", e)))?;
 
-    let scheme = req
-        .accepted
-        .get("scheme")
-        .and_then(|x| x.as_str())
-        .unwrap_or("");
+    let scheme = &req.accepted.scheme;
     if scheme != SLAEscrowScheme.as_ref() && scheme != "v2:solana:sla-escrow" {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
             "scheme must be {:?} or \"v2:solana:sla-escrow\", got {:?}",
@@ -185,25 +160,15 @@ pub async fn build_sla_escrow_fund_payment_tx(
     }
 
     let expected_network = provider.chain_id().to_string();
-    let got_net = req
-        .accepted
-        .get("network")
-        .and_then(|x| x.as_str())
-        .unwrap_or("");
+    let got_net = req.accepted.network.to_string();
     if got_net != expected_network {
         return Err(SlaEscrowPaymentBuildError::NetworkMismatch {
             expected: expected_network,
-            got: got_net.to_string(),
+            got: got_net,
         });
     }
 
-    let asset_str = req
-        .accepted
-        .get("asset")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest("accepted.asset missing".into())
-        })?;
+    let asset_str = &req.accepted.asset;
     let mint = Pubkey::from_str(asset_str)
         .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(e.to_string()))?;
 
@@ -219,21 +184,10 @@ pub async fn build_sla_escrow_fund_payment_tx(
         ));
     }
 
-    let amount = parse_u64_from_json(
-        req.accepted.get("amount").ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest("accepted.amount missing".into())
-        })?,
-        "accepted.amount",
-    )
-    .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
+    let amount = parse_u64_from_json(&req.accepted.amount, "accepted.amount")
+        .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
 
-    let ttl_seconds_i64 = parse_u64_from_json(
-        req.accepted.get("maxTimeoutSeconds").ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest("accepted.maxTimeoutSeconds missing".into())
-        })?,
-        "accepted.maxTimeoutSeconds",
-    )
-    .map_err(SlaEscrowPaymentBuildError::InvalidRequest)? as i64;
+    let ttl_seconds_i64 = req.accepted.max_timeout_seconds as i64;
 
     if ttl_seconds_i64 < MIN_TTL_SECONDS {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
@@ -248,7 +202,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
         )));
     }
 
-    let extra = req.accepted.get("extra").ok_or_else(|| {
+    let extra = req.accepted.extra.as_ref().ok_or_else(|| {
         SlaEscrowPaymentBuildError::InvalidRequest("accepted.extra missing".into())
     })?;
 
@@ -412,16 +366,14 @@ pub async fn build_sla_escrow_fund_payment_tx(
         }
     }
 
-    if let Some(pt) = req.accepted.get("payTo").and_then(|v| v.as_str()) {
-        let parsed = Pubkey::from_str(pt).map_err(|e| {
-            SlaEscrowPaymentBuildError::InvalidRequest(format!("accepted.payTo: {}", e))
-        })?;
-        if parsed != escrow_pda {
-            return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
-                "accepted.payTo must be the SLA Escrow PDA for this asset (expected {})",
-                escrow_pda
-            )));
-        }
+    let parsed = Pubkey::from_str(&req.accepted.pay_to).map_err(|e| {
+        SlaEscrowPaymentBuildError::InvalidRequest(format!("accepted.payTo: {}", e))
+    })?;
+    if parsed != escrow_pda {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
+            "accepted.payTo must be the SLA Escrow PDA for this asset (expected {})",
+            escrow_pda
+        )));
     }
 
     let escrow_token_ata = associated_token_address(&escrow_pda, &mint, &token_program);
@@ -481,13 +433,18 @@ pub async fn build_sla_escrow_fund_payment_tx(
     })?;
     let tx_b64 = STANDARD.encode(wire);
 
-    let mut accepted_norm = req.accepted.clone();
+    let mut accepted_norm = serde_json::to_value(&req.accepted).map_err(|_| {
+        SlaEscrowPaymentBuildError::InvalidRequest("failed to serialize accepted".into())
+    })?;
     let accepted_obj = accepted_norm.as_object_mut().ok_or_else(|| {
         SlaEscrowPaymentBuildError::InvalidRequest("accepted must be a JSON object".into())
     })?;
-    accepted_obj.insert("payTo".to_string(), json!(escrow_pda.to_string()));
+    accepted_obj.insert(
+        "payTo".to_string(),
+        serde_json::json!(escrow_pda.to_string()),
+    );
 
-    let verify_body_template = json!({
+    let verify_body_template = serde_json::json!({
         "x402Version": 2,
         "paymentPayload": {
             "x402Version": 2,
@@ -515,14 +472,14 @@ pub async fn build_sla_escrow_fund_payment_tx(
         ]
     };
 
-    Ok(BuildSlaEscrowPaymentTxResponse {
+    Ok(crate::proto::v2::BuildPaymentTxResponse {
         x402_version: 2,
         transaction: tx_b64,
         recent_blockhash: blockhash.to_string(),
         recent_blockhash_expires_at,
         fee_payer: fee_payer_pk.to_string(),
         payer: payer_pk.to_string(),
-        payment_uid,
+        payment_uid: Some(payment_uid),
         payer_signature_index,
         verify_body_template,
         notes,

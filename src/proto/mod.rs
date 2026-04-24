@@ -34,11 +34,20 @@ pub struct SupportedResponse {
 /// Wrapper for a payment payload and requirements sent by the client to a facilitator
 /// to be verified.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VerifyRequest(serde_json::Value);
+#[serde(rename_all = "camelCase")]
+pub struct VerifyRequest {
+    pub x402_version: u8,
+    pub payment_payload: serde_json::Value,
+    pub payment_requirements: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
 
 impl VerifyRequest {
     pub fn into_json(self) -> serde_json::Value {
-        self.0
+        serde_json::to_value(self).unwrap_or_default()
     }
 
     /// Prefer `` / `X-Correlation-ID` from the HTTP request, else optional body field `correlationId`.
@@ -61,18 +70,13 @@ impl VerifyRequest {
         if from_header.is_some() {
             return from_header;
         }
-        self.0
-            .get("correlationId")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
+        self.correlation_id.clone().filter(|s| !s.trim().is_empty())
     }
 
     /// Payee / resource provider wallet from `paymentRequirements.payTo` (Solana base58 address).
     pub fn payee_wallet(&self) -> Option<String> {
-        self.0
-            .get("paymentRequirements")
-            .and_then(|r| r.get("payTo"))
+        self.payment_requirements
+            .get("payTo")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .filter(|s| !s.is_empty())
@@ -82,14 +86,12 @@ impl VerifyRequest {
     /// `resource_providers.settlement_mode` / `spl_mint` per `migrations/init.sql` (`native_sol` | `spl`).
     pub fn resource_provider_settlement(&self) -> (String, Option<String>) {
         let asset = self
-            .0
-            .get("paymentRequirements")
-            .and_then(|r| r.get("asset"))
+            .payment_requirements
+            .get("asset")
             .and_then(|v| v.as_str())
             .or_else(|| {
-                self.0
-                    .get("paymentPayload")
-                    .and_then(|p| p.get("accepted"))
+                self.payment_payload
+                    .get("accepted")
                     .and_then(|a| a.get("asset"))
                     .and_then(|v| v.as_str())
             })
@@ -113,42 +115,38 @@ impl VerifyRequest {
         Option<String>,
         Option<String>,
     ) {
-        let req = self.0.get("paymentRequirements");
+        let req = &self.payment_requirements;
         let pay_to = req
-            .and_then(|r| r.get("payTo"))
+            .get("payTo")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         let scheme = req
-            .and_then(|r| r.get("scheme"))
+            .get("scheme")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         let amount = req
-            .and_then(|r| r.get("amount"))
+            .get("amount")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         let asset = req
-            .and_then(|r| r.get("asset"))
+            .get("asset")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         (pay_to, scheme, amount, asset)
     }
 
     pub fn scheme_handler_slug(&self) -> Option<SchemeHandlerSlug> {
-        let x402_version = self.0.get("x402Version")?.as_u64()?;
-        // Only support v2
-        if x402_version != 2 {
+        if self.x402_version != 2 {
             return None;
         }
         let chain_id_string = self
-            .0
-            .get("paymentPayload")?
+            .payment_payload
             .get("accepted")?
             .get("network")?
             .as_str()?;
         let chain_id = ChainId::from_str(chain_id_string).ok()?;
         let scheme = self
-            .0
-            .get("paymentPayload")?
+            .payment_payload
             .get("accepted")?
             .get("scheme")?
             .as_str()?;

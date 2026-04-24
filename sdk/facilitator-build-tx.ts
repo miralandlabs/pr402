@@ -54,54 +54,22 @@ export type BuildSlaEscrowPaymentTxRequest = {
   autoWrapSol?: boolean;
 };
 
-/** `POST .../build-exact-payment-tx` — see OpenAPI `BuildExactPaymentTxResponse`. */
-export type BuildExactPaymentTxResponse = {
-  x402Version: number;
-  transaction: string;
-  recentBlockhash: string;
-  feePayer: string;
-  payer: string;
-  payerSignatureIndex: number;
-  recentBlockhashExpiresAt: number;
-  verifyBodyTemplate: unknown;
-  notes?: string[];
-};
-
-/** `POST .../build-sla-escrow-payment-tx` — see OpenAPI `BuildSlaEscrowPaymentTxResponse`. */
-export type BuildSlaEscrowPaymentTxResponse = {
+/** 
+ * `POST .../build-exact-payment-tx`, `POST .../build-sla-escrow-payment-tx`, `GET .../onboard/build-tx`
+ * See OpenAPI `BuildPaymentTxResponse`.
+ */
+export type BuildPaymentTxResponse = {
   x402Version: number;
   transaction: string;
   recentBlockhash: string;
   recentBlockhashExpiresAt: number;
   feePayer: string;
   payer: string;
-  paymentUid: string;
-  /** Index into `VersionedTransaction.signatures[]` where the buyer must sign. Same semantics as exact builder. */
   payerSignatureIndex: number;
-  verifyBodyTemplate: unknown;
-  notes?: string[];
-};
-
-/** `GET .../onboard/build-tx` — see OpenAPI `BuildOnboardTxResponse`. */
-export type BuildOnboardTxResponse = {
-  x402Version: number;
-  transaction: string;
-  recentBlockhash: string;
-  feePayer: string;
-  payer: string;
   paymentUid?: string | null;
   verifyBodyTemplate: unknown;
   notes?: string[];
 };
-
-/**
- * @deprecated Prefer `BuildExactPaymentTxResponse`, `BuildSlaEscrowPaymentTxResponse`, or
- * `BuildOnboardTxResponse` — OpenAPI uses separate schemas per endpoint.
- */
-export type BuildPaymentTxResponse =
-  | BuildExactPaymentTxResponse
-  | BuildSlaEscrowPaymentTxResponse
-  | BuildOnboardTxResponse;
 
 /** x402 v2 verify/settle POST body (superset; see OpenAPI `X402V2VerifySettleBody`). */
 export type X402V2VerifySettleBody = {
@@ -196,7 +164,7 @@ export function settlePayment(
 export function buildExactPaymentTx(
   facilitatorBaseUrl: string,
   body: BuildExactPaymentTxRequest,
-): Promise<BuildExactPaymentTxResponse> {
+): Promise<BuildPaymentTxResponse> {
   return postJson(facilitatorBaseUrl, BUILD_EXACT_PAYMENT_TX_PATH, body);
 }
 
@@ -204,6 +172,6 @@ export function buildExactPaymentTx(
 export function buildSlaEscrowPaymentTx(
   facilitatorBaseUrl: string,
   body: BuildSlaEscrowPaymentTxRequest,
-): Promise<BuildSlaEscrowPaymentTxResponse> {
+): Promise<BuildPaymentTxResponse> {
   return postJson(facilitatorBaseUrl, BUILD_SLA_ESCROW_PAYMENT_TX_PATH, body);
 }

@@ -24,6 +24,7 @@ use crate::scheme::v2_solana_exact::shared::{
     settle_transaction, verify_compute_limit_instruction, verify_compute_price_instruction,
     TransactionInt, VerifyTransferResult,
 };
+use crate::util::tx_builder::estimate_blockhash_expiry_unix;
 use crate::util::{
     decode_versioned_transaction_from_bincode, reject_versioned_tx_with_address_lookup_tables,
     Base64Bytes,
@@ -296,8 +297,10 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             x402_version: 2,
             transaction: tx_b64,
             recent_blockhash: blockhash.to_string(),
+            recent_blockhash_expires_at: estimate_blockhash_expiry_unix(),
             fee_payer: seller.to_string(),
             payer: seller.to_string(),
+            payer_signature_index: 0,
             payment_uid: None,
             verify_body_template: serde_json::Value::Null,
             notes: vec!["Sovereign onboarding transaction created. Sign and send to receive the 95 bps institutional discount.".to_string()],

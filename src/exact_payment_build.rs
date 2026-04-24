@@ -39,7 +39,8 @@ pub struct BuildExactPaymentTxRequest {
     /// Payer authority (buyer) pubkey; must sign the transaction before verify.
     pub payer: String,
     /// One element copied from `402 accepts[]` (must match `payer`'s chosen rail).
-    pub accepted: serde_json::Value,
+    pub accepted:
+        crate::proto::v2::PaymentRequirements<String, serde_json::Value, String, serde_json::Value>,
     /// Copied from the `402` body `resource` field (embedded in payment proof).
     pub resource: serde_json::Value,
     /// If `false` (default), require payer source ATA to exist and hold enough tokens.
@@ -49,30 +50,7 @@ pub struct BuildExactPaymentTxRequest {
     pub auto_wrap_sol: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BuildExactPaymentTxResponse {
-    pub x402_version: u8,
-    /// `bincode` serialized [`VersionedTransaction`] (legacy), base64 — **unsigned** (default
-    /// signatures). The payer signs their key(s); the facilitator fee payer is added at settle.
-    pub transaction: String,
-    /// Recent blockhash (base58) embedded in the message.
-    pub recent_blockhash: String,
-    pub fee_payer: String,
-    pub payer: String,
-    /// BUY-4: Index into `VersionedTransaction.signatures[]` where the **payer** (buyer) must place
-    /// their ed25519 signature. The fee-payer signature at index 0 is added by the facilitator at settle.
-    pub payer_signature_index: usize,
-    /// BUY-3: Estimated UNIX epoch (seconds) when the embedded `recentBlockhash` expires.
-    /// Agents should request a fresh build if `now() >= recentBlockhashExpiresAt`.
-    pub recent_blockhash_expires_at: u64,
-    /// POST this object to `/verify` / `/settle` **after** replacing `paymentPayload.payload.transaction`
-    /// with base64(`bincode(VersionedTransaction)`) of the **signed** transaction (same unsigned shell).
-    pub verify_body_template: serde_json::Value,
-    /// Human-readable reminders for wallet / agent integrations.
-    #[serde(default)]
-    pub notes: Vec<String>,
-}
+// Response struct was unified into `crate::proto::v2::BuildPaymentTxResponse`.
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExactPaymentBuildError {
@@ -153,15 +131,11 @@ pub async fn build_exact_spl_payment_tx(
     provider: &SolanaChainProvider,
     db: Option<&crate::db::Pr402Db>,
     req: BuildExactPaymentTxRequest,
-) -> Result<BuildExactPaymentTxResponse, ExactPaymentBuildError> {
+) -> Result<crate::proto::v2::BuildPaymentTxResponse, ExactPaymentBuildError> {
     let payer_pk = Pubkey::from_str(&req.payer)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("payer: {}", e)))?;
 
-    let scheme = req
-        .accepted
-        .get("scheme")
-        .and_then(|x| x.as_str())
-        .unwrap_or("");
+    let scheme = &req.accepted.scheme;
     if scheme != "exact" && scheme != "v2:solana:exact" {
         return Err(ExactPaymentBuildError::InvalidRequest(format!(
             "scheme must be \"exact\" or \"v2:solana:exact\", got {:?}",
@@ -170,37 +144,27 @@ pub async fn build_exact_spl_payment_tx(
     }
 
     let expected_network = provider.chain_id().to_string();
-    let got_net = req
-        .accepted
-        .get("network")
-        .and_then(|x| x.as_str())
-        .unwrap_or("");
+    let got_net = req.accepted.network.to_string();
     if got_net != expected_network {
         return Err(ExactPaymentBuildError::NetworkMismatch {
             expected: expected_network,
-            got: got_net.to_string(),
+            got: got_net,
         });
     }
 
-    let pay_to_str = req
-        .accepted
-        .get("payTo")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| ExactPaymentBuildError::InvalidRequest("accepted.payTo missing".into()))?;
+    let pay_to_str = &req.accepted.pay_to;
     let pay_to = Pubkey::from_str(pay_to_str)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(e.to_string()))?;
+
     let merchant_wallet = req
         .accepted
-        .get("extra")
+        .extra
+        .as_ref()
         .and_then(|x| x.get("merchantWallet"))
         .and_then(|x| x.as_str())
         .and_then(|s| Pubkey::from_str(s).ok());
 
-    let asset_str = req
-        .accepted
-        .get("asset")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| ExactPaymentBuildError::InvalidRequest("accepted.asset missing".into()))?;
+    let asset_str = &req.accepted.asset;
     let pay_mint = Pubkey::from_str(asset_str)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(e.to_string()))?;
 
@@ -208,11 +172,11 @@ pub async fn build_exact_spl_payment_tx(
         return Err(ExactPaymentBuildError::InvalidRequest(msg));
     }
 
-    let amount: u64 = match req.accepted.get("amount") {
-        Some(v) if v.as_str().is_some() => v.as_str().unwrap().parse().map_err(|_| {
+    let amount: u64 = match &req.accepted.amount {
+        v if v.as_str().is_some() => v.as_str().unwrap().parse().map_err(|_| {
             ExactPaymentBuildError::InvalidRequest("amount: invalid u64 string".into())
         })?,
-        Some(v) if v.as_u64().is_some() => v.as_u64().unwrap(),
+        v if v.as_u64().is_some() => v.as_u64().unwrap(),
         _ => {
             return Err(ExactPaymentBuildError::InvalidRequest(
                 "accepted.amount missing or not string/u64".into(),
@@ -422,14 +386,15 @@ pub async fn build_exact_spl_payment_tx(
         format!("Payer must sign at signatures[{}]; fee payer (index 0) is added by the facilitator at settle.", payer_signature_index),
     ];
 
-    Ok(BuildExactPaymentTxResponse {
+    Ok(crate::proto::v2::BuildPaymentTxResponse {
         x402_version: 2,
         transaction: tx_b64,
         recent_blockhash: blockhash.to_string(),
+        recent_blockhash_expires_at,
         fee_payer: fee_payer.to_string(),
         payer: payer_pk.to_string(),
         payer_signature_index,
-        recent_blockhash_expires_at,
+        payment_uid: None,
         verify_body_template,
         notes,
     })

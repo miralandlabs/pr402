@@ -21,6 +21,7 @@ use crate::scheme::{
 // Re-export shared Solana verification logic
 pub mod shared;
 use crate::chain::solana_universalsettle::{Config as USConfig, SplitVault};
+use crate::util::tx_builder::estimate_blockhash_expiry_unix;
 use shared::{
     settle_transaction, verify_transaction as shared_verify_transaction, TransferRequirement,
     VerifyTransferResult,
@@ -301,8 +302,10 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             x402_version: 2,
             transaction: tx_b64,
             recent_blockhash: blockhash.to_string(),
+            recent_blockhash_expires_at: estimate_blockhash_expiry_unix(),
             fee_payer: seller.to_string(),
             payer: seller.to_string(),
+            payer_signature_index: 0,
             payment_uid: None,
             verify_body_template: serde_json::Value::Null,
             notes: vec!["Sovereign onboarding transaction created. Sign and send to receive the 95 bps institutional discount.".to_string()],

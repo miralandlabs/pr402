@@ -68,18 +68,14 @@ impl VerifyResponse {
 impl From<VerifyResponse> for proto::VerifyResponse {
     fn from(val: VerifyResponse) -> Self {
         // x402 v2 spec §7.1: canonical fields are `isValid` and `invalidReason` (camelCase).
-        // Legacy fields `valid` and `reason` are kept for backward compatibility but DEPRECATED.
         let json = match val {
             VerifyResponse::Valid { payer } => serde_json::json!({
                 "isValid": true,
-                "valid": true,  // @deprecated: use `isValid`
                 "payer": payer,
             }),
             VerifyResponse::Invalid { reason } => serde_json::json!({
                 "isValid": false,
-                "valid": false,  // @deprecated: use `isValid`
                 "invalidReason": reason,
-                "reason": reason,  // @deprecated: use `invalidReason`
             }),
         };
         proto::VerifyResponse::new(json)
@@ -102,7 +98,6 @@ pub enum SettleResponse {
 impl From<SettleResponse> for proto::SettleResponse {
     fn from(val: SettleResponse) -> Self {
         // Canonical fields: `success`, `errorReason` (camelCase).
-        // Legacy `error_reason` (snake_case) is DEPRECATED — use `errorReason`.
         let json = match val {
             SettleResponse::Success {
                 payer,
@@ -117,7 +112,6 @@ impl From<SettleResponse> for proto::SettleResponse {
             SettleResponse::Error { reason, network } => serde_json::json!({
                 "success": false,
                 "errorReason": reason,
-                "error_reason": reason,  // @deprecated: use `errorReason`
                 "network": network,
             }),
         };
@@ -202,8 +196,10 @@ pub struct BuildPaymentTxResponse {
     pub x402_version: u8,
     pub transaction: String,
     pub recent_blockhash: String,
+    pub recent_blockhash_expires_at: u64,
     pub fee_payer: String,
     pub payer: String,
+    pub payer_signature_index: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payment_uid: Option<String>,
     pub verify_body_template: serde_json::Value,
