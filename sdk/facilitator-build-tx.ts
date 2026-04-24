@@ -22,6 +22,8 @@ export const FACILITATOR_SETTLE_PATH = "/api/v1/facilitator/settle";
 export const FACILITATOR_OPENAPI_PATH = "/openapi.json";
 /** Markdown agent runbook — static `public/agent-integration.md` (same pattern as OpenAPI). */
 export const FACILITATOR_AGENT_INTEGRATION_PATH = "/agent-integration.md";
+/** Machine-readable `payTo` + mint-allowlist metadata; also `agentManifest.payToSemantics` on `GET .../capabilities`. */
+export const FACILITATOR_AGENT_PAYTO_SEMANTICS_PATH = "/agent-payTo-semantics.json";
 
 export type BuildExactPaymentTxRequest = {
   payer: string;
