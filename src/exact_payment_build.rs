@@ -433,13 +433,18 @@ pub async fn build_exact_spl_payment_tx(
     let tx = Transaction::new_unsigned(message);
     let vtx = VersionedTransaction::from(tx);
 
-    // BUY-4: Determine payer signature index from account keys.
+    // BUY-4: Determine payer signature index from account keys (do not default — wrong index breaks
+    // browser flows that rely on `payerSignatureIndex` for wallet adapters).
     let payer_signature_index = vtx
         .message
         .static_account_keys()
         .iter()
         .position(|k| *k == payer_pk)
-        .unwrap_or(1); // fee_payer is 0; payer is typically 1
+        .ok_or_else(|| {
+            ExactPaymentBuildError::InvalidRequest(
+                "internal: payer pubkey missing from transaction signers".into(),
+            )
+        })?;
 
     // BUY-3: Estimate blockhash expiry (~60s conservative, Solana slots are ~400ms).
     let recent_blockhash_expires_at = {
