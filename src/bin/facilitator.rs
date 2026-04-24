@@ -1418,6 +1418,12 @@ async fn handle_build_sla_escrow_payment_tx(body: Body) -> Response<Body> {
                 return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
             }
         };
+    if req.facilitator_pays_transaction_fees && !cp.sla_escrow_allow_facilitator_fee_sponsorship {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "SLA-Escrow facilitator-paid Solana fees are disabled on this deployment. Set PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP to true (or 1) to allow facilitatorPaysTransactionFees: true.",
+        );
+    }
     match pr402::sla_escrow_payment_build::build_sla_escrow_fund_payment_tx(&cp.solana, req).await {
         Ok(out) => facilitator_response!()
             .status(StatusCode::OK)

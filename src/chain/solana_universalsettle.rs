@@ -252,9 +252,23 @@ pub fn build_sweep_instruction(
     }
 }
 
+/// Resolve the UniversalSettle payment destination for quoting or display (legacy SPL Token for SPL).
 pub fn get_payment_address(vault: &Pubkey, mint: Option<&Pubkey>, program_id: &Pubkey) -> Pubkey {
+    get_payment_address_with_token_program(vault, mint, program_id, None)
+}
+
+/// Same as [`get_payment_address`], but pass `Some(token_program_id)` for Token-2022 vault ATAs.
+pub fn get_payment_address_with_token_program(
+    vault: &Pubkey,
+    mint: Option<&Pubkey>,
+    program_id: &Pubkey,
+    spl_token_program: Option<&Pubkey>,
+) -> Pubkey {
     match mint {
-        Some(mint) => associated_token_address(vault, mint, &spl_token::id()),
+        Some(mint) => {
+            let tp = spl_token_program.copied().unwrap_or(spl_token::id());
+            associated_token_address(vault, mint, &tp)
+        }
         None => derive_sol_storage_pda(vault, program_id).0,
     }
 }

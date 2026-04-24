@@ -29,6 +29,9 @@ pub struct Config {
     pub universalsettle: Option<UniversalSettleConfig>,
     /// SLAEscrow configuration (optional)
     pub escrow: Option<SLAEscrowConfig>,
+    /// When true, HTTP `POST .../build-sla-escrow-payment-tx` accepts `facilitatorPaysTransactionFees: true`.
+    /// Default false. Env: `PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP` (`1` / `true` / `yes`).
+    pub sla_escrow_allow_facilitator_fee_sponsorship: bool,
     /// Challenge validity window (seconds). Default 600; max 3600 enforced in handlers. DB override: `parameters` / `PR402_ONBOARD_CHALLENGE_TTL_SEC`.
     pub onboard_challenge_ttl_sec: u64,
 }
@@ -80,6 +83,7 @@ impl Config {
     /// - `MAX_COMPUTE_UNIT_PRICE`: Max compute unit price (default: 1000000)
     /// - `UNIVERSALSETTLE_PROGRAM_ID`: Enables `v2:solana:exact` with UniversalSettle (vault, fees, sweep). Omit only if you do not serve that scheme.
     /// - `ESCROW_PROGRAM_ID`: Registers `v2:solana:sla-escrow`. Omit if you do not serve escrow. At least one settlement program should match what RPs advertise.
+    /// - `PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`: If `1`/`true`/`yes`, clients may request facilitator-paid Solana fees on SLA-Escrow build (`facilitatorPaysTransactionFees: true`). Default: disabled (such requests return 400).
     pub fn from_env() -> Result<Self, ConfigError> {
         let solana_rpc_url = std::env::var("SOLANA_RPC_URL")
             .map_err(|_| ConfigError::MissingEnvVar("SOLANA_RPC_URL"))?
@@ -163,6 +167,9 @@ impl Config {
             .and_then(|s| s.parse().ok())
             .unwrap_or(600);
 
+        let sla_escrow_allow_facilitator_fee_sponsorship =
+            env_truthy("PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP");
+
         Ok(Config {
             solana_rpc_url,
             solana_pubsub_url,
@@ -172,9 +179,18 @@ impl Config {
             max_compute_unit_price,
             universalsettle,
             escrow,
+            sla_escrow_allow_facilitator_fee_sponsorship,
             onboard_challenge_ttl_sec,
         })
     }
+}
+
+/// Env var is true when set to `1`, `true`, or `yes` (ASCII case-insensitive). Unset or other values → false.
+fn env_truthy(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|s| matches!(s.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
 }
 
 impl UniversalSettleConfig {

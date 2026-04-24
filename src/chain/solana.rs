@@ -290,13 +290,29 @@ impl SolanaChainProvider {
             }
         }
 
-        // 2. Ensure ATA for Vault exists if payment is in SPL tokens
+        // 2. Ensure ATA for Vault exists if payment is in SPL tokens (legacy Token or plain Token-2022 mint).
         if let Some(mint_key) = mint {
             if mint_key != Pubkey::default() {
+                let mint_acc = self
+                    .rpc_client
+                    .get_account(&mint_key)
+                    .await
+                    .map_err(|e| SolanaChainProviderError::Transport(e.to_string()))?;
+                let token_program = if mint_acc.owner == spl_token::ID {
+                    spl_token::ID
+                } else if mint_acc.owner == TOKEN_2022_PROGRAM_ID {
+                    TOKEN_2022_PROGRAM_ID
+                } else {
+                    return Err(SolanaChainProviderError::Transport(format!(
+                        "mint {} owner {} is not spl_token or token-2022",
+                        mint_key, mint_acc.owner
+                    )));
+                };
+
                 let (ata, _) = Pubkey::find_program_address(
                     &[
                         vault_pda.as_ref(),
-                        TOKEN_PROGRAM_ID.as_ref(),
+                        token_program.as_ref(),
                         mint_key.as_ref(),
                     ],
                     &ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -314,7 +330,7 @@ impl SolanaChainProvider {
                             solana_transaction::AccountMeta::new_readonly(vault_pda, false),
                             solana_transaction::AccountMeta::new_readonly(mint_key, false),
                             solana_transaction::AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-                            solana_transaction::AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
+                            solana_transaction::AccountMeta::new_readonly(token_program, false),
                         ],
                         data: vec![1], // CreateIdempotent
                     };

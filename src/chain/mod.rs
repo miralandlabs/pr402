@@ -21,6 +21,8 @@ pub trait ChainProviderOps {
 #[derive(Clone)]
 pub struct ChainProvider {
     pub solana: Arc<solana::SolanaChainProvider>,
+    /// HTTP build only: when false, `facilitatorPaysTransactionFees: true` is rejected (see `Config`).
+    pub sla_escrow_allow_facilitator_fee_sponsorship: bool,
 }
 
 impl ChainProvider {
@@ -68,6 +70,8 @@ impl ChainProvider {
 
         Ok(ChainProvider {
             solana: Arc::new(provider),
+            sla_escrow_allow_facilitator_fee_sponsorship: config
+                .sla_escrow_allow_facilitator_fee_sponsorship,
         })
     }
 }

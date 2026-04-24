@@ -612,7 +612,25 @@ pub async fn verify_transfer(
         return Err(PaymentVerificationError::RecipientMismatch);
     }
 
-    if Pubkey::from(fund_payment.seller.to_bytes()) != expected_escrow_pda {
+    // `FundPayment.seller` is the on-chain payout wallet (`payment.seller`), not the escrow PDA.
+    // It must match explicit `beneficiary` or `merchantWallet` from requirements (same precedence as post-verify identity).
+    let expected_seller = extra
+        .beneficiary
+        .map(|a| *a.pubkey())
+        .or_else(|| extra.merchant_wallet.map(|a| *a.pubkey()))
+        .ok_or_else(|| {
+            PaymentVerificationError::InvalidFormat(
+                "paymentRequirements.extra must include merchantWallet or beneficiary (FundPayment seller / release payout)"
+                    .into(),
+            )
+        })?;
+    if expected_seller == expected_escrow_pda {
+        return Err(PaymentVerificationError::InvalidFormat(
+            "merchantWallet/beneficiary must not be the escrow PDA; use the seller's wallet pubkey"
+                .into(),
+        ));
+    }
+    if Pubkey::from(fund_payment.seller.to_bytes()) != expected_seller {
         return Err(PaymentVerificationError::RecipientMismatch);
     }
     if Address::new(Pubkey::from(fund_payment.mint.to_bytes())) != requirements.asset {

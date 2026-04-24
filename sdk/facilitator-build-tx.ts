@@ -38,8 +38,12 @@ export type BuildSlaEscrowPaymentTxRequest = {
   oracleAuthority: string;
   paymentUid?: string;
   skipSourceBalanceCheck?: boolean;
-  /** `true` = buyer fee payer (CLI-shaped). Omit/false = facilitator pays fees (`exact`-aligned). */
-  buyerPaysTransactionFees?: boolean;
+  /**
+   * false/omit (default): buyer pays Solana network fees (single signer).
+   * true: facilitator fee payer, buyer signs FundPayment (two-signer; same idea as build-exact).
+   */
+  facilitatorPaysTransactionFees?: boolean;
+  autoWrapSol?: boolean;
 };
 
 export type BuildPaymentTxResponse = {

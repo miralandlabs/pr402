@@ -107,11 +107,17 @@ pub fn derive_sol_storage_pda(
     )
 }
 
-pub fn associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
+/// SPL associated token address for `wallet` + `mint` in the given token program domain.
+/// Matches [`sla_escrow_api::sdk::EscrowSdk::associated_token_account_with_program`].
+pub fn associated_token_address_with_program(
+    wallet: &Pubkey,
+    mint: &Pubkey,
+    token_program: &Pubkey,
+) -> Pubkey {
     Pubkey::find_program_address(
         &[
             &wallet.to_bytes(),
-            &TOKEN_PROGRAM_ID.to_bytes(),
+            &token_program.to_bytes(),
             &mint.to_bytes(),
         ],
         &ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -119,15 +125,19 @@ pub fn associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
     .0
 }
 
-pub fn sla_escrow_token_account(escrow_pda: &Pubkey, mint: &Pubkey) -> Pubkey {
-    associated_token_address(escrow_pda, mint)
+/// Legacy Token program ATA (convenience).
+pub fn associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
+    associated_token_address_with_program(wallet, mint, &TOKEN_PROGRAM_ID)
 }
 
 // ----------------------------------------------------------------------------
 // Instruction Builders
 // ----------------------------------------------------------------------------
 
-/// Build an SLAEscrow FundPayment instruction
+/// Build an SLAEscrow FundPayment instruction.
+///
+/// `seller` is the **merchant payout wallet** recorded on-chain (`payment.seller`), not the escrow PDA.
+/// `token_program` must be `spl_token::ID` or Token-2022 program ID for the mint.
 #[allow(clippy::too_many_arguments)]
 pub fn build_fund_payment_instruction(
     program_id: Pubkey,
@@ -139,6 +149,7 @@ pub fn build_fund_payment_instruction(
     payment_uid: &str,
     sla_hash: [u8; 32],
     oracle_authority: Pubkey,
+    token_program: Pubkey,
 ) -> Instruction {
     let (bank_pda, _) = derive_bank_pda(&program_id);
     let (config_pda, _) = derive_config_pda(&program_id);
@@ -176,11 +187,12 @@ pub fn build_fund_payment_instruction(
         accounts.push(AccountMeta::new(sol_storage_pda, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
     } else {
-        let buyer_tokens = associated_token_address(&buyer, &mint);
-        let escrow_tokens = sla_escrow_token_account(&escrow_pda, &mint);
+        let buyer_tokens = associated_token_address_with_program(&buyer, &mint, &token_program);
+        let escrow_tokens =
+            associated_token_address_with_program(&escrow_pda, &mint, &token_program);
         accounts.push(AccountMeta::new(escrow_tokens, false));
         accounts.push(AccountMeta::new(buyer_tokens, false));
-        accounts.push(AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false));
+        accounts.push(AccountMeta::new_readonly(token_program, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
     }
 
