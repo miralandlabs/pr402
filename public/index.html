@@ -411,6 +411,13 @@
             cursor: not-allowed;
             box-shadow: none;
         }
+        .seller-provision #btn-wallet-connect.is-connected {
+            border: 1px solid rgba(16, 185, 129, 0.45) !important;
+            color: var(--accent) !important;
+            background: rgba(16, 185, 129, 0.1) !important;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
         #provision-status {
             margin-top: 1.25rem;
             font-family: var(--font-mono);
@@ -637,10 +644,10 @@
                 and a little <strong>SOL</strong> on the <strong>same network</strong> as this facilitator (see the banner / health strip below).
             </p>
             <p style="font-size: 0.85rem; margin-bottom: 0;">
-                <strong>Steps:</strong> <strong>Connect wallet</strong> → <strong>Create SplitVault</strong> (approve one transaction). No terminal, no npm, no UniversalSettle CLI.
+                <strong>Steps:</strong> <strong>🔗 Connect wallet</strong> → <strong>Create SplitVault</strong> (approve one transaction). No terminal, no npm, no UniversalSettle CLI.
             </p>
             <div class="provision-actions">
-                <button type="button" class="btn btn-secondary" id="btn-wallet-connect">Connect wallet</button>
+                <button type="button" class="btn btn-secondary" id="btn-wallet-connect">🔗 Connect wallet</button>
                 <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Create SplitVault</button>
             </div>
             <div id="provision-status" role="status" aria-live="polite"></div>
@@ -920,6 +927,12 @@
         setInterval(updateHealth, 15000);
 
         (function sellerProvisionUi() {
+            /*
+             * Wallet UX follows Aethervane (same wallet.js globals + event contract):
+             * - aethervane-app/src/components/layout.rs — disconnected: ShowWalletModal();
+             *   connected: short address + " ✓", click MiracleWalletDisconnecter();
+             * - aethervane-app/src/main.rs — state from miracle-pubkey (detail.pubkey set vs null).
+             */
             var connectedB58 = null;
             var btnConnect = document.getElementById('btn-wallet-connect');
             var btnProvision = document.getElementById('btn-provision-vault');
@@ -931,43 +944,78 @@
                 statusEl.classList.toggle('is-error', !!isError);
             }
 
+            function truncatePk(pk) {
+                if (!pk) return '';
+                if (pk.length > 8) {
+                    return pk.slice(0, 4) + '…' + pk.slice(-4);
+                }
+                return pk;
+            }
+
+            function refreshConnectButton() {
+                if (!btnConnect) return;
+                if (connectedB58) {
+                    btnConnect.textContent = truncatePk(connectedB58) + ' \u2713';
+                    btnConnect.title = 'Solana connected — click to disconnect';
+                    btnConnect.setAttribute('aria-label', 'Disconnect wallet');
+                    btnConnect.classList.add('is-connected');
+                } else {
+                    btnConnect.textContent = '\uD83D\uDD17 Connect wallet';
+                    btnConnect.removeAttribute('title');
+                    btnConnect.setAttribute('aria-label', 'Connect Solana wallet');
+                    btnConnect.classList.remove('is-connected');
+                }
+            }
+
             function applyConnectedPubkey(pk) {
                 var next = pk && typeof pk === 'string' ? pk : null;
                 connectedB58 = next;
                 if (btnProvision) {
                     btnProvision.disabled = !next;
                 }
-            }
-
-            function syncFromWalletGlobals() {
-                var g =
-                    typeof window.__PR402_CONNECTED_PUBKEY__ === 'string' &&
-                    window.__PR402_CONNECTED_PUBKEY__.length > 0
-                        ? window.__PR402_CONNECTED_PUBKEY__
-                        : null;
-                if (g !== connectedB58) {
-                    applyConnectedPubkey(g);
-                }
+                refreshConnectButton();
             }
 
             window.addEventListener('miracle-pubkey', function (ev) {
-                var d = (ev && ev.detail) || {};
-                applyConnectedPubkey(d.pubkeyBase58 || null);
+                var d = ev && ev.detail;
+                if (d && d.pubkey && d.pubkey.length) {
+                    applyConnectedPubkey(
+                        typeof d.pubkeyBase58 === 'string' ? d.pubkeyBase58 : null
+                    );
+                } else {
+                    applyConnectedPubkey(null);
+                }
             });
-
-            document.addEventListener('visibilitychange', syncFromWalletGlobals);
 
             if (btnConnect) {
                 btnConnect.addEventListener('click', function () {
-                    if (typeof ShowWalletModal === 'function') {
-                        ShowWalletModal();
+                    if (connectedB58) {
+                        if (window.MiracleWalletDisconnecter) {
+                            try {
+                                window.MiracleWalletDisconnecter();
+                            } catch (err) {
+                                setStatus(
+                                    err && err.message
+                                        ? err.message
+                                        : String(err),
+                                    true
+                                );
+                            }
+                        }
+                        return;
+                    }
+                    if (window.ShowWalletModal) {
+                        window.ShowWalletModal();
                     } else {
-                        setStatus('Wallet UI is still loading — try again in a second.', true);
+                        setStatus(
+                            'Wallet UI is still loading — try again in a second.',
+                            true
+                        );
                     }
                 });
             }
 
-            setInterval(syncFromWalletGlobals, 1500);
+            refreshConnectButton();
 
             if (btnProvision) {
                 btnProvision.addEventListener('click', async function () {

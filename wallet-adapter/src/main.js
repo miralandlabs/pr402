@@ -235,6 +235,10 @@ window.MiracleSignAndSendVersionedTxB64 = async function (unsignedTxB64) {
     return sig;
 };
 
+/**
+ * Dispatches miracle-pubkey for host pages (same contract as Aethervane:
+ * aethervane-app/src/main.rs listens for detail.pubkey byte[] | disconnected).
+ */
 function Dispatcher() {
     const { publicKey } = useWallet();
     useEffect(() => {
