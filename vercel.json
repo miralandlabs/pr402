@@ -82,7 +82,7 @@
     {
       "src": "/api/v1/facilitator/upgrade",
       "dest": "/src/bin/facilitator",
-      "methods": ["POST", "OPTIONS"]
+      "methods": ["GET", "POST", "OPTIONS"]
     },
     {
       "src": "/api/v1/facilitator/supported",
