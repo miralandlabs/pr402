@@ -528,12 +528,15 @@
             border-radius: 3px;
         }
 
-        /* Solana wallet adapter (mirrors Aethervane: connect control top-right) */
+        /* React wallet root: off-screen; real UX is "Connect wallet" beside Create SplitVault */
         #miracle-wallet-adapter {
             position: fixed;
-            top: 2.75rem;
-            right: 1.25rem;
-            z-index: 1100;
+            left: -9999px;
+            top: 0;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            z-index: 0;
         }
 
         @media (max-width: 768px) {
@@ -544,10 +547,6 @@
             .description { margin-left: 0; margin-top: 0.5rem; }
             .system-pulse { gap: 1.5rem; padding: 0.6rem 1rem; }
             .pulse-label { display: none; }
-            #miracle-wallet-adapter {
-                top: 2.5rem;
-                right: 0.75rem;
-            }
         }
     </style>
 </head>
@@ -641,9 +640,10 @@
                 and a little <strong>SOL</strong> on the <strong>same network</strong> as this facilitator (see the banner / health strip below).
             </p>
             <p style="font-size: 0.85rem; margin-bottom: 0;">
-                <strong>Steps:</strong> use <strong>Connect</strong> in the <strong>top-right</strong> → then approve one transaction below. No terminal, no npm, no UniversalSettle CLI.
+                <strong>Steps:</strong> <strong>Connect wallet</strong> → <strong>Create SplitVault</strong> (approve one transaction). No terminal, no npm, no UniversalSettle CLI.
             </p>
             <div class="provision-actions">
+                <button type="button" class="btn btn-secondary" id="btn-wallet-connect">Connect wallet</button>
                 <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Create SplitVault</button>
             </div>
             <div id="provision-status" role="status" aria-live="polite"></div>
@@ -780,7 +780,7 @@
         </div>
     </div>
 
-    <div id="miracle-wallet-adapter" aria-label="Solana wallet connection"></div>
+    <div id="miracle-wallet-adapter" aria-hidden="true"></div>
 
     <script>
         function applyHealthToGlobals(data) {
@@ -924,6 +924,7 @@
 
         (function sellerProvisionUi() {
             var connectedB58 = null;
+            var btnConnect = document.getElementById('btn-wallet-connect');
             var btnProvision = document.getElementById('btn-provision-vault');
             var statusEl = document.getElementById('provision-status');
 
@@ -933,20 +934,48 @@
                 statusEl.classList.toggle('is-error', !!isError);
             }
 
-            window.addEventListener('miracle-pubkey', function (ev) {
-                var d = ev.detail || {};
-                connectedB58 = d.pubkeyBase58 || null;
-                if (connectedB58) {
-                    if (btnProvision) btnProvision.disabled = false;
-                } else {
-                    if (btnProvision) btnProvision.disabled = true;
+            function applyConnectedPubkey(pk) {
+                var next = pk && typeof pk === 'string' ? pk : null;
+                connectedB58 = next;
+                if (btnProvision) {
+                    btnProvision.disabled = !next;
                 }
+            }
+
+            function syncFromWalletGlobals() {
+                var g =
+                    typeof window.__PR402_CONNECTED_PUBKEY__ === 'string' &&
+                    window.__PR402_CONNECTED_PUBKEY__.length > 0
+                        ? window.__PR402_CONNECTED_PUBKEY__
+                        : null;
+                if (g !== connectedB58) {
+                    applyConnectedPubkey(g);
+                }
+            }
+
+            window.addEventListener('miracle-pubkey', function (ev) {
+                var d = (ev && ev.detail) || {};
+                applyConnectedPubkey(d.pubkeyBase58 || null);
             });
+
+            document.addEventListener('visibilitychange', syncFromWalletGlobals);
+
+            if (btnConnect) {
+                btnConnect.addEventListener('click', function () {
+                    if (typeof ShowWalletModal === 'function') {
+                        ShowWalletModal();
+                    } else {
+                        setStatus('Wallet UI is still loading — try again in a second.', true);
+                    }
+                });
+            }
+
+            setInterval(syncFromWalletGlobals, 1500);
 
             if (btnProvision) {
                 btnProvision.addEventListener('click', async function () {
                     if (!connectedB58) {
-                        setStatus('Connect a wallet first (top-right).', true);
+                        setStatus('Connect a wallet first (Connect wallet).', true);
                         return;
                     }
                     if (typeof MiracleSignAndSendVersionedTxB64 !== 'function') {

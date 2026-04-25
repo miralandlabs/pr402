@@ -56,7 +56,14 @@ export const Wallet = () => {
         <ConnectionProvider endpoint={endpoint}>
             <WalletProvider wallets={wallets} autoConnect={true}>
                 <WalletModalProvider>
-                    <div className="pr402-wallet-header-wrap">
+                    {/*
+                      Hidden trigger: real control is the landing-page "Connect wallet" button
+                      that calls ShowWalletModal(). Kept focusable-sized off-screen so .click() works.
+                    */}
+                    <div
+                        className="pr402-wallet-adapter-hidden-trigger"
+                        aria-hidden="true"
+                    >
                         <BaseWalletMultiButton labels={LABELS} />
                     </div>
                     <Dispatcher />
@@ -224,6 +231,7 @@ function Dispatcher() {
         window.__PR402_CONNECTED_PUBKEY__ = pubkeyBase58;
         try {
             const event = new CustomEvent("miracle-pubkey", {
+                bubbles: true,
                 detail: {
                     pubkey: publicKey
                         ? Array.from(publicKey.toBytes())
