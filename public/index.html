@@ -790,9 +790,13 @@
         function applyHealthToGlobals(data) {
             const net = String(data.solanaNetwork || '').toLowerCase();
             window.__PR402_SOLANA_NETWORK__ = net;
-            window.__PR402_RPC_ENDPOINT__ = net.includes('devnet')
-                ? 'https://api.devnet.solana.com'
-                : 'https://api.mainnet-beta.solana.com';
+            if (typeof data.solanaWalletRpcUrl === 'string' && data.solanaWalletRpcUrl.length > 0) {
+                window.__PR402_RPC_ENDPOINT__ = data.solanaWalletRpcUrl;
+            } else {
+                window.__PR402_RPC_ENDPOINT__ = net.includes('devnet')
+                    ? 'https://api.devnet.solana.com'
+                    : 'https://api.mainnet-beta.solana.com';
+            }
         }
 
         function explorerTxUrl(sig) {

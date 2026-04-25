@@ -153,6 +153,24 @@ pub async fn handle_supported(
     }
 }
 
+/// URL for `@solana/web3.js` `Connection` in the browser. Public `api.mainnet-beta.solana.com`
+/// often returns JSON-RPC **403** from browsers. Uses the same RPC as the facilitator
+/// (`SOLANA_RPC_URL` / [`CHAIN_PROVIDER`]) when that URL is not localhost; otherwise the public
+/// cluster default for the detected network.
+fn solana_wallet_rpc_url_for_browser(network: &str) -> String {
+    if let Some(cp) = CHAIN_PROVIDER.get() {
+        let s = cp.solana.rpc_url();
+        if !s.contains("127.0.0.1") && !s.contains("localhost") {
+            return s.to_string();
+        }
+    }
+    if network == "devnet" {
+        "https://api.devnet.solana.com".to_string()
+    } else {
+        "https://api.mainnet-beta.solana.com".to_string()
+    }
+}
+
 pub async fn handle_health() -> Response<Body> {
     let mut db_status = "disabled";
     if let Some(db) = pr402_db() {
@@ -184,6 +202,8 @@ pub async fn handle_health() -> Response<Body> {
         }
     }
 
+    let solana_wallet_rpc_url = solana_wallet_rpc_url_for_browser(&network);
+
     let res = HealthResponse {
         status: if rpc_status == "connected" {
             "ok"
@@ -196,6 +216,7 @@ pub async fn handle_health() -> Response<Body> {
         solana_slot: slot,
         environment,
         solana_network: network,
+        solana_wallet_rpc_url,
     };
 
     facilitator_response!()
