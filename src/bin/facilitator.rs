@@ -477,6 +477,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("POST", "/api/v1/facilitator/settle") => {
                     handle_settle(facilitator.clone(), body, correlation_hdr.as_deref()).await
                 }
+                ("GET", "/api/v1/facilitator/upgrade") => {
+                    // Browsers and health checks use GET; Vercel only forwarded POST/OPTIONS before,
+                    // so GET never reached this binary and Vercel returned 404.
+                    facilitator_response!()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "application/json")
+                        .body(Body::Text(
+                            serde_json::json!({
+                                "path": "/api/v1/facilitator/upgrade",
+                                "method": "POST",
+                                "summary": "Upgrade an X402 PaymentRequired between protocol or scheme versions.",
+                                "request_body": "application/json — PaymentRequired",
+                                "openapi": "/openapi.json",
+                            })
+                            .to_string(),
+                        ))
+                        .unwrap()
+                }
                 ("POST", "/api/v1/facilitator/upgrade") => {
                     handle_upgrade(facilitator.clone(), body).await
                 }
