@@ -38,8 +38,9 @@ impl ChainProvider {
 
         // Load UniversalSettle config if present
         let mut universalsettle = config.universalsettle.clone();
-        let rpc_client = solana_client::nonblocking::rpc_client::RpcClient::new(
+        let rpc_client = solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
             config.solana_rpc_url.as_ref().to_owned(),
+            solana_commitment_config::CommitmentConfig::confirmed(),
         );
 
         if let Some(ref mut us_config) = universalsettle {

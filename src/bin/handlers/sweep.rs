@@ -443,8 +443,10 @@ pub async fn handle_vault_snapshot(query: &str) -> Response<Body> {
             }
         }
     };
-    let rpc =
-        solana_client::nonblocking::rpc_client::RpcClient::new(cfg.solana_rpc_url.to_string());
+    let rpc = solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
+        cfg.solana_rpc_url.to_string(),
+        solana_commitment_config::CommitmentConfig::confirmed(),
+    );
     let mut snap = match pr402::vault_balance::fetch_universalsettle_vault_snapshot(
         &rpc,
         us.program_id,

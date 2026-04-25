@@ -84,7 +84,10 @@ impl SolanaChainProvider {
         max_compute_unit_price: u64,
     ) -> Self {
         Self {
-            rpc_client: RpcClient::new(rpc_url.to_string()),
+            rpc_client: RpcClient::new_with_commitment(
+                rpc_url.to_string(),
+                CommitmentConfig::confirmed(),
+            ),
             keypair: Arc::new(keypair),
             chain_id,
             rpc_url: rpc_url.to_string(),
