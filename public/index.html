@@ -378,6 +378,57 @@
         .output-label { color: var(--text-dim); width: 130px; display: inline-block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
         .output-val { color: var(--text); word-break: break-all; font-weight: 400; }
 
+        /* Naive seller: browser-wallet SplitVault provisioning */
+        .seller-provision {
+            margin-top: 3rem;
+            padding: 2rem 2.25rem;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            border-left: 4px solid var(--accent);
+        }
+        .seller-provision h2 {
+            font-size: 1.35rem;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.02em;
+        }
+        .seller-provision > p {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+            line-height: 1.55;
+            margin-bottom: 0.5rem;
+        }
+        .seller-provision .provision-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: center;
+            margin-top: 1.25rem;
+        }
+        .seller-provision button.btn { border: none; cursor: pointer; font-family: var(--font-mono); }
+        .seller-provision button.btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .seller-provision .wallet-chip {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--accent);
+            word-break: break-all;
+            max-width: 100%;
+        }
+        #provision-status {
+            margin-top: 1.25rem;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            line-height: 1.5;
+            color: var(--text-dim);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        #provision-status.is-error { color: #f87171; }
+
         /* System Pulse */
         .system-pulse {
             position: fixed;
@@ -573,6 +624,26 @@
             </div>
         </div>
 
+        <section class="seller-provision" aria-labelledby="seller-provision-title">
+            <span class="badge" style="border-color: rgba(16, 185, 129, 0.35); color: var(--accent); background: rgba(16, 185, 129, 0.08);">Sellers · No CLI</span>
+            <h2 id="seller-provision-title">Create your SplitVault in the browser</h2>
+            <p>
+                If a buyer’s first payment failed because your <strong>SplitVault</strong> is not on-chain yet, use this flow.
+                You only need a Solana browser wallet (e.g. <a href="https://phantom.app/" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Phantom</a>
+                or <a href="https://solflare.com/" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Solflare</a>)
+                and a little <strong>SOL</strong> on the <strong>same network</strong> as this facilitator (see the banner / health strip below).
+            </p>
+            <p style="font-size: 0.85rem; margin-bottom: 0;">
+                <strong>Steps:</strong> connect wallet → approve one transaction. No terminal, no npm, no UniversalSettle CLI.
+            </p>
+            <div class="provision-actions">
+                <button type="button" class="btn btn-secondary" id="btn-wallet-connect">1 · Connect wallet</button>
+                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>2 · Create SplitVault</button>
+            </div>
+            <div class="wallet-chip" id="wallet-connected-label" style="display: none; margin-top: 0.75rem;" aria-live="polite"></div>
+            <div id="provision-status" role="status" aria-live="polite"></div>
+        </section>
+
         <!-- New: Vault Explorer -->
         <section class="vault-explorer">
             <div class="terminal-header">
@@ -704,12 +775,29 @@
         </div>
     </div>
 
+    <div id="miracle-wallet-adapter" style="display:none" aria-hidden="true"></div>
+
     <script>
+        function applyHealthToGlobals(data) {
+            const net = String(data.solanaNetwork || '').toLowerCase();
+            window.__PR402_SOLANA_NETWORK__ = net;
+            window.__PR402_RPC_ENDPOINT__ = net.includes('devnet')
+                ? 'https://api.devnet.solana.com'
+                : 'https://api.mainnet-beta.solana.com';
+        }
+
+        function explorerTxUrl(sig) {
+            const n = window.__PR402_SOLANA_NETWORK__ || '';
+            const dev = n.includes('devnet');
+            return 'https://solscan.io/tx/' + encodeURIComponent(sig) + (dev ? '?cluster=devnet' : '');
+        }
+
         async function updateHealth() {
             try {
                 const res = await fetch('/api/v1/facilitator/health');
                 const data = await res.json();
-                
+                applyHealthToGlobals(data);
+
                 // Update Environment Banner
                 const banner = document.getElementById('env-banner');
                 banner.style.display = 'block';
@@ -802,9 +890,108 @@
             }
         });
 
-        // Telemetry loop
-        updateHealth();
+        let walletBundleStarted = false;
+        async function ensureWalletBundle() {
+            if (walletBundleStarted) return;
+            walletBundleStarted = true;
+            try {
+                await new Promise(function (resolve, reject) {
+                    var s = document.createElement('script');
+                    s.src = '/wallet.js';
+                    s.async = true;
+                    s.onload = resolve;
+                    s.onerror = reject;
+                    document.head.appendChild(s);
+                });
+                if (typeof MountWalletAdapter === 'function') {
+                    MountWalletAdapter();
+                }
+            } catch (e) {
+                console.error('wallet bundle failed to load', e);
+            }
+        }
+
+        (async function bootstrapWalletAndHealth() {
+            await updateHealth();
+            await ensureWalletBundle();
+        })();
         setInterval(updateHealth, 15000);
+
+        (function sellerProvisionUi() {
+            var connectedB58 = null;
+            var btnConnect = document.getElementById('btn-wallet-connect');
+            var btnProvision = document.getElementById('btn-provision-vault');
+            var label = document.getElementById('wallet-connected-label');
+            var statusEl = document.getElementById('provision-status');
+
+            function setStatus(text, isError) {
+                if (!statusEl) return;
+                statusEl.textContent = text || '';
+                statusEl.classList.toggle('is-error', !!isError);
+            }
+
+            window.addEventListener('miracle-pubkey', function (ev) {
+                var d = ev.detail || {};
+                connectedB58 = d.pubkeyBase58 || null;
+                if (connectedB58) {
+                    if (label) {
+                        label.style.display = 'block';
+                        label.textContent = 'Connected: ' + connectedB58;
+                    }
+                    if (btnProvision) btnProvision.disabled = false;
+                } else {
+                    if (label) label.style.display = 'none';
+                    if (btnProvision) btnProvision.disabled = true;
+                }
+            });
+
+            if (btnConnect) {
+                btnConnect.addEventListener('click', function () {
+                    if (typeof ShowWalletModal === 'function') {
+                        ShowWalletModal();
+                    } else {
+                        setStatus('Wallet UI is still loading — try again in a second.', true);
+                    }
+                });
+            }
+
+            if (btnProvision) {
+                btnProvision.addEventListener('click', async function () {
+                    if (!connectedB58) {
+                        setStatus('Connect a wallet first.', true);
+                        return;
+                    }
+                    if (typeof MiracleSignAndSendVersionedTxB64 !== 'function') {
+                        setStatus('Wallet bundle not ready.', true);
+                        return;
+                    }
+                    setStatus('Fetching unsigned create_vault transaction…');
+                    try {
+                        var url = '/api/v1/facilitator/onboard/build-tx?wallet=' + encodeURIComponent(connectedB58);
+                        var res = await fetch(url);
+                        var txt = await res.text();
+                        if (!res.ok) {
+                            throw new Error(txt || ('HTTP ' + res.status));
+                        }
+                        var j = JSON.parse(txt);
+                        if (j.error) {
+                            throw new Error(j.error);
+                        }
+                        var txB64 = j.transaction;
+                        if (!txB64) {
+                            throw new Error('No transaction in facilitator response');
+                        }
+                        setStatus('Approve the transaction in your wallet…');
+                        var sig = await MiracleSignAndSendVersionedTxB64(txB64);
+                        setStatus(
+                            'Confirmed on-chain.\nSignature:\n' + sig + '\n\nExplorer:\n' + explorerTxUrl(sig)
+                        );
+                    } catch (e) {
+                        setStatus(e.message || String(e), true);
+                    }
+                });
+            }
+        })();
     </script>
 </body>
 </html>
