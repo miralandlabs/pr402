@@ -6,3 +6,5 @@ target/
 
 sdk/ts/node_modules/
 sdk/ts/package-lock.json
+
+wallet-adapter/node_modules/

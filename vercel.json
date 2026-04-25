@@ -54,6 +54,10 @@
       "dest": "/public/openapi.json"
     },
     {
+      "src": "/wallet.js",
+      "dest": "/public/wallet.js"
+    },
+    {
       "src": "/agent-integration.md",
       "dest": "/public/agent-integration.md"
     },

@@ -517,6 +517,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         handle_capabilities(facilitator.clone()).await
                     }
                 }
+                ("GET", "/wallet.js") => {
+                    let path =
+                        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("public/wallet.js");
+                    match std::fs::read_to_string(&path) {
+                        Ok(js) => Response::builder()
+                            .header("Content-Type", "application/javascript; charset=utf-8")
+                            .header("Cache-Control", "public, max-age=3600")
+                            .body(Body::Text(js))
+                            .unwrap(),
+                        Err(_) => error_response(
+                            StatusCode::NOT_FOUND,
+                            "wallet.js missing — run: cd wallet-adapter && npm ci && npm run build",
+                        ),
+                    }
+                }
                 ("GET", "/api/v1/facilitator/onboard/challenge") => {
                     handle_onboard_challenge(&query).await
                 }
