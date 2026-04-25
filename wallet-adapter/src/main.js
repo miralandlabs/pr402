@@ -12,6 +12,7 @@ import {
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import { TrustWalletAdapter } from "@solana/wallet-adapter-trust";
+import { BackpackWalletAdapter } from "@solana/wallet-adapter-backpack";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import * as buffer from "buffer";
 
@@ -30,6 +31,7 @@ const LABELS = {
     phantom: "Phantom",
     solflare: "Solflare",
     trust: "Trust",
+    backpack: "Backpack",
 };
 
 function pr402RpcEndpoint() {
@@ -46,6 +48,7 @@ export const Wallet = () => {
             new PhantomWalletAdapter(),
             new SolflareWalletAdapter(),
             new TrustWalletAdapter(),
+            new BackpackWalletAdapter(),
         ],
         []
     );
@@ -53,7 +56,7 @@ export const Wallet = () => {
         <ConnectionProvider endpoint={endpoint}>
             <WalletProvider wallets={wallets} autoConnect={true}>
                 <WalletModalProvider>
-                    <div style={{ display: "none" }}>
+                    <div className="pr402-wallet-header-wrap">
                         <BaseWalletMultiButton labels={LABELS} />
                     </div>
                     <Dispatcher />

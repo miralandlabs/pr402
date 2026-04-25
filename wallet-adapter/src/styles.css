@@ -242,3 +242,27 @@
 .wallet-adapter-dropdown-list-item:last-child {
     border-bottom: none !important;
 }
+
+/* Host page fixes #miracle-wallet-adapter top-right; this wraps the multi-button */
+.pr402-wallet-header-wrap {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.pr402-wallet-header-wrap .wallet-adapter-button-trigger,
+.pr402-wallet-header-wrap .wallet-adapter-button {
+    background: linear-gradient(
+        135deg,
+        rgba(99, 102, 241, 0.95),
+        rgba(67, 56, 202, 0.92)
+    ) !important;
+    border: 1px solid rgba(148, 163, 184, 0.35) !important;
+    border-radius: 8px !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    min-height: 42px !important;
+    height: auto !important;
+    line-height: 1.25 !important;
+    padding: 0 1rem !important;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35) !important;
+}

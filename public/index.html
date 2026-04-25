@@ -411,13 +411,6 @@
             cursor: not-allowed;
             box-shadow: none;
         }
-        .seller-provision .wallet-chip {
-            font-family: var(--font-mono);
-            font-size: 0.72rem;
-            color: var(--accent);
-            word-break: break-all;
-            max-width: 100%;
-        }
         #provision-status {
             margin-top: 1.25rem;
             font-family: var(--font-mono);
@@ -535,6 +528,14 @@
             border-radius: 3px;
         }
 
+        /* Solana wallet adapter (mirrors Aethervane: connect control top-right) */
+        #miracle-wallet-adapter {
+            position: fixed;
+            top: 2.75rem;
+            right: 1.25rem;
+            z-index: 1100;
+        }
+
         @media (max-width: 768px) {
             .container { padding: 2rem 1rem; }
             .grid { grid-template-columns: 1fr; }
@@ -543,6 +544,10 @@
             .description { margin-left: 0; margin-top: 0.5rem; }
             .system-pulse { gap: 1.5rem; padding: 0.6rem 1rem; }
             .pulse-label { display: none; }
+            #miracle-wallet-adapter {
+                top: 2.5rem;
+                right: 0.75rem;
+            }
         }
     </style>
 </head>
@@ -629,18 +634,18 @@
             <h2 id="seller-provision-title">Create your SplitVault in the browser</h2>
             <p>
                 If a buyer’s first payment failed because your <strong>SplitVault</strong> is not on-chain yet, use this flow.
-                You only need a Solana browser wallet (e.g. <a href="https://phantom.app/" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Phantom</a>
-                or <a href="https://solflare.com/" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Solflare</a>)
+                You only need a Solana browser wallet (e.g. <a href="https://phantom.app/" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Phantom</a>,
+                <a href="https://solflare.com/" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Solflare</a>,
+                <a href="https://www.backpack.app/" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Backpack</a>,
+                or <a href="https://trustwallet.com/" target="_blank" rel="noopener noreferrer" style="color: var(--primary);">Trust</a>)
                 and a little <strong>SOL</strong> on the <strong>same network</strong> as this facilitator (see the banner / health strip below).
             </p>
             <p style="font-size: 0.85rem; margin-bottom: 0;">
-                <strong>Steps:</strong> connect wallet → approve one transaction. No terminal, no npm, no UniversalSettle CLI.
+                <strong>Steps:</strong> use <strong>Connect</strong> in the <strong>top-right</strong> → then approve one transaction below. No terminal, no npm, no UniversalSettle CLI.
             </p>
             <div class="provision-actions">
-                <button type="button" class="btn btn-secondary" id="btn-wallet-connect">1 · Connect wallet</button>
-                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>2 · Create SplitVault</button>
+                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Create SplitVault</button>
             </div>
-            <div class="wallet-chip" id="wallet-connected-label" style="display: none; margin-top: 0.75rem;" aria-live="polite"></div>
             <div id="provision-status" role="status" aria-live="polite"></div>
         </section>
 
@@ -775,7 +780,7 @@
         </div>
     </div>
 
-    <div id="miracle-wallet-adapter" style="display:none" aria-hidden="true"></div>
+    <div id="miracle-wallet-adapter" aria-label="Solana wallet connection"></div>
 
     <script>
         function applyHealthToGlobals(data) {
@@ -919,9 +924,7 @@
 
         (function sellerProvisionUi() {
             var connectedB58 = null;
-            var btnConnect = document.getElementById('btn-wallet-connect');
             var btnProvision = document.getElementById('btn-provision-vault');
-            var label = document.getElementById('wallet-connected-label');
             var statusEl = document.getElementById('provision-status');
 
             function setStatus(text, isError) {
@@ -934,31 +937,16 @@
                 var d = ev.detail || {};
                 connectedB58 = d.pubkeyBase58 || null;
                 if (connectedB58) {
-                    if (label) {
-                        label.style.display = 'block';
-                        label.textContent = 'Connected: ' + connectedB58;
-                    }
                     if (btnProvision) btnProvision.disabled = false;
                 } else {
-                    if (label) label.style.display = 'none';
                     if (btnProvision) btnProvision.disabled = true;
                 }
             });
 
-            if (btnConnect) {
-                btnConnect.addEventListener('click', function () {
-                    if (typeof ShowWalletModal === 'function') {
-                        ShowWalletModal();
-                    } else {
-                        setStatus('Wallet UI is still loading — try again in a second.', true);
-                    }
-                });
-            }
-
             if (btnProvision) {
                 btnProvision.addEventListener('click', async function () {
                     if (!connectedB58) {
-                        setStatus('Connect a wallet first.', true);
+                        setStatus('Connect a wallet first (top-right).', true);
                         return;
                     }
                     if (typeof MiracleSignAndSendVersionedTxB64 !== 'function') {
