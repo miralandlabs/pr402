@@ -103,21 +103,32 @@ function MountWalletAdapter() {
     }, 100);
 }
 
+function pr402WalletMountRoot() {
+    return document.getElementById("miracle-wallet-adapter");
+}
+
+/**
+ * Only click the trigger inside our React mount. A global querySelector matches
+ * extension-injected or third-party UI (e.g. opening a wallet vendor homepage).
+ */
 function ShowWalletModal() {
-    const walletButton = document.querySelector(
-        ".wallet-adapter-button-trigger"
-    );
+    const root = pr402WalletMountRoot();
+    if (!root) return;
+    const walletButton = root.querySelector(".wallet-adapter-button-trigger");
     if (walletButton) {
         walletButton.click();
     }
 }
 
 function DisconnectWallet() {
-    const disconnectButton = document.querySelector(
-        ".wallet-adapter-button-trigger"
-    );
-    if (disconnectButton) {
-        disconnectButton.click();
+    const root = pr402WalletMountRoot();
+    if (root) {
+        const disconnectButton = root.querySelector(
+            ".wallet-adapter-button-trigger"
+        );
+        if (disconnectButton) {
+            disconnectButton.click();
+        }
     }
 
     const keysToRemove = [
