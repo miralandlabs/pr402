@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pr402 Facilitator | Semantic Payment Infrastructure</title>
+    <meta name="description" content="REST-to-Solana gateway for AI-to-AI resource settlement. Seamless UniversalSettle and SLA-Escrow bridging.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.3);
+            --bg: #050507;
+            --card-bg: rgba(12, 12, 16, 0.7);
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+            --accent: #10b981;
+            --border: rgba(51, 65, 85, 0.4);
+            --surface: rgba(2, 6, 23, 0.95);
+            --font-main: 'Space Grotesk', sans-serif;
+            --font-mono: 'Space Mono', monospace;
+            --font-code: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: var(--font-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        /* Ambient Background */
+        .ambient-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15), transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.08), transparent 40%);
+            filter: blur(80px);
+        }
+
+        .ambient-bg::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+            opacity: 0.15;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 5rem;
+        }
+
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            padding: 0.5rem 1.25rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 1px;
+            box-shadow: 0 0 10px var(--accent);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.6; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .logo-text {
+            font-family: var(--font-mono);
+            font-weight: 400;
+            font-size: 0.75rem;
+            letter-spacing: 0.15em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        h1 {
+            font-size: clamp(2.5rem, 8vw, 4.5rem);
+            font-weight: 700;
+            background: linear-gradient(to bottom right, #fff 40%, var(--text-dim));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1.5rem;
+            letter-spacing: -0.04em;
+            line-height: 1.1;
+        }
+
+        p.tagline {
+            font-size: 1.25rem;
+            font-family: var(--font-mono);
+            color: var(--text-dim);
+            max-width: 600px;
+            margin: 0 auto;
+            font-weight: 300;
+            letter-spacing: -0.02em;
+        }
+
+        /* Dashboard Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-top: 4rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 2.5rem;
+            border-radius: 12px;
+            backdrop-filter: blur(20px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0;
+            width: 2px; height: 100%;
+            background: var(--primary);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .card:hover {
+            border-color: rgba(99, 102, 241, 0.5);
+            transform: translateY(-4px);
+            background: rgba(20, 20, 26, 0.8);
+        }
+
+        .card:hover::after {
+            opacity: 1;
+        }
+
+        .card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1.25rem;
+            letter-spacing: -0.03em;
+        }
+
+        .card p {
+            font-family: var(--font-main);
+            color: var(--text-dim);
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            font-weight: 300;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.85rem 1.75rem;
+            border-radius: 4px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            font-size: 0.8rem;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background: #7a7dff;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--text-dim);
+            background: rgba(255,255,255,0.05);
+        }
+
+        /* Endpoints section */
+        .discovery-docs {
+            margin-top: 6rem;
+            padding: 3rem;
+            background: rgba(2, 6, 23, 0.6);
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .discovery-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 2.5rem;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+
+        .discovery-header h2 {
+            font-size: 1.75rem;
+            letter-spacing: -0.03em;
+        }
+
+        .endpoint-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .endpoint {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 1.25rem;
+            background: rgba(255,255,255,0.02);
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.04);
+            transition: background 0.2s;
+        }
+
+        .endpoint:hover {
+            background: rgba(255,255,255,0.04);
+        }
+
+        .method {
+            font-family: var(--font-code);
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.25rem 0.75rem;
+            border-radius: 2px;
+            min-width: 70px;
+            text-align: center;
+            border: 1px solid transparent;
+        }
+
+        .method.get { background: rgba(16, 185, 129, 0.05); color: var(--accent); border-color: rgba(16, 185, 129, 0.2); }
+        .method.post { background: rgba(99, 102, 241, 0.05); color: var(--primary); border-color: rgba(99, 102, 241, 0.2); }
+
+        .path {
+            font-family: var(--font-code);
+            font-size: 0.85rem;
+            color: #cbd5e1;
+        }
+
+        .description {
+            margin-left: auto;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            font-family: var(--font-mono);
+            text-transform: lowercase;
+            opacity: 0.7;
+        }
+
+        footer {
+            margin-top: 8rem;
+            padding-bottom: 4rem;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            letter-spacing: 0.05em;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 2px;
+            font-size: 0.65rem;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 1rem;
+        }
+
+        /* Vault Explorer */
+        .vault-explorer {
+            margin-top: 4rem;
+            background: #0a0a0f;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            border-left: 4px solid var(--primary);
+        }
+
+        .terminal-header {
+            background: #111118;
+            padding: 0.75rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .terminal-dots { display: flex; gap: 6px; }
+        .terminal-dots span { width: 8px; height: 8px; border-radius: 50%; background: #1e293b; }
+        .terminal-title { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
+
+        .terminal-body {
+            padding: 1.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            min-height: 240px;
+            max-height: 500px;
+            overflow-y: auto;
+            background: linear-gradient(to bottom, transparent, rgba(99, 102, 241, 0.02));
+        }
+
+        .terminal-line { margin-bottom: 0.5rem; color: var(--text-dim); }
+        .prompt { color: var(--primary); margin-right: 0.75rem; font-weight: 700; }
+
+        .terminal-input-line { display: flex; align-items: center; margin-bottom: 1.5rem; }
+        #wallet-input {
+            background: transparent;
+            border: none;
+            color: var(--accent);
+            outline: none;
+            width: 100%;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            padding: 0;
+            caret-color: var(--primary);
+        }
+
+        .output-row { margin-bottom: 1.5rem; padding-left: 1rem; border-left: 1px solid rgba(255,255,255,0.1); }
+        .output-label { color: var(--text-dim); width: 130px; display: inline-block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .output-val { color: var(--text); word-break: break-all; font-weight: 400; }
+
+        /* System Pulse */
+        .system-pulse {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(2, 6, 23, 0.95);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid var(--border);
+            padding: 0.6rem 2rem;
+            display: flex;
+            justify-content: center;
+            gap: 4rem;
+            z-index: 100;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            letter-spacing: 0.12em;
+            box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+        }
+
+        .pulse-item { display: flex; align-items: center; gap: 0.6rem; }
+        .pulse-dot { width: 5px; height: 5px; border-radius: 1px; background: #64748b; transition: all 0.3s; }
+        .pulse-dot.online { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+        .pulse-dot.error { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+        .pulse-dot.warning { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+        .pulse-label { color: var(--text-dim); text-transform: uppercase; }
+        .pulse-value { color: var(--text); }
+
+        /* Environment Banner */
+        .env-banner {
+            background: #f59e0b;
+            color: #000;
+            text-align: center;
+            padding: 0.35rem;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 800;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            display: none; /* Shown dynamically */
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+        }
+        .env-banner.production {
+            background: var(--accent);
+            color: #000;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .section-kicker {
+            margin-top: 3rem;
+            margin-bottom: 0;
+        }
+
+        .section-kicker h2 {
+            font-size: 1.35rem;
+            letter-spacing: -0.03em;
+            margin: 0.5rem 0 0.35rem;
+        }
+
+        .section-kicker .section-lead {
+            color: var(--text-dim);
+            font-size: 0.95rem;
+            max-width: 720px;
+            font-weight: 300;
+            line-height: 1.55;
+        }
+
+        .card-links {
+            list-style: none;
+            margin: -0.25rem 0 1.5rem;
+            padding: 0;
+        }
+
+        .card-links li {
+            margin-bottom: 0.45rem;
+        }
+
+        .card-links a {
+            color: var(--primary);
+            text-decoration: none;
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            letter-spacing: 0.02em;
+        }
+
+        .card-links a:hover {
+            text-decoration: underline;
+        }
+
+        .badge-amber {
+            background: rgba(245, 158, 11, 0.12) !important;
+            color: #fbbf24 !important;
+            border-color: rgba(245, 158, 11, 0.28) !important;
+        }
+
+        .inline-code {
+            font-family: var(--font-code);
+            font-size: 0.88em;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 0.12em 0.4em;
+            border-radius: 3px;
+        }
+
+        @media (max-width: 768px) {
+            .container { padding: 2rem 1rem; }
+            .grid { grid-template-columns: 1fr; }
+            .discovery-docs { padding: 1.5rem; }
+            .endpoint { flex-direction: column; align-items: flex-start; }
+            .description { margin-left: 0; margin-top: 0.5rem; }
+            .system-pulse { gap: 1.5rem; padding: 0.6rem 1rem; }
+            .pulse-label { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="env-banner" id="env-banner">PREVIEW ENVIRONMENT • SOLANA DEVNET</div>
+    <div class="ambient-bg"></div>
+    <div class="container" id="main">
+        <header>
+            <div class="logo-container">
+                <div class="logo-dot"></div>
+                <span class="logo-text">ACTIVE FACILITATOR</span>
+            </div>
+            <h1>The Bridge to<br>Agentic Liquidity</h1>
+            <p class="tagline">Providing an effortless REST gateway to the Solana economic stack. One API for all agentic payments.</p>
+        </header>
+
+        <div class="section-kicker">
+            <span class="badge">Documentation</span>
+            <h2>Agent integration</h2>
+            <p class="section-lead">
+                <strong style="color: var(--text); font-weight: 500;">Seller agents</strong> (resource providers) onboard vaults and publish correct
+                <span class="inline-code">payTo</span> PDAs.
+                <strong style="color: var(--text); font-weight: 500;">Buyer agents</strong> discover <span class="inline-code">accepts[]</span>, build and sign proofs, then call verify and settle.
+                Machine <span class="inline-code">payTo</span> rules: <a href="/agent-payTo-semantics.json" style="color: var(--primary);">/agent-payTo-semantics.json</a>
+                — full runbook: <a href="/agent-integration.md" style="color: var(--primary);">/agent-integration.md</a>
+                — sellers: <a href="/agent-integration.md#publishing-a-payment-required-line-sellers" style="color: var(--primary);">publish 402</a>;
+                buyers routed from a 402: <a href="/agent-integration.md#payment-pipeline-from-accepts-to-settlement" style="color: var(--primary);">pipeline</a>,
+                <a href="/agent-integration.md#how-pr402-differs-from-the-generic-x402-spec" style="color: var(--primary);">vs spec</a>.
+            </p>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <span class="badge badge-amber">Seller agents</span>
+                <h3>Resource providers</h3>
+                <p>UniversalSettle split-vault onboarding, sovereign discount path, optional signed registry, and SLA-Escrow bank metadata. Your x402 lines must use program PDAs—not a bare wallet—as <span class="inline-code">payTo</span> for settlement proofs.</p>
+                <ul class="card-links">
+                    <li><a href="/seller-quick-start.md">Seller quick start (3 code changes) →</a></li>
+                    <li><a href="/agent-integration.md#seller-agents-resource-providers">Seller runbook →</a></li>
+                    <li><a href="/agent-integration.md#publishing-a-payment-required-line-sellers">Publishing <span class="inline-code">accepts[]</span> →</a></li>
+                    <li><a href="/api/v1/facilitator/discovery?wallet=...&scheme=exact">GET /discovery (resolve payTo)</a></li>
+                    <li><a href="/onboarding_guide.md">Onboarding guide →</a></li>
+                </ul>
+                <div class="btn-group">
+                    <a href="/seller-quick-start.md" class="btn btn-primary" id="btn-seller-quickstart">Quick start</a>
+                    <a href="/agent-integration.md#seller-agents-resource-providers" class="btn btn-secondary" id="btn-seller-docs">Full runbook</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <span class="badge">Buyer agents</span>
+                <h3>Payers</h3>
+                <p>Match the resource’s 402 offer, call unsigned-tx builders when needed, sign locally, then <span class="inline-code">POST /verify</span> and <span class="inline-code">POST /settle</span> with the same JSON body. SLA-Escrow templates from the facilitator carry canonical <span class="inline-code">payTo</span>.</p>
+                <ul class="card-links">
+                    <li><a href="/agent-integration.md#buyer-agents-payers">Buyer runbook →</a></li>
+                    <li><a href="/agent-integration.md#payment-pipeline-from-accepts-to-settlement">402 → signed tx pipeline →</a></li>
+                    <li><a href="/agent-integration.md#how-pr402-differs-from-the-generic-x402-spec">pr402 vs x402 spec →</a></li>
+                    <li><a href="/openapi.json">OpenAPI 3.1 →</a></li>
+                </ul>
+                <div class="btn-group">
+                    <a href="/agent-integration.md#buyer-agents-payers" class="btn btn-primary" id="btn-buyer-docs">Buyer steps</a>
+                    <a href="/openapi.json" class="btn btn-secondary" id="btn-openapi">OpenAPI</a>
+                </div>
+            </div>
+
+            <div class="card">
+                <span class="badge">Live discovery</span>
+                <h3>Capabilities &amp; health</h3>
+                <p>Machine-readable <span class="inline-code">features</span>, <span class="inline-code">feePayer</span>, <span class="inline-code">chainId</span>, and endpoint index. Use for agent bootstrapping and probes.</p>
+                <ul class="card-links">
+                    <li><a href="/api/v1/facilitator/capabilities">GET /capabilities</a></li>
+                    <li><a href="/agent-payTo-semantics.json">payTo semantics (JSON)</a></li>
+                    <li><a href="/api/v1/facilitator/health">GET /health</a></li>
+                </ul>
+                <div class="btn-group">
+                    <a href="/api/v1/facilitator/capabilities" class="btn btn-primary" id="btn-capabilities">Capabilities</a>
+                    <a href="/api/v1/facilitator/supported" class="btn btn-secondary" id="btn-supported">Supported</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- New: Vault Explorer -->
+        <section class="vault-explorer">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                    <span></span><span></span><span></span>
+                </div>
+                <div class="terminal-title">VAULT EXPLORER v1.0.0</div>
+            </div>
+            <div class="terminal-body" id="terminal">
+                <div class="terminal-line">
+                    <span class="prompt">></span> pr402 · UniversalSettle vault PDAs + SLA-Escrow scheme metadata (see <span class="inline-code">schemes</span> in JSON).
+                </div>
+                <div class="terminal-line">
+                    <span class="prompt">></span> Enter the seller / resource-provider wallet pubkey to preview addresses. Buyer agents: follow the buyer runbook for verify and settle.
+                </div>
+                <div class="terminal-input-line">
+                    <span class="prompt">></span>
+                    <input type="text" id="wallet-input" placeholder="Paste Pubkey..." autocomplete="off">
+                </div>
+                <div id="terminal-output"></div>
+            </div>
+        </section>
+
+        <section class="discovery-docs">
+            <div class="discovery-header">
+                <h2>API Inventory</h2>
+                <p class="tagline" style="font-size: 0.9rem;">HTTP API · x402 v2 · schema v1.0.0 (see /health)</p>
+            </div>
+            
+            <div class="endpoint-list">
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/health</span>
+                    <span class="description">rpc · db · schema · environment</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/capabilities</span>
+                    <span class="description">features, fee payer, endpoint index, agentManifest.payToSemantics</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/agent-payTo-semantics.json</span>
+                    <span class="description">agent: payTo rules per rail (also under capabilities agentManifest)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/supported</span>
+                    <span class="description">schemes, signers, rail extras</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/verify</span>
+                    <span class="description">validate payment proof (buyer flow)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/settle</span>
+                    <span class="description">submit or confirm settlement</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/build-exact-payment-tx</span>
+                    <span class="description">unsigned UniversalSettle exact (buyer)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/build-sla-escrow-payment-tx</span>
+                    <span class="description">unsigned FundPayment (buyer)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/discovery</span>
+                    <span class="description">resolve canonical payTo for 402 (seller)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/onboard</span>
+                    <span class="description">preview PDAs &amp; fees (seller)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/onboard/build-tx</span>
+                    <span class="description">unsigned create_vault tx (seller)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/onboard/challenge</span>
+                    <span class="description">HMAC challenge for signed registry</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/onboard</span>
+                    <span class="description">submit wallet signature (seller registry)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method get">GET</span>
+                    <span class="path">/api/v1/facilitator/vault-snapshot</span>
+                    <span class="description">rpc vault balances (seller diagnostics)</span>
+                </div>
+                <div class="endpoint">
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/upgrade</span>
+                    <span class="description">expand lite 402 into full paymentrequired</span>
+                </div>
+            </div>
+        </section>
+
+        <footer style="margin-bottom: 4rem;">
+            <p>© 2026 Miraland Labs • Built for the Autonomous Future</p>
+        </footer>
+
+        <!-- New: System Pulse -->
+        <div class="system-pulse">
+            <div class="pulse-item">
+                <div class="pulse-dot" id="dot-rpc"></div>
+                <span class="pulse-label">SOLANA RPC:</span>
+                <span class="pulse-value" id="val-rpc">CONNECTING...</span>
+            </div>
+            <div class="pulse-item">
+                <div class="pulse-dot" id="dot-db"></div>
+                <span class="pulse-label">DATABASE:</span>
+                <span class="pulse-value" id="val-db">CONNECTING...</span>
+            </div>
+            <div class="pulse-item">
+                <span class="pulse-label">SCHEMA:</span>
+                <span class="pulse-value">v1.0.0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function updateHealth() {
+            try {
+                const res = await fetch('/api/v1/facilitator/health');
+                const data = await res.json();
+                
+                // Update Environment Banner
+                const banner = document.getElementById('env-banner');
+                banner.style.display = 'block';
+                if (data.environment === 'Preview') {
+                    banner.innerText = `PREVIEW ENVIRONMENT • SOLANA ${data.solanaNetwork.toUpperCase()}`;
+                    banner.className = 'env-banner';
+                } else {
+                    banner.innerText = `INSTITUTIONAL PRODUCTION • SOLANA ${data.solanaNetwork.toUpperCase()} ACTIVE`;
+                    banner.className = 'env-banner production';
+                }
+
+                const rpcDot = document.getElementById('dot-rpc');
+                const rpcVal = document.getElementById('val-rpc');
+                const isRpcOk = data.solanaRpc === 'connected';
+                rpcDot.className = `pulse-dot ${isRpcOk ? 'online' : 'error'}`;
+                rpcVal.innerText = isRpcOk ? `SLOT ${data.solanaSlot || 'OK'}` : 'OFFLINE';
+
+                const dbDot = document.getElementById('dot-db');
+                const dbVal = document.getElementById('val-db');
+                const isDbOk = data.database === 'connected';
+                dbDot.className = `pulse-dot ${isDbOk ? 'online' : data.database === 'disabled' ? 'pulse-dot' : 'error'}`;
+                dbVal.innerText = data.database.toUpperCase();
+            } catch (e) {
+                console.warn("Health telemetry interrupted.");
+            }
+        }
+
+        const walletInput = document.getElementById('wallet-input');
+        const output = document.getElementById('terminal-output');
+        const terminal = document.getElementById('terminal');
+
+        walletInput.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                const wallet = walletInput.value.trim();
+                if (!wallet) return;
+                
+                // Print command
+                const cmdLine = document.createElement('div');
+                cmdLine.className = 'terminal-line';
+                cmdLine.style.marginTop = '1rem';
+                cmdLine.style.borderTop = '1px solid rgba(255,255,255,0.05)';
+                cmdLine.style.paddingTop = '1rem';
+                cmdLine.innerHTML = `<span class="prompt">></span> onboard ${wallet}`;
+                output.appendChild(cmdLine);
+                walletInput.value = '';
+
+                try {
+                    const res = await fetch(`/api/v1/facilitator/onboard?wallet=${wallet}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error);
+
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'output-row';
+                    
+                    let html = `<div style="color:var(--accent); margin-bottom: 1rem; font-weight:700;">[STATUS] RESOLUTION COMPLETE</div>`;
+                    
+                    for (const [name, info] of Object.entries(data.schemes || {})) {
+                        const roleStyle = info.role.includes("Seller") ? "color:#f59e0b;" : "color:#a78bfa;";
+                        html += `
+                            <div style="margin-top: 1.5rem; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 1rem;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
+                                    <span style="color: var(--primary); font-weight: 700; font-size: 0.75rem;">PROTOCOL: ${name.toUpperCase()}</span>
+                                    <span style="${roleStyle} font-size: 0.65rem; font-family: var(--font-mono); text-transform: uppercase;">[ROLE: ${info.role}]</span>
+                                </div>
+                                <div><span class="output-label">${info.label}</span><span class="output-val">${info.vaultPda}</span></div>
+                                <div><span class="output-label">SOL Storage</span><span class="output-val">${info.solStoragePda}</span></div>
+                                ${info.tokenPda ? `<div><span class="output-label">Token ATA</span><span class="output-val">${info.tokenPda}</span></div>` : ''}
+                                <div><span class="output-label">Fee (BPS)</span><span class="output-val">${info.feeBps}</span></div>
+                                <div><span class="output-label">Deployment</span><span class="output-val">${info.status}</span></div>
+                                <div style="margin-top: 0.5rem; color: #475569; font-size: 0.7rem; font-style: italic;">
+                                    ${name === 'exact' ? "* exact: UniversalSettle — x402 payTo = SplitVault (vaultPda)." : "* sla-escrow: x402 payTo = escrow PDA for each mint; use GET /discovery?scheme=sla-escrow&asset=<mint>. See /agent-payTo-semantics.json."}
+                                </div>
+                            </div>
+                        `;
+                    }
+                    resultDiv.innerHTML = html;
+                    output.appendChild(resultDiv);
+                } catch (err) {
+                    const errDiv = document.createElement('div');
+                    errDiv.style.color = '#ef4444';
+                    errDiv.style.marginTop = '0.5rem';
+                    errDiv.innerText = `[FAILURE] ${err.message}`;
+                    output.appendChild(errDiv);
+                }
+                
+                // Auto-scroll
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        });
+
+        // Telemetry loop
+        updateHealth();
+        setInterval(updateHealth, 15000);
+    </script>
+</body>
+</html>

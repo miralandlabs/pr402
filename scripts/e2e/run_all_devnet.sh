@@ -9,7 +9,7 @@
 #
 # Usage:
 #   export RPC_URL="https://devnet.helius-rpc.com/?api-key=..."
-#   export FACILITATOR_URL="https://preview.pr402.signer-payer.me"
+#   export FACILITATOR_URL="https://preview.agent.pay402.me"
 #   ./run_all_devnet.sh
 #
 # Flags:

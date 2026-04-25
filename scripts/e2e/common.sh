@@ -6,7 +6,7 @@ E2E_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PR402_ROOT="$(cd "$E2E_ROOT/../.." && pwd)"
 WORKSPACE_ROOT="$(cd "$PR402_ROOT/.." && pwd)"
 
-export FACILITATOR_URL="${FACILITATOR_URL:-https://preview.pr402.signer-payer.me}"
+export FACILITATOR_URL="${FACILITATOR_URL:-https://preview.agent.pay402.me}"
 export RPC_URL="${RPC_URL:-${SOLANA_RPC_URL:-https://api.devnet.solana.com}}"
 # Circle USDC on devnet (same family as scripts elsewhere in the monorepo)
 export E2E_USDC_MINT="${E2E_USDC_MINT:-4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU}"
@@ -120,6 +120,6 @@ facilitator_settle() {
   curl -sS -o "$out" -w "%{http_code}" \
     -X POST "${FACILITATOR_URL}/api/v1/facilitator/settle" \
     -H "Content-Type: application/json" \
-    -H "X-Correlation-Id: $cid" \
+    -H ": $cid" \
     -d "$body"
 }

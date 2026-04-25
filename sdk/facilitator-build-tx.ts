@@ -22,12 +22,19 @@ export const FACILITATOR_SETTLE_PATH = "/api/v1/facilitator/settle";
 export const FACILITATOR_OPENAPI_PATH = "/openapi.json";
 /** Markdown agent runbook — static `public/agent-integration.md` (same pattern as OpenAPI). */
 export const FACILITATOR_AGENT_INTEGRATION_PATH = "/agent-integration.md";
+/** Machine-readable `payTo` + mint-allowlist metadata; also `agentManifest.payToSemantics` on `GET .../capabilities`. */
+export const FACILITATOR_AGENT_PAYTO_SEMANTICS_PATH = "/agent-payTo-semantics.json";
+/** Concise 6-step buyer quick start (static `public/quickstart-buyer.md`). */
+export const FACILITATOR_QUICKSTART_BUYER_PATH = "/quickstart-buyer.md";
+/** Concise 5-step seller quick start with `/upgrade` as default path (static `public/quickstart-seller.md`). */
+export const FACILITATOR_QUICKSTART_SELLER_PATH = "/quickstart-seller.md";
 
 export type BuildExactPaymentTxRequest = {
   payer: string;
   accepted: unknown;
   resource: unknown;
   skipSourceBalanceCheck?: boolean;
+  autoWrapSol?: boolean;
 };
 
 export type BuildSlaEscrowPaymentTxRequest = {
@@ -38,18 +45,29 @@ export type BuildSlaEscrowPaymentTxRequest = {
   oracleAuthority: string;
   paymentUid?: string;
   skipSourceBalanceCheck?: boolean;
-  /** `true` = buyer fee payer (CLI-shaped). Omit/false = facilitator pays fees (`exact`-aligned). */
-  buyerPaysTransactionFees?: boolean;
+  /**
+   * false/omit (default): buyer pays Solana network fees (single signer).
+   * true: facilitator fee payer, buyer signs FundPayment (two-signer; same idea as build-exact).
+   * HTTP: rejected unless deployment sets PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP.
+   */
+  facilitatorPaysTransactionFees?: boolean;
+  autoWrapSol?: boolean;
 };
 
+/** 
+ * `POST .../build-exact-payment-tx`, `POST .../build-sla-escrow-payment-tx`, `GET .../onboard/build-tx`
+ * See OpenAPI `BuildPaymentTxResponse`.
+ */
 export type BuildPaymentTxResponse = {
   x402Version: number;
   transaction: string;
   recentBlockhash: string;
+  recentBlockhashExpiresAt: number;
   feePayer: string;
   payer: string;
-  verifyBodyTemplate?: unknown;
-  paymentUid?: string;
+  payerSignatureIndex: number;
+  paymentUid?: string | null;
+  verifyBodyTemplate: unknown;
   notes?: string[];
 };
 
@@ -120,14 +138,14 @@ export function getCapabilities(facilitatorBaseUrl: string): Promise<unknown> {
   return getJson(facilitatorBaseUrl, FACILITATOR_CAPABILITIES_PATH);
 }
 
-/** `POST .../verify` — optional `X-Correlation-Id` header. */
+/** `POST .../verify` — optional `X-Correlation-ID` header. */
 export function verifyPayment(
   facilitatorBaseUrl: string,
   body: X402V2VerifySettleBody,
   correlationId?: string,
 ): Promise<unknown> {
   const headers: Record<string, string> = {};
-  if (correlationId) headers["X-Correlation-Id"] = correlationId;
+  if (correlationId) headers["X-Correlation-ID"] = correlationId;
   return postJson(facilitatorBaseUrl, FACILITATOR_VERIFY_PATH, body, headers);
 }
 
@@ -138,7 +156,7 @@ export function settlePayment(
   correlationId?: string,
 ): Promise<unknown> {
   const headers: Record<string, string> = {};
-  if (correlationId) headers["X-Correlation-Id"] = correlationId;
+  if (correlationId) headers["X-Correlation-ID"] = correlationId;
   return postJson(facilitatorBaseUrl, FACILITATOR_SETTLE_PATH, body, headers);
 }
 

@@ -50,6 +50,8 @@ pub enum SolanaChainProviderError {
     Transaction(#[from] TransactionError),
     #[error("Invalid transaction: {0}")]
     InvalidTransaction(#[from] solana_client::rpc_response::UiTransactionError),
+    #[error("Signer not found in transaction")]
+    SignerNotFoundInTransaction,
     #[error("Account not found")]
     AccountNotFound,
 }
@@ -64,6 +66,7 @@ pub struct SolanaChainProvider {
     pub(crate) rpc_client: RpcClient,
     pub(crate) keypair: Arc<Keypair>,
     pub(crate) chain_id: crate::chain::ChainId,
+    pub(crate) rpc_url: String,
     pub(crate) universalsettle: Option<crate::config::UniversalSettleConfig>,
     pub(crate) escrow: Option<crate::config::SLAEscrowConfig>,
     pub(crate) max_compute_unit_limit: u32,
@@ -81,13 +84,39 @@ impl SolanaChainProvider {
         max_compute_unit_price: u64,
     ) -> Self {
         Self {
-            rpc_client: RpcClient::new(rpc_url.to_string()),
+            rpc_client: RpcClient::new_with_commitment(
+                rpc_url.to_string(),
+                CommitmentConfig::confirmed(),
+            ),
             keypair: Arc::new(keypair),
             chain_id,
+            rpc_url: rpc_url.to_string(),
             universalsettle,
             escrow,
             max_compute_unit_limit,
             max_compute_unit_price,
+        }
+    }
+
+    pub fn rpc_url(&self) -> &str {
+        &self.rpc_url
+    }
+
+    pub async fn get_health(&self) -> Result<u64, SolanaChainProviderError> {
+        // We use get_slot as a proxy for 'active/responsive' health.
+        self.rpc_client.get_slot().await.map_err(|e| e.into())
+    }
+
+    pub async fn account_exists(&self, pubkey: &Pubkey) -> Result<bool, SolanaChainProviderError> {
+        match self.rpc_client.get_account(pubkey).await {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                if e.to_string().contains("AccountNotFound") {
+                    Ok(false)
+                } else {
+                    Err(e.into())
+                }
+            }
         }
     }
 
@@ -264,13 +293,29 @@ impl SolanaChainProvider {
             }
         }
 
-        // 2. Ensure ATA for Vault exists if payment is in SPL tokens
+        // 2. Ensure ATA for Vault exists if payment is in SPL tokens (legacy Token or plain Token-2022 mint).
         if let Some(mint_key) = mint {
             if mint_key != Pubkey::default() {
+                let mint_acc = self
+                    .rpc_client
+                    .get_account(&mint_key)
+                    .await
+                    .map_err(|e| SolanaChainProviderError::Transport(e.to_string()))?;
+                let token_program = if mint_acc.owner == spl_token::ID {
+                    spl_token::ID
+                } else if mint_acc.owner == TOKEN_2022_PROGRAM_ID {
+                    TOKEN_2022_PROGRAM_ID
+                } else {
+                    return Err(SolanaChainProviderError::Transport(format!(
+                        "mint {} owner {} is not spl_token or token-2022",
+                        mint_key, mint_acc.owner
+                    )));
+                };
+
                 let (ata, _) = Pubkey::find_program_address(
                     &[
                         vault_pda.as_ref(),
-                        TOKEN_PROGRAM_ID.as_ref(),
+                        token_program.as_ref(),
                         mint_key.as_ref(),
                     ],
                     &ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -288,7 +333,7 @@ impl SolanaChainProvider {
                             solana_transaction::AccountMeta::new_readonly(vault_pda, false),
                             solana_transaction::AccountMeta::new_readonly(mint_key, false),
                             solana_transaction::AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-                            solana_transaction::AccountMeta::new_readonly(TOKEN_PROGRAM_ID, false),
+                            solana_transaction::AccountMeta::new_readonly(token_program, false),
                         ],
                         data: vec![1], // CreateIdempotent
                     };
@@ -323,11 +368,18 @@ impl SolanaChainProvider {
         &self,
         mut tx: VersionedTransaction,
     ) -> Result<VersionedTransaction, SolanaChainProviderError> {
-        // In Solana 3.x/4.x split crates, sometimes VersionedTransaction doesn't have try_sign.
-        // We can sign manually if needed, but try tx.sign first with correct imports.
-        // If that fails, we use the signatures array directly.
-        tx.signatures[0] = self.keypair.sign_message(tx.message.serialize().as_slice());
-        Ok(tx)
+        let pk = self.pubkey();
+        if let Some(idx) = tx
+            .message
+            .static_account_keys()
+            .iter()
+            .position(|k| *k == pk)
+        {
+            tx.signatures[idx] = self.keypair.sign_message(tx.message.serialize().as_slice());
+            Ok(tx)
+        } else {
+            Err(SolanaChainProviderError::SignerNotFoundInTransaction)
+        }
     }
 
     /// Submit without local simulation (facilitator chooses when fee/speed favors skipping preflight).

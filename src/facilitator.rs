@@ -36,16 +36,62 @@ pub trait Facilitator: Send + Sync {
 
     /// Onboards a resource owner's wallet by ensuring vaults are provisioned.
     async fn onboard(&self, wallet: &str) -> Result<OnboardResponse, Self::Error>;
+
+    /// Builds an unsigned transaction for proactive onboarding to become Sovereign.
+    async fn build_onboard_tx(
+        &self,
+        wallet: &str,
+    ) -> Result<proto::v2::BuildPaymentTxResponse, Self::Error>;
+
+    /// Programmatic discovery of `payTo` address and required institutional `extra` metadata.
+    async fn discovery(
+        &self,
+        wallet: &str,
+        scheme: &str,
+        asset: Option<&str>,
+    ) -> Result<SchemeOnboardInfo, Self::Error>;
+
+    /// Upgrades a Lite 402 challenge into a full Institutional PaymentRequired response.
+    async fn upgrade(
+        &self,
+        request: &proto::PaymentRequired,
+    ) -> Result<proto::PaymentRequired, Self::Error>;
 }
 
 /// Information returned after onboarding a wallet for a specific scheme.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemeOnboardInfo {
+    pub label: String,
+    pub role: String,
     pub vault_pda: String,
     pub sol_storage_pda: String,
+    pub token_pda: Option<String>,
     pub fee_bps: crate::proto::util::U16String,
     pub status: String,
+    pub is_sovereign: bool,
+    pub provisioning_status: Option<ProvisioningStatus>,
+    /// SLA-Escrow bank PDA (same as `supported.kinds[].extra.bankAddress`). Omitted for exact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bank_pda: Option<String>,
+    /// Agent-oriented: `splitVault` (exact) or `escrowPda` (sla-escrow) — x402 `payTo` must match this kind of address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pay_to_kind: Option<String>,
+    /// How agents should resolve `payTo`: `onboard.vaultPda` | `discovery.vaultPda` (query includes `asset` mint).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pay_to_resolve: Option<String>,
+    /// When `pay_to_kind` is `escrowPda`, mint (base58) that `vaultPda` was derived for; omit if N/A (exact).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vault_pda_preview_mint: Option<String>,
+}
+
+/// Recovery progress for JIT provisioned vaults.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisioningStatus {
+    pub asset: String,     // "SOL" or "USDC" (mint symbol)
+    pub recovered: String, // Raw units as string
+    pub total: String,     // Raw units as string
 }
 
 /// Complete onboarding response for a wallet across all supported schemes.
@@ -60,6 +106,7 @@ pub struct OnboardResponse {
 /// Local facilitator implementation supporting multiple Solana schemes.
 pub struct FacilitatorLocal {
     scheme_handlers: HashMap<String, Arc<dyn X402SchemeFacilitator>>,
+    db: Option<crate::db::Pr402Db>,
 }
 
 impl FacilitatorLocal {
@@ -98,7 +145,10 @@ impl FacilitatorLocal {
             }
         }
 
-        Ok(Self { scheme_handlers })
+        Ok(Self {
+            scheme_handlers,
+            db,
+        })
     }
 }
 
@@ -199,6 +249,59 @@ impl Facilitator for FacilitatorLocal {
 
         Ok(response)
     }
+
+    async fn build_onboard_tx(
+        &self,
+        wallet: &str,
+    ) -> Result<proto::v2::BuildPaymentTxResponse, Self::Error> {
+        // UniversalSettle Proactive Onboarding: Any scheme handler can build it since they
+        // all share the same UniversalSettle infrastructure. We pick the first one.
+        for handler in self.scheme_handlers.values() {
+            if let Ok(tx) = handler.build_onboard_tx(wallet).await {
+                return Ok(tx);
+            }
+        }
+
+        Err(FacilitatorLocalError::Onboard(
+            X402SchemeFacilitatorError::OnchainFailure(
+                "No scheme handler could build onboarding transaction".to_string(),
+            ),
+        ))
+    }
+
+    async fn discovery(
+        &self,
+        wallet: &str,
+        scheme: &str,
+        asset: Option<&str>,
+    ) -> Result<SchemeOnboardInfo, Self::Error> {
+        let handler = self.scheme_handlers.get(scheme).ok_or_else(|| {
+            FacilitatorLocalError::Discovery(X402SchemeFacilitatorError::OnchainFailure(format!(
+                "Unsupported scheme: {}",
+                scheme
+            )))
+        })?;
+
+        handler
+            .discovery(wallet, asset)
+            .await
+            .map_err(FacilitatorLocalError::Discovery)
+    }
+
+    async fn upgrade(
+        &self,
+        request: &proto::PaymentRequired,
+    ) -> Result<proto::PaymentRequired, Self::Error> {
+        let mut upgraded = request.clone();
+        for handler in self.scheme_handlers.values() {
+            upgraded = handler
+                .upgrade(&upgraded)
+                .await
+                .map_err(FacilitatorLocalError::Upgrade)?;
+        }
+        crate::parameters::warn_accepts_assets_not_in_allowlist(self.db.as_ref(), &upgraded).await;
+        Ok(upgraded)
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -207,4 +310,10 @@ pub enum FacilitatorLocalError {
     Verification(X402SchemeFacilitatorError),
     #[error(transparent)]
     Settlement(X402SchemeFacilitatorError),
+    #[error(transparent)]
+    Upgrade(X402SchemeFacilitatorError),
+    #[error(transparent)]
+    Onboard(X402SchemeFacilitatorError),
+    #[error(transparent)]
+    Discovery(X402SchemeFacilitatorError),
 }

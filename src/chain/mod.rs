@@ -21,6 +21,8 @@ pub trait ChainProviderOps {
 #[derive(Clone)]
 pub struct ChainProvider {
     pub solana: Arc<solana::SolanaChainProvider>,
+    /// HTTP build only: when false, `facilitatorPaysTransactionFees: true` is rejected (see `Config`).
+    pub sla_escrow_allow_facilitator_fee_sponsorship: bool,
 }
 
 impl ChainProvider {
@@ -36,8 +38,9 @@ impl ChainProvider {
 
         // Load UniversalSettle config if present
         let mut universalsettle = config.universalsettle.clone();
-        let rpc_client = solana_client::nonblocking::rpc_client::RpcClient::new(
+        let rpc_client = solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
             config.solana_rpc_url.as_ref().to_owned(),
+            solana_commitment_config::CommitmentConfig::confirmed(),
         );
 
         if let Some(ref mut us_config) = universalsettle {
@@ -68,6 +71,8 @@ impl ChainProvider {
 
         Ok(ChainProvider {
             solana: Arc::new(provider),
+            sla_escrow_allow_facilitator_fee_sponsorship: config
+                .sla_escrow_allow_facilitator_fee_sponsorship,
         })
     }
 }

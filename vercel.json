@@ -15,6 +15,16 @@
       "source": "/api/v1/facilitator/agent-integration.md",
       "destination": "/agent-integration.md",
       "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/onboarding_guide.md",
+      "destination": "/onboarding_guide.md",
+      "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/agent-payTo-semantics.json",
+      "destination": "/agent-payTo-semantics.json",
+      "permanent": false
     }
   ],
   "builds": [
@@ -35,6 +45,11 @@
   ],
   "routes": [
     {
+      "src": "/",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
       "src": "/openapi.json",
       "dest": "/public/openapi.json"
     },
@@ -43,12 +58,29 @@
       "dest": "/public/agent-integration.md"
     },
     {
+      "src": "/onboarding_guide.md",
+      "dest": "/public/onboarding_guide.md"
+    },
+    {
+      "src": "/agent-payTo-semantics.json",
+      "dest": "/public/agent-payTo-semantics.json"
+    },
+    {
+      "src": "/seller-quick-start.md",
+      "dest": "/public/seller-quick-start.md"
+    },
+    {
       "src": "/api/v1/facilitator/verify",
       "dest": "/src/bin/facilitator",
       "methods": ["POST", "OPTIONS"]
     },
     {
       "src": "/api/v1/facilitator/settle",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/upgrade",
       "dest": "/src/bin/facilitator",
       "methods": ["POST", "OPTIONS"]
     },
@@ -73,12 +105,22 @@
       "methods": ["GET", "OPTIONS"]
     },
     {
+      "src": "/api/v1/facilitator/onboard/build-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
       "src": "/api/v1/facilitator/onboard",
       "dest": "/src/bin/facilitator",
       "methods": ["GET", "POST", "OPTIONS"]
     },
     {
       "src": "/api/v1/facilitator/vault-snapshot",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/discovery",
       "dest": "/src/bin/facilitator",
       "methods": ["GET", "OPTIONS"]
     },

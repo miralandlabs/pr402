@@ -9,8 +9,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use super::{
-    BuildExactPaymentTxRequest, BuildExactPaymentTxResponse, BuildSlaEscrowPaymentTxRequest,
-    BuildSlaEscrowPaymentTxResponse, BUILD_EXACT_PAYMENT_TX_PATH, BUILD_SLA_ESCROW_PAYMENT_TX_PATH,
+    BuildExactPaymentTxRequest, BuildPaymentTxResponse, BuildSlaEscrowPaymentTxRequest,
+    BUILD_EXACT_PAYMENT_TX_PATH, BUILD_SLA_ESCROW_PAYMENT_TX_PATH,
     FACILITATOR_AGENT_INTEGRATION_PATH, FACILITATOR_CAPABILITIES_PATH, FACILITATOR_HEALTH_PATH,
     FACILITATOR_OPENAPI_PATH, FACILITATOR_SETTLE_PATH, FACILITATOR_SUPPORTED_PATH,
     FACILITATOR_VERIFY_PATH,
@@ -94,7 +94,7 @@ async fn post_json<T: DeserializeOwned>(
         .header(CONTENT_TYPE, "application/json")
         .json(body);
     if let Some(id) = correlation_id {
-        req = req.header("X-Correlation-Id", id);
+        req = req.header("X-Correlation-ID", id);
     }
     let res = req.send().await?;
     let status = res.status();
@@ -116,7 +116,7 @@ pub struct FacilitatorHttpClient {
 }
 
 impl FacilitatorHttpClient {
-    /// `base_url`: e.g. `https://preview.pr402.signer-payer.me` (trailing slash OK).
+    /// `base_url`: e.g. `https://preview.agent.pay402.me` (trailing slash OK).
     pub fn new(base_url: impl AsRef<str>) -> Result<Self, FacilitatorHttpError> {
         Ok(Self {
             base_url: normalize_base_url(base_url.as_ref())?,
@@ -166,14 +166,14 @@ impl FacilitatorHttpClient {
     pub async fn build_exact_payment_tx(
         &self,
         body: &BuildExactPaymentTxRequest,
-    ) -> Result<BuildExactPaymentTxResponse, FacilitatorHttpError> {
+    ) -> Result<BuildPaymentTxResponse, FacilitatorHttpError> {
         build_exact_payment_tx(&self.base_url, body).await
     }
 
     pub async fn build_sla_escrow_payment_tx(
         &self,
         body: &BuildSlaEscrowPaymentTxRequest,
-    ) -> Result<BuildSlaEscrowPaymentTxResponse, FacilitatorHttpError> {
+    ) -> Result<BuildPaymentTxResponse, FacilitatorHttpError> {
         build_sla_escrow_payment_tx(&self.base_url, body).await
     }
 }
@@ -215,7 +215,7 @@ pub async fn get_capabilities(
     get_json_value(facilitator_base_url, FACILITATOR_CAPABILITIES_PATH).await
 }
 
-/// `POST .../verify` — optional `X-Correlation-Id` header.
+/// `POST .../verify` — optional `X-Correlation-ID` header.
 pub async fn verify_payment(
     facilitator_base_url: &str,
     body: &serde_json::Value,
@@ -249,7 +249,7 @@ pub async fn settle_payment(
 pub async fn build_exact_payment_tx(
     facilitator_base_url: &str,
     body: &BuildExactPaymentTxRequest,
-) -> Result<BuildExactPaymentTxResponse, FacilitatorHttpError> {
+) -> Result<BuildPaymentTxResponse, FacilitatorHttpError> {
     post_json(
         facilitator_base_url,
         BUILD_EXACT_PAYMENT_TX_PATH,
@@ -263,7 +263,7 @@ pub async fn build_exact_payment_tx(
 pub async fn build_sla_escrow_payment_tx(
     facilitator_base_url: &str,
     body: &BuildSlaEscrowPaymentTxRequest,
-) -> Result<BuildSlaEscrowPaymentTxResponse, FacilitatorHttpError> {
+) -> Result<BuildPaymentTxResponse, FacilitatorHttpError> {
     post_json(
         facilitator_base_url,
         BUILD_SLA_ESCROW_PAYMENT_TX_PATH,

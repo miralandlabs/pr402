@@ -3,31 +3,57 @@
   "info": {
     "title": "pr402 Facilitator API",
     "version": "1.0.0",
-    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Typical agent flow:** (1) `GET /supported` or `GET /capabilities` — schemes, networks, fee payer. (2) For SPL proofs the deployment can build shells: `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally (buyer/payer only; facilitator fills fee-payer slot at settle when applicable). (4) Replace `paymentPayload.payload.transaction` in `verifyBodyTemplate`, add `correlationId` if desired. (5) `POST /verify` then `POST /settle` with the **same** JSON body.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204 with `Access-Control-Allow-*`; JSON responses use `Access-Control-Allow-Origin: *`.\n\nCanonical machine-readable contract: `/openapi.json` on this host. Human-readable runbook: `/agent-integration.md` (Markdown).\n",
-    "license": { "name": "Apache-2.0" }
+    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Who uses this API:**\n- **Seller / resource provider agents** \u2014 onboard UniversalSettle vaults, preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` \u2192 Seller agents).\n- **Buyer / payer agents** \u2014 match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` \u2192 Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)\u2014not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**SLA-Escrow `FundPayment.seller`:** Build and verify require `paymentRequirements.accepted.extra` (**or** mirrored `extra` on the proof) to include **`beneficiary`** or **`merchantWallet`** (base58). That pubkey is the on-chain **seller** encoded in `FundPayment` and must **not** equal the escrow PDA.\n\n**Who pays Solana transaction fees:** The x402 v2 specification centers facilitator-paid **landing** for the standard **`exact`** rail. **SLA-Escrow** is a pr402 extension: **`facilitatorPaysTransactionFees` defaults to `false`**, so the **buyer** pays network fees unless you opt in to facilitator sponsorship (`true`, two-signer flow like `build-exact-payment-tx`). **FundPayment** token principal always comes from the buyer\u2019s funded ATA; only the **SOL fee payer** toggles. **Operator gate:** even when a client sends `facilitatorPaysTransactionFees: true`, the HTTP build is **rejected (400)** unless the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** to `true`/`1`/`yes`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**Examples:** Schema **`X402V2VerifySettleBody`** includes a worked **`example`** (exact rail). **`BuildExactPaymentTxRequest`** includes an **`example`** request for the builder.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md` (includes **Golden path** section for naive integrators).\n\n**Agent manifest (machine-readable):** `/agent-payTo-semantics.json` \u2014 `payTo` resolution rules and `paymentMintAllowlist` metadata; the same path is advertised as `agentManifest.payToSemantics` on `GET /capabilities`.\n",
+    "license": {
+      "name": "Apache-2.0"
+    }
   },
+  "tags": [
+    {
+      "name": "x402 Core",
+      "description": "Standard x402 v2 facilitator endpoints: verify, settle, supported, and discovery. These are the endpoints defined by the x402 protocol specification."
+    },
+    {
+      "name": "pr402 Extension: Tx Build",
+      "description": "pr402-specific unsigned transaction builders. These are value-added endpoints that eliminate blockchain SDK dependencies for buyer agents."
+    },
+    {
+      "name": "pr402 Extension: Seller Onboarding",
+      "description": "Seller registration, vault provisioning, and PDA discovery. These endpoints help sellers prepare their `accepts[]` lines and manage vault lifecycle."
+    },
+    {
+      "name": "pr402 Extension: Operations",
+      "description": "Internal and operational endpoints (sweep, vault snapshot). Typically used by schedulers or dashboards, not by buyer/seller agents."
+    }
+  ],
   "externalDocs": {
     "description": "x402 HTTP payment standard (v2)",
     "url": "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md"
   },
   "servers": [
     {
-      "url": "https://preview.pr402.signer-payer.me",
-      "description": "Example deployment — substitute your facilitator base URL (no trailing slash)."
+      "url": "https://preview.agent.pay402.me",
+      "description": "Example deployment \u2014 substitute your facilitator base URL (no trailing slash)."
     }
   ],
   "paths": {
     "/api/v1/facilitator/health": {
       "get": {
+        "tags": [
+          "x402 Core"
+        ],
         "summary": "Health check",
-        "description": "Same response body as `/supported` (loads facilitator + schemes). Use for uptime and load balancers.",
+        "description": "Liveness and dependency snapshot: `status`, `schemaVersion`, `database` (connected | disabled | error), `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`. Not the same payload as `/supported`.",
         "operationId": "facilitatorHealth",
         "responses": {
           "200": {
-            "description": "Supported payment kinds (same as GET /supported)",
+            "description": "Health snapshot: `status`, `schemaVersion`, `database`, `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork` (camelCase JSON). Distinct from `GET /supported`.",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
               }
             }
           },
@@ -35,7 +61,9 @@
             "description": "Facilitator initialization or scheme error",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonError" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonError"
+                }
               }
             }
           }
@@ -44,15 +72,21 @@
     },
     "/api/v1/facilitator/supported": {
       "get": {
+        "tags": [
+          "x402 Core"
+        ],
         "summary": "Supported payment kinds (x402 discovery)",
-        "description": "Returns active schemes (`kinds[]`), extensions, and signer hints for the configured chain.",
+        "description": "Returns active schemes (`kinds[]`), extensions, and signer hints for the configured chain. Scheme names are canonical short form: `exact` for UniversalSettle, `sla-escrow` for SLA-Escrow.",
         "operationId": "facilitatorSupported",
         "responses": {
           "200": {
             "description": "SupportedResponse",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
               }
             }
           },
@@ -60,7 +94,9 @@
             "description": "Error",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonError" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonError"
+                }
               }
             }
           }
@@ -69,6 +105,9 @@
     },
     "/api/v1/facilitator/capabilities": {
       "get": {
+        "tags": [
+          "x402 Core"
+        ],
         "summary": "Discovery bundle",
         "description": "JSON with `schemaVersion`, `x402Version`, `chainId`, `feePayer`, embedded `supported`, feature flags, `httpEndpoints`, `openApi`, and x402 spec link.",
         "operationId": "facilitatorCapabilities",
@@ -77,7 +116,10 @@
             "description": "Capabilities object",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
               }
             }
           },
@@ -85,7 +127,9 @@
             "description": "Error",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonError" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonError"
+                }
               }
             }
           }
@@ -94,22 +138,29 @@
     },
     "/api/v1/facilitator/verify": {
       "post": {
+        "tags": [
+          "x402 Core"
+        ],
         "summary": "Verify payment payload",
-        "description": "Validates the x402 v2 proof against `paymentRequirements`. Optional `X-Correlation-Id` or body `correlationId` for DB audit linking.",
+        "description": "Validates the x402 v2 proof against `paymentRequirements`. Optional `X-Correlation-ID` or body `correlationId` for DB audit linking.",
         "operationId": "facilitatorVerify",
         "parameters": [
           {
-            "name": "X-Correlation-Id",
+            "name": "X-Correlation-ID",
             "in": "header",
             "required": false,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/X402V2VerifySettleBody" }
+              "schema": {
+                "$ref": "#/components/schemas/X402V2VerifySettleBody"
+              }
             }
           }
         },
@@ -118,7 +169,9 @@
             "description": "Verify success (`valid`, `payer`, optional `correlationId`)",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponse"
+                }
               }
             }
           },
@@ -126,7 +179,9 @@
             "description": "Invalid request or verification failure",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           }
@@ -135,22 +190,29 @@
     },
     "/api/v1/facilitator/settle": {
       "post": {
+        "tags": [
+          "x402 Core"
+        ],
         "summary": "Settle payment",
-        "description": "Same JSON shape as `/verify`. Submits or confirms on-chain settlement (scheme-specific). Reuse the **same** body and correlation id as verify.",
+        "description": "Same JSON shape as `/verify`. Submits or confirms on-chain settlement (scheme-specific). Reuse the **same** body and correlation id as verify. Idempotent: if the transaction is already on-chain, returns success. Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blockhash expires.",
         "operationId": "facilitatorSettle",
         "parameters": [
           {
-            "name": "X-Correlation-Id",
+            "name": "X-Correlation-ID",
             "in": "header",
             "required": false,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/X402V2VerifySettleBody" }
+              "schema": {
+                "$ref": "#/components/schemas/X402V2VerifySettleBody"
+              }
             }
           }
         },
@@ -159,7 +221,9 @@
             "description": "Settle success",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "$ref": "#/components/schemas/SettleResponse"
+                }
               }
             }
           },
@@ -167,7 +231,9 @@
             "description": "Invalid request or settlement failure",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           },
@@ -175,7 +241,9 @@
             "description": "Upstream / build / RPC failure (some routes)",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           },
@@ -183,7 +251,9 @@
             "description": "Internal error",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           }
@@ -192,14 +262,19 @@
     },
     "/api/v1/facilitator/build-exact-payment-tx": {
       "post": {
+        "tags": [
+          "pr402 Extension: Tx Build"
+        ],
         "summary": "Build unsigned exact (UniversalSettle) payment tx",
-        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) and `verifyBodyTemplate`. Payer signs token authority; facilitator is fee payer at `/settle` when `feePayer` in extra matches deployment.",
+        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) and `verifyBodyTemplate`. Payer signs token authority; facilitator is fee payer at `/settle` when `feePayer` in extra matches deployment. Scheme: `exact` (canonical) or `v2:solana:exact` (accepted alias).",
         "operationId": "buildExactPaymentTx",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/BuildExactPaymentTxRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/BuildExactPaymentTxRequest"
+              }
             }
           }
         },
@@ -208,7 +283,9 @@
             "description": "Unsigned tx + template",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/BuildPaymentTxResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/BuildPaymentTxResponse"
+                }
               }
             }
           },
@@ -216,7 +293,9 @@
             "description": "Invalid request or unsupported mint",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           },
@@ -224,7 +303,9 @@
             "description": "Not implemented",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           },
@@ -232,7 +313,9 @@
             "description": "RPC error",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           }
@@ -241,14 +324,19 @@
     },
     "/api/v1/facilitator/build-sla-escrow-payment-tx": {
       "post": {
+        "tags": [
+          "pr402 Extension: Tx Build"
+        ],
         "summary": "Build unsigned SLA-Escrow FundPayment tx",
-        "description": "Default: facilitator pays Solana fees; buyer partially signs. Set `buyerPaysTransactionFees: true` for CLI-shaped single-signer shell.",
+        "description": "**Default `facilitatorPaysTransactionFees: false`:** buyer pays Solana network fees (single-signer shell). This extension does not assume the facilitator subsidizes gas on every payment (unlike the x402-documented **`exact`** rail). **`facilitatorPaysTransactionFees: true`** requires the operator to set **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** on the deployment; otherwise the request returns **400**. When allowed, that mode uses facilitator fee payer + partial buyer sign (two-signer pattern as `build-exact-payment-tx`). **`accepted.extra`** must include **`beneficiary`** or **`merchantWallet`**. Response `verifyBodyTemplate` sets **`payTo`** to the canonical **Escrow PDA**. SPL: legacy Token and Token-2022 **plain** mints only (82-byte mint). Scheme: `sla-escrow` or `v2:solana:sla-escrow`.",
         "operationId": "buildSlaEscrowPaymentTx",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/BuildSlaEscrowPaymentTxRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/BuildSlaEscrowPaymentTxRequest"
+              }
             }
           }
         },
@@ -257,7 +345,9 @@
             "description": "Unsigned tx + template + paymentUid",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/BuildPaymentTxResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/BuildPaymentTxResponse"
+                }
               }
             }
           },
@@ -265,7 +355,9 @@
             "description": "Invalid request",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           },
@@ -273,7 +365,9 @@
             "description": "Not implemented",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           },
@@ -281,7 +375,9 @@
             "description": "RPC error",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/FacilitatorErrorBody" }
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
               }
             }
           }
@@ -290,15 +386,21 @@
     },
     "/api/v1/facilitator/onboard/challenge": {
       "get": {
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
         "summary": "Onboard signing challenge",
-        "description": "Returns a message to sign for proof-of-control. Requires `PR402_ONBOARD_HMAC_SECRET` on server.",
+        "description": "Returns a message to sign for proof-of-control (wallet ownership). Required for `POST /onboard` (DB registration). Requires `PR402_ONBOARD_HMAC_SECRET` on server.",
         "operationId": "facilitatorOnboardChallenge",
         "parameters": [
           {
             "name": "wallet",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "description": "Seller wallet pubkey (base58)" }
+            "schema": {
+              "type": "string",
+              "description": "Seller wallet pubkey (base58)"
+            }
           }
         ],
         "responses": {
@@ -306,71 +408,202 @@
             "description": "Challenge payload",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/OnboardChallengeResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardChallengeResponse"
+                }
               }
             }
           },
-          "400": { "description": "Bad request" },
-          "503": { "description": "Onboard not configured" }
+          "400": {
+            "description": "Bad request"
+          },
+          "503": {
+            "description": "Onboard not configured"
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/onboard/build-tx": {
+      "get": {
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Build agent-native onboarding tx",
+        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) for UniversalSettle SplitVault creation. Sign and send to receive the 95 bps institutional discount (Sovereign status).",
+        "operationId": "facilitatorOnboardBuildTx",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unsigned onboarding tx",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildPaymentTxResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing wallet"
+          },
+          "500": {
+            "description": "Error"
+          }
         }
       }
     },
     "/api/v1/facilitator/onboard": {
       "get": {
-        "summary": "Onboard preview (PDAs only, no DB)",
-        "description": "Public vault/sol_storage preview for UniversalSettle. For persisted registration use challenge + POST.",
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Onboard preview \u2014 all schemes (read-only)",
+        "description": "Returns vault/sol_storage preview for **all** registered schemes (exact + sla-escrow if configured). No DB writes. For lightweight single-scheme lookup, prefer `GET /discovery`. For DB-persisted registration, use the challenge \u2192 POST flow.",
         "operationId": "facilitatorOnboardPreview",
         "parameters": [
           {
             "name": "wallet",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Scheme onboard info",
+            "description": "OnboardResponse",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardResponse"
+                }
               }
             }
           },
-          "400": { "description": "Missing wallet" },
-          "500": { "description": "Error" }
+          "400": {
+            "description": "Missing wallet"
+          },
+          "500": {
+            "description": "Error"
+          }
         }
       },
       "post": {
-        "summary": "Submit signed onboard proof",
-        "description": "Body: wallet, message, signature (from challenge flow). Persists verified resource provider vaults when `DATABASE_URL` is set.",
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Submit signed onboard proof (DB registration)",
+        "description": "Body: wallet, message, signature (from `/onboard/challenge` flow). Verifies proof-of-control and persists verified resource provider vaults to DB when `DATABASE_URL` is set. This is the full registration step \u2014 unlike `GET /onboard` (preview) or `GET /discovery` (lightweight lookup), this writes to the database.",
         "operationId": "facilitatorOnboardSubmit",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/OnboardSubmitBody" }
+              "schema": {
+                "$ref": "#/components/schemas/OnboardSubmitBody"
+              }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Onboard result",
+            "description": "OnboardResponse",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardResponse"
+                }
               }
             }
           },
-          "400": { "description": "Invalid JSON or body" },
-          "401": { "description": "Signature verification failed" },
-          "503": { "description": "Onboard secret not configured" },
-          "500": { "description": "Error" }
+          "400": {
+            "description": "Invalid JSON or body"
+          },
+          "401": {
+            "description": "Signature verification failed"
+          },
+          "503": {
+            "description": "Onboard secret not configured"
+          },
+          "500": {
+            "description": "Error"
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/discovery": {
+      "get": {
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Lightweight single-scheme discovery (read-only)",
+        "description": "Programmatic discovery of `payTo` address (vault PDA) and metadata for a **single** scheme. Read-only, no DB writes, no auth. Prefer this over `GET /onboard` when you only need one scheme's `payTo`. Returns `SchemeOnboardInfo` with `vaultPda`, `feeBps`, `isSovereign`, etc.",
+        "operationId": "facilitatorDiscovery",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Seller wallet pubkey (base58)"
+            }
+          },
+          {
+            "name": "scheme",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "exact",
+              "description": "Payment scheme (e.g. exact or sla-escrow)"
+            }
+          },
+          {
+            "name": "asset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Optional mint address for token-specific discovery"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scheme discovery information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemeOnboardInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing parameters"
+          },
+          "500": {
+            "description": "Discovery failed"
+          }
         }
       }
     },
     "/api/v1/facilitator/vault-snapshot": {
       "get": {
+        "tags": [
+          "pr402 Extension: Operations"
+        ],
         "summary": "UniversalSettle vault snapshot (read-only RPC)",
         "description": "Query vault balances for a seller wallet. Requires UniversalSettle configured on deployment.",
         "operationId": "facilitatorVaultSnapshot",
@@ -379,19 +612,26 @@
             "name": "wallet",
             "in": "query",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "spl_mint",
             "in": "query",
             "required": false,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "spl_token_program",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "description": "Token-2022 program id when applicable" }
+            "schema": {
+              "type": "string",
+              "description": "Token-2022 program id when applicable"
+            }
           },
           {
             "name": "spl_balance_scope",
@@ -399,7 +639,10 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["vault_ata", "owner_wallet"],
+              "enum": [
+                "vault_ata",
+                "owner_wallet"
+              ],
               "default": "vault_ata",
               "description": "Use owner_wallet for getTokenAccountsByOwner-style SPL balance"
             }
@@ -407,131 +650,831 @@
         ],
         "responses": {
           "200": {
-            "description": "Snapshot JSON",
+            "description": "VaultSnapshotResponse",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "$ref": "#/components/schemas/VaultSnapshotResponse"
+                }
               }
             }
           },
-          "400": { "description": "Bad request or program not configured" }
+          "400": {
+            "description": "Bad request or program not configured"
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/sweep": {
+      "post": {
+        "tags": [
+          "pr402 Extension: Operations"
+        ],
+        "summary": "Internal cron sweep execution (private)",
+        "description": "Executes UniversalSettle sweep attempts for eligible provider rails. **Internal operations endpoint**: requires bearer auth and is intended for scheduler/cron use only. Supports `dryRun` for safe rollout.",
+        "operationId": "facilitatorSweep",
+        "security": [
+          {
+            "sweep_bearer": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SweepRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sweep execution report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SweepResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request / not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Missing required sweep auth parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/upgrade": {
+      "post": {
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Upgrade a Lite 402 to institutional format",
+        "description": "Transforms a naive `PaymentRequired` body (where `payTo` is a bare seller wallet) into a fully institutional response with correct PDA-derived `payTo` and injected `extra` metadata. For `exact`: replaces `payTo` with the UniversalSettle SplitVault PDA and injects `feePayer`, `programId`, `configAddress`, `merchantWallet`. For `sla-escrow`: replaces `payTo` with the Escrow PDA and injects `oracleAuthorities`, `bankAddress`, `escrowProgramId`. Useful for sellers who want the facilitator to handle PDA derivation.",
+        "operationId": "facilitatorUpgrade",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "PaymentRequired body with bare seller wallet as payTo"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upgraded PaymentRequired with PDAs and extra metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "PaymentRequired body with vault/escrow PDA as payTo and institutional extra"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or upgrade failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/sweep-cron": {
+      "get": {
+        "tags": [
+          "pr402 Extension: Operations"
+        ],
+        "summary": "Vercel cron sweep execution (private)",
+        "description": "GET wrapper for serverless schedulers that cannot issue POST (e.g., Vercel Cron). Uses configured defaults equivalent to empty `POST /api/v1/facilitator/sweep` body.",
+        "operationId": "facilitatorSweepCron",
+        "security": [
+          {
+            "sweep_bearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sweep execution report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SweepResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Missing required sweep auth parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          }
         }
       }
     }
   },
   "components": {
+    "securitySchemes": {
+      "sweep_bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Private scheduler token (`PR402_SWEEP_CRON_TOKEN`; DB parameter takes precedence over env)."
+      }
+    },
     "schemas": {
       "JsonError": {
         "type": "object",
         "properties": {
-          "error": { "type": "string" }
+          "error": {
+            "type": "string"
+          }
         }
       },
       "FacilitatorErrorBody": {
         "type": "object",
-        "description": "Typical error JSON from facilitator (shape may include error, message, correlationId)",
+        "description": "Error response from the facilitator.",
+        "required": [
+          "error",
+          "code"
+        ],
         "properties": {
-          "error": { "type": "string" },
-          "message": { "type": "string" },
-          "correlationId": { "type": "string" }
-        },
-        "additionalProperties": true
+          "error": {
+            "type": "string",
+            "description": "Human-readable error description"
+          },
+          "code": {
+            "type": "string",
+            "description": "Machine-readable error enum (e.g. BAD_REQUEST, INTERNAL_SERVER_ERROR)"
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        }
       },
       "X402V2VerifySettleBody": {
         "type": "object",
-        "required": ["x402Version", "paymentPayload", "paymentRequirements"],
+        "required": [
+          "x402Version",
+          "paymentPayload",
+          "paymentRequirements"
+        ],
         "properties": {
-          "x402Version": { "type": "integer", "const": 2 },
-          "paymentPayload": { "type": "object", "additionalProperties": true },
-          "paymentRequirements": { "type": "object", "additionalProperties": true },
-          "correlationId": { "type": "string" }
+          "x402Version": {
+            "type": "integer",
+            "const": 2
+          },
+          "paymentPayload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "paymentRequirements": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "correlationId": {
+            "type": "string"
+          }
         },
-        "additionalProperties": true
+        "additionalProperties": true,
+        "example": {
+          "x402Version": 2,
+          "paymentPayload": {
+            "x402Version": 2,
+            "accepted": {
+              "scheme": "exact",
+              "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+              "amount": "50000",
+              "payTo": "<SplitVault PDA from seller discovery \u2014 not a bare wallet>",
+              "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+              "maxTimeoutSeconds": 300,
+              "extra": {
+                "merchantWallet": "<seller identity pubkey>",
+                "feePayer": "<facilitator fee payer>",
+                "programId": "<UniversalSettle program id>",
+                "configAddress": "<config PDA>"
+              }
+            },
+            "payload": {
+              "transaction": "<base64(bincode(VersionedTransaction)) \u2014 replace with signed tx from build-exact response>"
+            },
+            "resource": {
+              "url": "https://seller.example/api/premium",
+              "description": "Paid API",
+              "mimeType": "application/json"
+            },
+            "extensions": {}
+          },
+          "paymentRequirements": {
+            "scheme": "exact",
+            "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            "amount": "50000",
+            "payTo": "<SplitVault PDA \u2014 must match proof>",
+            "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "merchantWallet": "<seller identity pubkey>"
+            }
+          }
+        }
       },
       "ResourceRef": {
         "type": "object",
         "description": "x402 resource block",
         "properties": {
-          "url": { "type": "string" },
-          "description": { "type": "string" },
-          "mimeType": { "type": "string" }
+          "url": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
       "BuildExactPaymentTxRequest": {
         "type": "object",
-        "required": ["payer", "accepted", "resource"],
+        "required": [
+          "payer",
+          "accepted",
+          "resource"
+        ],
         "properties": {
-          "payer": { "type": "string", "description": "Buyer pubkey (base58)" },
+          "payer": {
+            "type": "string",
+            "description": "Buyer pubkey (base58)"
+          },
           "accepted": {
             "type": "object",
-            "description": "One accepts[] line; scheme must be exact; must match deployment network"
+            "description": "One accepts[] line; scheme: `exact` (canonical) or `v2:solana:exact` (accepted alias); must match deployment network"
           },
-          "resource": { "$ref": "#/components/schemas/ResourceRef" },
-          "skipSourceBalanceCheck": { "type": "boolean", "default": false }
+          "resource": {
+            "$ref": "#/components/schemas/ResourceRef"
+          },
+          "skipSourceBalanceCheck": {
+            "type": "boolean",
+            "default": false
+          },
+          "autoWrapSol": {
+            "type": "boolean",
+            "description": "If true, inject wrap instructions when the payment mint is wrapped SOL"
+          }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "example": {
+          "payer": "<buyer pubkey base58>",
+          "accepted": {
+            "scheme": "exact",
+            "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+            "amount": "50000",
+            "payTo": "<SplitVault PDA>",
+            "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+            "maxTimeoutSeconds": 300,
+            "extra": {}
+          },
+          "resource": {
+            "url": "https://seller.example/api/premium",
+            "description": "Paid API",
+            "mimeType": "application/json"
+          }
+        }
       },
       "BuildSlaEscrowPaymentTxRequest": {
         "type": "object",
-        "required": ["payer", "accepted", "resource", "slaHash", "oracleAuthority"],
-        "properties": {
-          "payer": { "type": "string" },
-          "accepted": { "type": "object", "description": "accepts[] line with scheme sla-escrow" },
-          "resource": { "$ref": "#/components/schemas/ResourceRef" },
-          "slaHash": { "type": "string", "description": "64 hex chars (32 bytes)" },
-          "oracleAuthority": { "type": "string", "description": "Must appear in accepted.extra.oracleAuthorities" },
-          "paymentUid": { "type": "string" },
-          "skipSourceBalanceCheck": { "type": "boolean", "default": false },
-          "buyerPaysTransactionFees": { "type": "boolean", "default": false }
-        },
-        "additionalProperties": false
-      },
-      "BuildPaymentTxResponse": {
-        "type": "object",
         "required": [
-          "x402Version",
-          "transaction",
-          "recentBlockhash",
-          "feePayer",
           "payer",
-          "verifyBodyTemplate"
+          "accepted",
+          "resource",
+          "slaHash",
+          "oracleAuthority"
         ],
         "properties": {
-          "x402Version": { "type": "integer" },
-          "transaction": {
-            "type": "string",
-            "description": "base64(bincode VersionedTransaction), unsigned"
+          "payer": {
+            "type": "string"
           },
-          "recentBlockhash": { "type": "string" },
-          "feePayer": { "type": "string" },
-          "payer": { "type": "string" },
-          "paymentUid": { "type": "string", "description": "Present for sla-escrow build" },
-          "verifyBodyTemplate": {
+          "accepted": {
             "type": "object",
-            "description": "Replace paymentPayload.payload.transaction after signing"
+            "description": "accepts[] line; scheme: `sla-escrow` (canonical) or `v2:solana:sla-escrow` (accepted alias). `extra` must include `beneficiary` or `merchantWallet`."
           },
-          "notes": { "type": "array", "items": { "type": "string" } }
+          "resource": {
+            "$ref": "#/components/schemas/ResourceRef"
+          },
+          "slaHash": {
+            "type": "string",
+            "description": "64 hex chars (32 bytes)"
+          },
+          "oracleAuthority": {
+            "type": "string",
+            "description": "Must appear in accepted.extra.oracleAuthorities"
+          },
+          "paymentUid": {
+            "type": "string"
+          },
+          "skipSourceBalanceCheck": {
+            "type": "boolean",
+            "default": false
+          },
+          "facilitatorPaysTransactionFees": {
+            "type": "boolean",
+            "default": false,
+            "description": "false (default): buyer pays Solana tx fees, one signer. true: facilitator fee payer, buyer second signer (opt-in; mirrors `build-exact-payment-tx` mechanics). Does not change FundPayment token amount \u2014 only who pays SOL network fees."
+          },
+          "autoWrapSol": {
+            "type": "boolean",
+            "description": "If true, inject wrap instructions when the payment mint is wrapped SOL"
+          }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       },
       "OnboardChallengeResponse": {
         "type": "object",
         "properties": {
-          "wallet": { "type": "string" },
-          "message": { "type": "string" },
-          "expiresUnix": { "type": "integer" },
-          "ttlSeconds": { "type": "integer" }
+          "wallet": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "expiresUnix": {
+            "type": "integer"
+          },
+          "ttlSeconds": {
+            "type": "integer"
+          }
         }
       },
       "OnboardSubmitBody": {
         "type": "object",
-        "required": ["wallet", "message", "signature"],
+        "required": [
+          "wallet",
+          "message",
+          "signature"
+        ],
         "properties": {
-          "wallet": { "type": "string" },
-          "message": { "type": "string" },
-          "signature": { "type": "string" }
+          "wallet": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
         }
+      },
+      "ProvisioningStatus": {
+        "type": "object",
+        "required": [
+          "asset",
+          "recovered",
+          "total"
+        ],
+        "properties": {
+          "asset": {
+            "type": "string",
+            "example": "SOL"
+          },
+          "recovered": {
+            "type": "string",
+            "example": "5000000"
+          },
+          "total": {
+            "type": "string",
+            "example": "10000000"
+          }
+        }
+      },
+      "SchemeOnboardInfo": {
+        "type": "object",
+        "required": [
+          "label",
+          "role",
+          "vaultPda",
+          "solStoragePda",
+          "feeBps",
+          "status",
+          "isSovereign"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "vaultPda": {
+            "type": "string"
+          },
+          "solStoragePda": {
+            "type": "string"
+          },
+          "tokenPda": {
+            "type": "string",
+            "nullable": true
+          },
+          "merchantWallet": {
+            "type": "string",
+            "description": "Authoritative merchant identity (base58)",
+            "nullable": true
+          },
+          "feeBps": {
+            "type": "string",
+            "description": "Effective fee in basis points"
+          },
+          "status": {
+            "type": "string",
+            "example": "Sovereign"
+          },
+          "isSovereign": {
+            "type": "boolean",
+            "description": "Has 5 bps institutional discount"
+          },
+          "provisioningStatus": {
+            "$ref": "#/components/schemas/ProvisioningStatus",
+            "nullable": true
+          }
+        }
+      },
+      "OnboardResponse": {
+        "type": "object",
+        "required": [
+          "wallet",
+          "facilitator",
+          "schemes"
+        ],
+        "properties": {
+          "wallet": {
+            "type": "string"
+          },
+          "facilitator": {
+            "type": "string"
+          },
+          "schemes": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SchemeOnboardInfo"
+            }
+          }
+        }
+      },
+      "VaultSnapshotResponse": {
+        "type": "object",
+        "description": "UniversalSettle vault snapshot from `GET /vault-snapshot` (RPC-derived).",
+        "required": [
+          "seller",
+          "programId",
+          "splitVaultPda",
+          "vaultSolStoragePda",
+          "spendableLamports",
+          "splAmountRaw",
+          "splBalanceScope"
+        ],
+        "properties": {
+          "seller": {
+            "type": "string",
+            "description": "Wallet pubkey (base58)"
+          },
+          "programId": {
+            "type": "string"
+          },
+          "splitVaultPda": {
+            "type": "string"
+          },
+          "vaultSolStoragePda": {
+            "type": "string"
+          },
+          "spendableLamports": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Spendable SOL in lamports"
+          },
+          "vaultSplAta": {
+            "type": "string",
+            "nullable": true,
+            "description": "Vault ATA for the queried mint, if any"
+          },
+          "splAmountRaw": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Raw SPL amount (0 if mint not queried or ATA missing)"
+          },
+          "splDecimals": {
+            "type": "integer",
+            "nullable": true
+          },
+          "splBalanceScope": {
+            "type": "string",
+            "enum": [
+              "vault_ata",
+              "owner_wallet"
+            ],
+            "description": "Reflects `spl_balance_scope` query (owner_wallet when using getTokenAccountsByOwner-style balance)"
+          }
+        },
+        "additionalProperties": true
+      },
+      "SweepRequest": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 50
+          },
+          "cooldownSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 300
+          },
+          "requireRecentSettleWithinSeconds": {
+            "type": "integer",
+            "minimum": 60,
+            "default": 86400
+          },
+          "dryRun": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "SweepItemResult": {
+        "type": "object",
+        "properties": {
+          "wallet": {
+            "type": "string"
+          },
+          "settlementMode": {
+            "type": "string",
+            "enum": [
+              "native_sol",
+              "spl"
+            ]
+          },
+          "splMint": {
+            "type": "string",
+            "nullable": true
+          },
+          "availableRaw": {
+            "type": "integer"
+          },
+          "thresholdRaw": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "eligible",
+              "ok",
+              "skipped",
+              "failed"
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string",
+            "nullable": true
+          },
+          "error": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SweepResponse": {
+        "type": "object",
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "scanned": {
+            "type": "integer"
+          },
+          "attempted": {
+            "type": "integer"
+          },
+          "succeeded": {
+            "type": "integer"
+          },
+          "skippedBelowThreshold": {
+            "type": "integer"
+          },
+          "failed": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SweepItemResult"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "UniversalSettleExtra": {
+        "type": "object",
+        "properties": {
+          "programId": {
+            "type": "string"
+          },
+          "configAddress": {
+            "type": "string"
+          },
+          "feeBps": {
+            "type": "string"
+          },
+          "merchantWallet": {
+            "type": "string",
+            "description": "IDENTITY: Required for PDA re-derivation"
+          }
+        }
+      },
+      "SLAEscrowExtra": {
+        "type": "object",
+        "properties": {
+          "escrowProgramId": {
+            "type": "string"
+          },
+          "bankAddress": {
+            "type": "string"
+          },
+          "configAddress": {
+            "type": "string"
+          },
+          "oracleAuthorities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "merchantWallet": {
+            "type": "string",
+            "description": "Seller payout identity (base58); required if `beneficiary` omitted"
+          },
+          "beneficiary": {
+            "type": "string",
+            "description": "Preferred seller payout pubkey for `FundPayment.seller` (base58); overrides `merchantWallet` when both present"
+          }
+        }
+      },
+      "BuildPaymentTxResponse": {
+        "type": "object",
+        "description": "Unified response for transaction builders.",
+        "required": [
+          "x402Version",
+          "transaction",
+          "recentBlockhash",
+          "recentBlockhashExpiresAt",
+          "feePayer",
+          "payer",
+          "payerSignatureIndex",
+          "verifyBodyTemplate"
+        ],
+        "properties": {
+          "x402Version": {
+            "type": "integer"
+          },
+          "transaction": {
+            "type": "string",
+            "description": "base64(bincode VersionedTransaction), unsigned"
+          },
+          "recentBlockhash": {
+            "type": "string"
+          },
+          "recentBlockhashExpiresAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Estimated UNIX epoch (seconds)"
+          },
+          "feePayer": {
+            "type": "string"
+          },
+          "payer": {
+            "type": "string"
+          },
+          "payerSignatureIndex": {
+            "type": "integer"
+          },
+          "paymentUid": {
+            "type": "string"
+          },
+          "verifyBodyTemplate": {
+            "type": "object"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "VerifyResponse": {
+        "type": "object",
+        "description": "Verify success response",
+        "required": [
+          "isValid"
+        ],
+        "properties": {
+          "isValid": {
+            "type": "boolean"
+          },
+          "invalidReason": {
+            "type": "string"
+          },
+          "payer": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "SettleResponse": {
+        "type": "object",
+        "description": "Settle success response",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "errorReason": {
+            "type": "string"
+          },
+          "payer": {
+            "type": "string"
+          },
+          "transaction": {
+            "type": "string"
+          },
+          "network": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
       }
     }
   }

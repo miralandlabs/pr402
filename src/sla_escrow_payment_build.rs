@@ -2,28 +2,35 @@
 //! (same instruction layout as [`sla_escrow_api::sdk::EscrowSdk::fund_payment`], PDAs resolved from
 //! `SLAEscrowConfig.program_id` — not the crate-wired `sla_escrow_api::ID` alone).
 //!
-//! **Default (Phase 5):** the **facilitator** pays Solana network fees and is listed first as fee payer
-//! (same *shape* as [`crate::exact_payment_build`]): the buyer (`payer`) signs as `FundPayment`
-//! authority; slot 0 is reserved for the facilitator at `/settle`.
+//! **Solana network fee payer:** Default **`facilitator_pays_transaction_fees: false`** — the **buyer**
+//! pays transaction fees and is the **sole** signer (CLI-shaped shell). The x402 v2 spec emphasizes
+//! facilitator-sponsored **landing** fees for the standard **`exact`** rail; **SLA-Escrow** is an
+//! extension and does not assume the facilitator subsidizes gas (operators may bill via plans, etc.).
+//! Set **`facilitator_pays_transaction_fees: true`** for a **facilitator fee payer** shell (two
+//! signers, same pattern as [`crate::exact_payment_build`]): buyer signs `FundPayment` authority;
+//! slot 0 is reserved for the facilitator at `/settle`. The facilitator pubkey must not appear in
+//! instruction account metas.
 //!
-//! Set **`buyer_pays_transaction_fees: true`** for legacy **buyer fee payer** shells (CLI-shaped
-//! txs). The facilitator pubkey must still not appear inside instruction account metas.
+//! **FundPayment principal** (tokens debited from the buyer’s source ATA into escrow) is always paid
+//! by the buyer; only **who pays SOL for the transaction** is toggled above.
 
 use std::str::FromStr;
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use solana_pubkey::Pubkey;
 use solana_transaction::{
     versioned::VersionedTransaction, AccountMeta, Address, Instruction, Message, Transaction,
 };
 
-use crate::chain::solana::{
-    SolanaChainProvider, ASSOCIATED_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID,
-};
+use crate::chain::solana::{SolanaChainProvider, SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID};
 use crate::chain::solana_sla_escrow::build_fund_payment_instruction;
 use crate::scheme::v2_solana_escrow::types::SLAEscrowScheme;
+use crate::util::tx_builder::{
+    associated_token_address, compute_budget_ix_set_limit, compute_budget_ix_set_price,
+    create_associated_token_account_idempotent_ix, estimate_blockhash_expiry_unix,
+    parse_u64_from_json,
+};
 use sla_escrow_api::consts::{MAX_TTL_SECONDS, MIN_TTL_SECONDS};
 
 use spl_token::solana_program::program_pack::Pack;
@@ -35,7 +42,8 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     /// Buyer pubkey; signs `FundPayment` (second signer when the facilitator is fee payer).
     pub payer: String,
     /// One element from `402 accepts[]` (`scheme: "sla-escrow"`).
-    pub accepted: serde_json::Value,
+    pub accepted:
+        crate::proto::v2::PaymentRequirements<String, serde_json::Value, String, serde_json::Value>,
     /// From the `402` body `resource` field.
     pub resource: serde_json::Value,
     /// 32-byte SLA terms hash as 64 hex chars (may be all zeros for testing).
@@ -48,29 +56,16 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     /// If `false` (default), require payer source ATA to exist and hold enough tokens.
     #[serde(default)]
     pub skip_source_balance_check: bool,
-    /// If `true`, build a **buyer fee payer** shell (one signer), matching `sla-escrow` CLI.
-    /// Default `false` — **facilitator** pays fees (aligned with `build-exact-payment-tx`).
+    /// If `true`, build a **facilitator fee payer** shell (two signers), aligned with `build-exact-payment-tx`.
+    /// Default `false` — **buyer** pays fees (one signer, matching sla-escrow CLI).
+    /// **HTTP:** `POST /build-sla-escrow-payment-tx` returns 400 when this is `true` unless the deployment sets `PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`. Direct library calls to `build_sla_escrow_fund_payment_tx` are not gated.
     #[serde(default)]
-    pub buyer_pays_transaction_fees: bool,
+    pub facilitator_pays_transaction_fees: bool,
+    /// If `true`, the builder will inject wrap instructions if the payment mint is wrapped SOL.
+    pub auto_wrap_sol: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BuildSlaEscrowPaymentTxResponse {
-    pub x402_version: u8,
-    /// Base64 `bincode` [`VersionedTransaction`], **unsigned** (default: facilitator + buyer signer slots).
-    pub transaction: String,
-    pub recent_blockhash: String,
-    /// Network fee payer pubkey (`facilitator` by default; `payer` when `buyerPaysTransactionFees`).
-    pub fee_payer: String,
-    pub payer: String,
-    pub payment_uid: String,
-    /// POST to `/verify` / `/settle` after replacing `paymentPayload.payload.transaction` with the
-    /// **signed** tx (same message hash / blockhash).
-    pub verify_body_template: serde_json::Value,
-    #[serde(default)]
-    pub notes: Vec<String>,
-}
+// Response struct was unified into `crate::proto::v2::BuildPaymentTxResponse`.
 
 #[derive(Debug, thiserror::Error)]
 pub enum SlaEscrowPaymentBuildError {
@@ -86,53 +81,9 @@ pub enum SlaEscrowPaymentBuildError {
     Rpc(String),
 }
 
-fn compute_budget_ix_set_limit(units: u32) -> Instruction {
-    let mut data = vec![2u8];
-    data.extend_from_slice(&units.to_le_bytes());
-    Instruction {
-        program_id: solana_compute_budget_interface::ID,
-        accounts: vec![],
-        data,
-    }
-}
+// compute_budget and associated_token_address helpers moved to crate::util::tx_builder
 
-fn compute_budget_ix_set_price(microlamports_per_cu: u64) -> Instruction {
-    let mut data = vec![3u8];
-    data.extend_from_slice(&microlamports_per_cu.to_le_bytes());
-    Instruction {
-        program_id: solana_compute_budget_interface::ID,
-        accounts: vec![],
-        data,
-    }
-}
-
-fn associated_token_address(owner: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[owner.as_ref(), token_program.as_ref(), mint.as_ref()],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    )
-    .0
-}
-
-fn create_associated_token_account_idempotent_ix(
-    funding: &Pubkey,
-    owner: &Pubkey,
-    mint: &Pubkey,
-    token_program: &Pubkey,
-) -> Instruction {
-    Instruction {
-        program_id: ASSOCIATED_TOKEN_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*funding, true),
-            AccountMeta::new(associated_token_address(owner, mint, token_program), false),
-            AccountMeta::new_readonly(*owner, false),
-            AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-            AccountMeta::new_readonly(*token_program, false),
-        ],
-        data: vec![1],
-    }
-}
+// create_associated_token_account_idempotent_ix moved to crate::util::tx_builder
 
 fn parse_sla_hash_hex(s: &str) -> Result<[u8; 32], SlaEscrowPaymentBuildError> {
     if s.len() != 64 {
@@ -150,29 +101,47 @@ fn parse_sla_hash_hex(s: &str) -> Result<[u8; 32], SlaEscrowPaymentBuildError> {
     Ok(out)
 }
 
-fn parse_u64_from_json(
-    v: &serde_json::Value,
-    ctx: &str,
-) -> Result<u64, SlaEscrowPaymentBuildError> {
-    match v {
-        serde_json::Value::String(s) => s.parse().map_err(|_| {
-            SlaEscrowPaymentBuildError::InvalidRequest(format!("{}: invalid u64 string", ctx))
-        }),
-        serde_json::Value::Number(n) => n
-            .as_u64()
-            .ok_or_else(|| SlaEscrowPaymentBuildError::InvalidRequest(format!("{}: not u64", ctx))),
-        _ => Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
-            "{}: expected string or number",
-            ctx
-        ))),
+/// `FundPayment.seller` / on-chain `payment.seller`: merchant payout wallet (release/refund destination).
+/// Prefers `extra.beneficiary`, then `extra.merchantWallet`. Must not be the escrow PDA.
+fn resolve_fund_payment_seller_pk(
+    extra: &serde_json::Value,
+    escrow_pda: &Pubkey,
+) -> Result<Pubkey, SlaEscrowPaymentBuildError> {
+    let beneficiary = extra.get("beneficiary").and_then(|v| v.as_str());
+    let merchant_wallet = extra.get("merchantWallet").and_then(|v| v.as_str());
+    let s = beneficiary.or(merchant_wallet).ok_or_else(|| {
+        SlaEscrowPaymentBuildError::InvalidRequest(
+            "accepted.extra.beneficiary or accepted.extra.merchantWallet is required (seller pubkey for FundPayment; must match verify/settle paymentRequirements.extra)"
+                .into(),
+        )
+    })?;
+    let pk = Pubkey::from_str(s).map_err(|e| {
+        SlaEscrowPaymentBuildError::InvalidRequest(format!(
+            "beneficiary/merchantWallet (seller): {}",
+            e
+        ))
+    })?;
+    if pk == *escrow_pda {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(
+            "beneficiary/merchantWallet must be the merchant's wallet, not the SLA escrow PDA"
+                .into(),
+        ));
     }
+    Ok(pk)
 }
 
+// parse_u64_from_json moved to crate::util::tx_builder
+
 /// Build an unsigned SLA-Escrow fund-payment transaction and verify-body template.
+///
+/// [`crate::parameters::PR402_ALLOWED_PAYMENT_MINTS`] matches `/verify` / `/settle`: resolved from the
+/// **`parameters`** table when `db` is `Some`, otherwise from env only. `db: None` does **not** disable
+/// an env-configured allowlist.
 pub async fn build_sla_escrow_fund_payment_tx(
     provider: &SolanaChainProvider,
+    db: Option<&crate::db::Pr402Db>,
     req: BuildSlaEscrowPaymentTxRequest,
-) -> Result<BuildSlaEscrowPaymentTxResponse, SlaEscrowPaymentBuildError> {
+) -> Result<crate::proto::v2::BuildPaymentTxResponse, SlaEscrowPaymentBuildError> {
     let escrow_cfg = provider
         .sla_escrow()
         .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?;
@@ -181,51 +150,31 @@ pub async fn build_sla_escrow_fund_payment_tx(
     let payer_pk = Pubkey::from_str(&req.payer)
         .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("payer: {}", e)))?;
 
-    let scheme = req
-        .accepted
-        .get("scheme")
-        .and_then(|x| x.as_str())
-        .unwrap_or("");
-    if scheme != SLAEscrowScheme.as_ref() {
+    let scheme = &req.accepted.scheme;
+    if scheme != SLAEscrowScheme.as_ref() && scheme != "v2:solana:sla-escrow" {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
-            "scheme must be {:?}, got {:?}",
+            "scheme must be {:?} or \"v2:solana:sla-escrow\", got {:?}",
             SLAEscrowScheme.as_ref(),
             scheme
         )));
     }
 
     let expected_network = provider.chain_id().to_string();
-    let got_net = req
-        .accepted
-        .get("network")
-        .and_then(|x| x.as_str())
-        .unwrap_or("");
+    let got_net = req.accepted.network.to_string();
     if got_net != expected_network {
         return Err(SlaEscrowPaymentBuildError::NetworkMismatch {
             expected: expected_network,
-            got: got_net.to_string(),
+            got: got_net,
         });
     }
 
-    let pay_to_str = req
-        .accepted
-        .get("payTo")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest("accepted.payTo missing".into())
-        })?;
-    let seller = Pubkey::from_str(pay_to_str)
-        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(e.to_string()))?;
-
-    let asset_str = req
-        .accepted
-        .get("asset")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest("accepted.asset missing".into())
-        })?;
+    let asset_str = &req.accepted.asset;
     let mint = Pubkey::from_str(asset_str)
         .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(e.to_string()))?;
+
+    if let Err(msg) = crate::parameters::ensure_allowed_payment_mint(db, &mint).await {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(msg));
+    }
 
     const NATIVE_SOL_MINT: Pubkey = solana_pubkey::pubkey!("11111111111111111111111111111111");
     if mint == Pubkey::default() || mint == NATIVE_SOL_MINT {
@@ -235,19 +184,10 @@ pub async fn build_sla_escrow_fund_payment_tx(
         ));
     }
 
-    let amount = parse_u64_from_json(
-        req.accepted.get("amount").ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest("accepted.amount missing".into())
-        })?,
-        "accepted.amount",
-    )?;
+    let amount = parse_u64_from_json(&req.accepted.amount, "accepted.amount")
+        .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
 
-    let ttl_seconds_i64 = parse_u64_from_json(
-        req.accepted.get("maxTimeoutSeconds").ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest("accepted.maxTimeoutSeconds missing".into())
-        })?,
-        "accepted.maxTimeoutSeconds",
-    )? as i64;
+    let ttl_seconds_i64 = req.accepted.max_timeout_seconds as i64;
 
     if ttl_seconds_i64 < MIN_TTL_SECONDS {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
@@ -262,7 +202,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
         )));
     }
 
-    let extra = req.accepted.get("extra").ok_or_else(|| {
+    let extra = req.accepted.extra.as_ref().ok_or_else(|| {
         SlaEscrowPaymentBuildError::InvalidRequest("accepted.extra missing".into())
     })?;
 
@@ -323,6 +263,16 @@ pub async fn build_sla_escrow_fund_payment_tx(
 
     let sla_hash = parse_sla_hash_hex(&req.sla_hash)?;
 
+    let bank_pda = escrow_cfg.bank_address.ok_or_else(|| {
+        SlaEscrowPaymentBuildError::InvalidRequest(
+            "facilitator: bank_address not loaded (SLA escrow bank account missing in config)"
+                .into(),
+        )
+    })?;
+    let (escrow_pda, _) = provider.get_escrow_pda(mint, bank_pda);
+
+    let seller_pk = resolve_fund_payment_seller_pk(extra, &escrow_pda)?;
+
     let mint_acc = provider
         .rpc_client()
         .get_account(&mint)
@@ -332,10 +282,14 @@ pub async fn build_sla_escrow_fund_payment_tx(
     let token_program = if mint_acc.owner == spl_token::ID {
         spl_token::ID
     } else if mint_acc.owner == TOKEN_2022_PROGRAM_ID {
-        return Err(SlaEscrowPaymentBuildError::Unsupported(
-            "Token-2022 mints require builder support for program-specific FundPayment accounts; use classic Token mints or sla-escrow CLI"
-                .into(),
-        ));
+        // Plain Token-2022 mint only (extended layouts rejected on-chain).
+        if mint_acc.data.len() > spl_token::state::Mint::LEN {
+            return Err(SlaEscrowPaymentBuildError::Unsupported(
+                "Token-2022 mint uses extensions not supported by sla-escrow (plain 82-byte mint only)"
+                    .into(),
+            ));
+        }
+        TOKEN_2022_PROGRAM_ID
     } else {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
             "mint owner {} is not Token or Token-2022",
@@ -355,9 +309,41 @@ pub async fn build_sla_escrow_fund_payment_tx(
         .await
         .map_err(|e| SlaEscrowPaymentBuildError::Rpc(e.to_string()))?;
 
+    let recent_blockhash_expires_at = estimate_blockhash_expiry_unix();
+
     let source_ata = associated_token_address(&payer_pk, &mint, &token_program);
 
-    if !req.skip_source_balance_check {
+    let cu_limit = compute_budget_ix_set_limit(provider.max_compute_unit_limit());
+    let cu_price = compute_budget_ix_set_price(provider.max_compute_unit_price());
+
+    let auto_wrap = req.auto_wrap_sol.unwrap_or(false);
+    const WSOL_MINT: Pubkey = solana_pubkey::pubkey!("So11111111111111111111111111111111111111112");
+    let mut ixs: Vec<Instruction> = vec![cu_limit, cu_price];
+
+    if mint == WSOL_MINT && auto_wrap {
+        ixs.push(create_associated_token_account_idempotent_ix(
+            &payer_pk,
+            &payer_pk,
+            &WSOL_MINT,
+            &spl_token::ID,
+        ));
+        let mut data = Vec::with_capacity(12);
+        data.extend_from_slice(&2u32.to_le_bytes()); // Transfer discriminator
+        data.extend_from_slice(&amount.to_le_bytes());
+        ixs.push(Instruction {
+            program_id: SYSTEM_PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(payer_pk, true),
+                AccountMeta::new(source_ata, false),
+            ],
+            data,
+        });
+        ixs.push(
+            spl_token::instruction::sync_native(&spl_token::ID, &source_ata).map_err(|e| {
+                SlaEscrowPaymentBuildError::InvalidRequest(format!("sync_native: {}", e))
+            })?,
+        );
+    } else if !req.skip_source_balance_check {
         let bal = provider
             .rpc_client()
             .get_token_account_balance(&source_ata)
@@ -380,19 +366,17 @@ pub async fn build_sla_escrow_fund_payment_tx(
         }
     }
 
-    let bank_pda = escrow_cfg.bank_address.ok_or_else(|| {
-        SlaEscrowPaymentBuildError::InvalidRequest(
-            "facilitator: bank_address not loaded (SLA escrow bank account missing in config)"
-                .into(),
-        )
+    let parsed = Pubkey::from_str(&req.accepted.pay_to).map_err(|e| {
+        SlaEscrowPaymentBuildError::InvalidRequest(format!("accepted.payTo: {}", e))
     })?;
-    let (escrow_pda, _) = provider.get_escrow_pda(mint, bank_pda);
+    if parsed != escrow_pda {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
+            "accepted.payTo must be the SLA Escrow PDA for this asset (expected {})",
+            escrow_pda
+        )));
+    }
+
     let escrow_token_ata = associated_token_address(&escrow_pda, &mint, &token_program);
-
-    let cu_limit = compute_budget_ix_set_limit(provider.max_compute_unit_limit());
-    let cu_price = compute_budget_ix_set_price(provider.max_compute_unit_price());
-
-    let mut ixs: Vec<Instruction> = vec![cu_limit, cu_price];
 
     let need_create_escrow_ata = provider
         .rpc_client()
@@ -411,63 +395,92 @@ pub async fn build_sla_escrow_fund_payment_tx(
     let fund_ix = build_fund_payment_instruction(
         program_id,
         payer_pk,
-        seller,
+        seller_pk,
         mint,
         amount,
         ttl_seconds_i64,
         &payment_uid,
         sla_hash,
         oracle_pk,
+        token_program,
     );
     ixs.push(fund_ix);
 
-    let fee_payer_pk = if req.buyer_pays_transaction_fees {
-        payer_pk
-    } else {
+    let fee_payer_pk = if req.facilitator_pays_transaction_fees {
         provider.fee_payer()
+    } else {
+        payer_pk
     };
     let fee_payer_addr = Address::new_from_array(fee_payer_pk.to_bytes());
     let message = Message::new_with_blockhash(&ixs, Some(&fee_payer_addr), &blockhash);
     let tx = Transaction::new_unsigned(message);
     let vtx = VersionedTransaction::from(tx);
+
+    // Payer signature index: matches exact builder pattern for SDK parity.
+    let payer_signature_index = vtx
+        .message
+        .static_account_keys()
+        .iter()
+        .position(|k| *k == payer_pk)
+        .ok_or_else(|| {
+            SlaEscrowPaymentBuildError::InvalidRequest(
+                "internal: payer pubkey missing from transaction signers".into(),
+            )
+        })?;
+
     let wire = bincode::serialize(&vtx).map_err(|e| {
         SlaEscrowPaymentBuildError::InvalidRequest(format!("bincode serialize: {}", e))
     })?;
     let tx_b64 = STANDARD.encode(wire);
 
-    let verify_body_template = json!({
+    let mut accepted_norm = serde_json::to_value(&req.accepted).map_err(|_| {
+        SlaEscrowPaymentBuildError::InvalidRequest("failed to serialize accepted".into())
+    })?;
+    let accepted_obj = accepted_norm.as_object_mut().ok_or_else(|| {
+        SlaEscrowPaymentBuildError::InvalidRequest("accepted must be a JSON object".into())
+    })?;
+    accepted_obj.insert(
+        "payTo".to_string(),
+        serde_json::json!(escrow_pda.to_string()),
+    );
+
+    let verify_body_template = serde_json::json!({
         "x402Version": 2,
         "paymentPayload": {
             "x402Version": 2,
-            "accepted": req.accepted,
+            "accepted": accepted_norm.clone(),
             "payload": { "transaction": tx_b64 },
             "resource": req.resource,
             "extensions": {}
         },
-        "paymentRequirements": req.accepted,
+        "paymentRequirements": accepted_norm,
     });
 
-    let notes = if req.buyer_pays_transaction_fees {
+    let notes = if req.facilitator_pays_transaction_fees {
         vec![
-            "SLA-Escrow (legacy): buyer pays Solana fees and is the sole signer — facilitator does not appear in instruction accounts.".into(),
-            "Sign with the buyer keypair; you may broadcast before verify or use /settle as today.".into(),
+            "SLA-Escrow (sponsored): facilitator pays Solana fees; buyer signs FundPayment authority (second signer, same pattern as build-exact-payment-tx).".into(),
+            "Sign with the buyer keypair only (partial sign); POST /verify then /settle so the facilitator fills fee-payer signature slot 0.".into(),
+            "accepted.extra.beneficiary (preferred) or merchantWallet must be the seller payout wallet; it is encoded as FundPayment.seller and must match paymentRequirements.extra on verify.".into(),
             "Blockhashes expire; rebuild if verification fails with BlockhashNotFound.".into(),
         ]
     } else {
         vec![
-            "SLA-Escrow (default): facilitator pays Solana fees; buyer signs FundPayment authority (second signer, same pattern as build-exact-payment-tx).".into(),
-            "Sign with the buyer keypair only (partial sign); POST /verify then /settle so the facilitator fills fee-payer signature slot 0.".into(),
+            "SLA-Escrow (default): buyer pays Solana fees and is the sole signer — facilitator does not appear in instruction accounts.".into(),
+            "Sign with the buyer keypair; you may broadcast before verify or use /settle as today.".into(),
+            "accepted.extra.beneficiary (preferred) or merchantWallet must be the seller payout wallet; it is encoded as FundPayment.seller and must match paymentRequirements.extra on verify.".into(),
             "Blockhashes expire; rebuild if verification fails with BlockhashNotFound.".into(),
         ]
     };
 
-    Ok(BuildSlaEscrowPaymentTxResponse {
+    Ok(crate::proto::v2::BuildPaymentTxResponse {
         x402_version: 2,
         transaction: tx_b64,
         recent_blockhash: blockhash.to_string(),
+        recent_blockhash_expires_at,
         fee_payer: fee_payer_pk.to_string(),
         payer: payer_pk.to_string(),
-        payment_uid,
+        payment_uid: Some(payment_uid),
+        payer_signature_index,
         verify_body_template,
         notes,
     })

@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 description = "The lightweight, serverless x402 facilitator for the Solana Agentic Economy."
-repository = "https://github.com/miraland-labs/pr402"
+repository = "https://github.com/miralandlabs/pr402.git"
 keywords = ["x402", "solana", "payments", "serverless", "vercel"]
 categories = ["cryptography", "finance", "stablecoins"]
 
 [features]
 default = []
-## Optional `reqwest` client mirroring `sdk/facilitator-build-tx.ts` for agents / CLIs. Omit on the Vercel `facilitator` binary (default features).
+## Optional `reqwest` client (`sdk::http`); release `facilitator` binary size unchanged with/without—entrypoint never uses it, LTO strips `reqwest`.
 facilitator-http = ["dep:reqwest"]
 
 [dependencies]
@@ -32,7 +32,7 @@ clap = { version = "4.5", features = ["derive"] }
 
 # Solana SDK
 solana-compute-budget-interface = "3.0"
-solana-pubkey = "4.0"
+solana-pubkey = { version = "4.0", features = ["serde"] }
 solana-signature = { version = "3.1", features = ["verify"] }
 solana-transaction = "3.0"
 solana-signer = "3.0"
@@ -45,10 +45,8 @@ spl-token = { version = "9.0", features = ["no-entrypoint"] }
 # (`spl-token-2022` 10.0.0 does not compile on crates.io as of 2025-11).
 solana-client = "3.1"
 bs58 = "0.5"
-# universalsettle-api = { path = "../universalsettle/api" }
-# sla-escrow-api = { path = "../sla-escrow/api" }
-universalsettle-api = "0.1.1"
-sla-escrow-api = "0.2.5"
+universalsettle-api = "0.1.8"
+sla-escrow-api = "0.2.9"
 bytemuck = "1.16"
 
 # Base64 encoding
@@ -75,7 +73,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = { version = "2.5", features = ["serde"] }
 
 # Optional: facilitator HTTPS client (`facilitator-http` feature)
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+], optional = true }
 
 # Optional PostgreSQL: deadpool + openssl — same stack as signer-payer-serverless-copy/signer-payer/src/database.rs
 deadpool-postgres = { version = "0.14", features = ["serde"] }

@@ -8,8 +8,8 @@
 //! merchant **destination** ATA (omitted when **UniversalSettle** is configured — vault ATA is created
 //! during facilitator settle; included for **direct `payTo` wallet** settlement) → **TransferChecked**.
 //!
-//! **Scope (intentionally narrow):** classic Token or Token-2022 mints only — not native SOL system
-//! transfers.
+//! **Native SOL:** When asset is `11111111111111111111111111111111`, a `SystemProgram::Transfer` is
+//! emitted targeting the vault's `sol_storage` PDA (UniversalSettle) or `payTo` directly.
 
 use std::str::FromStr;
 
@@ -18,14 +18,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use solana_pubkey::Pubkey;
 use solana_transaction::{
-    versioned::VersionedTransaction, AccountMeta, Address, Instruction, Message, Transaction,
+    versioned::VersionedTransaction, Address, Instruction, Message, Transaction,
 };
 
-use crate::chain::solana::{
-    SolanaChainProvider, ASSOCIATED_TOKEN_PROGRAM_ID, SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID,
+use crate::chain::solana::{SolanaChainProvider, TOKEN_2022_PROGRAM_ID};
+use crate::util::tx_builder::{
+    associated_token_address, compute_budget_ix_set_limit, compute_budget_ix_set_price,
+    create_associated_token_account_idempotent_ix, estimate_blockhash_expiry_unix,
+    system_transfer_ix,
 };
 
 use spl_token::solana_program::program_pack::Pack;
+
+const NATIVE_SOL_MINT: Pubkey = solana_pubkey::pubkey!("11111111111111111111111111111111");
 
 /// Request body for `POST /api/v1/facilitator/build-exact-payment-tx` (facilitator serverless binary).
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -34,32 +39,18 @@ pub struct BuildExactPaymentTxRequest {
     /// Payer authority (buyer) pubkey; must sign the transaction before verify.
     pub payer: String,
     /// One element copied from `402 accepts[]` (must match `payer`'s chosen rail).
-    pub accepted: serde_json::Value,
+    pub accepted:
+        crate::proto::v2::PaymentRequirements<String, serde_json::Value, String, serde_json::Value>,
     /// Copied from the `402` body `resource` field (embedded in payment proof).
     pub resource: serde_json::Value,
     /// If `false` (default), require payer source ATA to exist and hold enough tokens.
     #[serde(default)]
     pub skip_source_balance_check: bool,
+    /// If `true`, the builder will inject wrap instructions if the payment mint is wrapped SOL.
+    pub auto_wrap_sol: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BuildExactPaymentTxResponse {
-    pub x402_version: u8,
-    /// `bincode` serialized [`VersionedTransaction`] (legacy), base64 — **unsigned** (default
-    /// signatures). The payer signs their key(s); the facilitator fee payer is added at settle.
-    pub transaction: String,
-    /// Recent blockhash (base58) embedded in the message.
-    pub recent_blockhash: String,
-    pub fee_payer: String,
-    pub payer: String,
-    /// POST this object to `/verify` / `/settle` **after** replacing `paymentPayload.payload.transaction`
-    /// with base64(`bincode(VersionedTransaction)`) of the **signed** transaction (same unsigned shell).
-    pub verify_body_template: serde_json::Value,
-    /// Human-readable reminders for wallet / agent integrations.
-    #[serde(default)]
-    pub notes: Vec<String>,
-}
+// Response struct was unified into `crate::proto::v2::BuildPaymentTxResponse`.
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExactPaymentBuildError {
@@ -73,131 +64,119 @@ pub enum ExactPaymentBuildError {
     Rpc(String),
 }
 
-fn compute_budget_ix_set_limit(units: u32) -> Instruction {
-    let mut data = vec![2u8];
-    data.extend_from_slice(&units.to_le_bytes());
-    Instruction {
-        program_id: solana_compute_budget_interface::ID,
-        accounts: vec![],
-        data,
-    }
-}
+// compute_budget helpers moved to crate::util::tx_builder
 
-fn compute_budget_ix_set_price(microlamports_per_cu: u64) -> Instruction {
-    let mut data = vec![3u8];
-    data.extend_from_slice(&microlamports_per_cu.to_le_bytes());
-    Instruction {
-        program_id: solana_compute_budget_interface::ID,
-        accounts: vec![],
-        data,
-    }
-}
+// associated_token_address moved to crate::util::tx_builder
 
-fn associated_token_address(owner: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[owner.as_ref(), token_program.as_ref(), mint.as_ref()],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    )
-    .0
+fn resolve_universalsettle_vault(
+    provider: &SolanaChainProvider,
+    pay_to: &Pubkey,
+    merchant_wallet: Option<Pubkey>,
+) -> Pubkey {
+    if let Some(identity) = merchant_wallet {
+        return provider.get_vault_pda(&identity).0;
+    }
+    let (vault_from_pay_to, _) = provider.get_vault_pda(pay_to);
+    if *pay_to == vault_from_pay_to {
+        // pay_to is already a vault PDA; avoid double-derivation.
+        *pay_to
+    } else {
+        vault_from_pay_to
+    }
 }
 
 fn spl_destination_ata(
     pay_to: &Pubkey,
     mint: &Pubkey,
-    universalsettle_program: Option<Pubkey>,
+    provider: &SolanaChainProvider,
+    merchant_wallet: Option<Pubkey>,
+    universalsettle_enabled: bool,
     token_program: &Pubkey,
 ) -> Pubkey {
-    match universalsettle_program {
-        Some(pid) => {
-            let (vault, _) = Pubkey::find_program_address(&[b"vault", pay_to.as_ref()], &pid);
-            associated_token_address(&vault, mint, token_program)
-        }
-        None => associated_token_address(pay_to, mint, token_program),
+    if universalsettle_enabled {
+        let vault = resolve_universalsettle_vault(provider, pay_to, merchant_wallet);
+        associated_token_address(&vault, mint, token_program)
+    } else {
+        associated_token_address(pay_to, mint, token_program)
     }
 }
 
-fn create_associated_token_account_idempotent_ix(
-    funding: &Pubkey,
-    owner: &Pubkey,
-    mint: &Pubkey,
-    token_program: &Pubkey,
-) -> Instruction {
-    Instruction {
-        program_id: ASSOCIATED_TOKEN_PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*funding, true),
-            AccountMeta::new(associated_token_address(owner, mint, token_program), false),
-            AccountMeta::new_readonly(*owner, false),
-            AccountMeta::new_readonly(*mint, false),
-            AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-            AccountMeta::new_readonly(*token_program, false),
-        ],
-        data: vec![1],
+// create_associated_token_account_idempotent_ix moved to crate::util::tx_builder
+
+// system_transfer_ix moved to crate::util::tx_builder
+
+/// Resolve the SOL destination: vault `sol_storage` PDA when UniversalSettle is active, otherwise `pay_to`.
+fn sol_destination(
+    pay_to: &Pubkey,
+    provider: &SolanaChainProvider,
+    merchant_wallet: Option<Pubkey>,
+) -> Pubkey {
+    if let Some(us_config) = provider.universalsettle() {
+        let vault = resolve_universalsettle_vault(provider, pay_to, merchant_wallet);
+        let (sol_storage, _) =
+            Pubkey::find_program_address(&[b"sol_storage", vault.as_ref()], &us_config.program_id);
+        sol_storage
+    } else {
+        *pay_to
     }
 }
 
 /// Build an unsigned payment transaction and a verify-body template.
+///
+/// [`crate::parameters::PR402_ALLOWED_PAYMENT_MINTS`] is enforced like `/verify` and `/settle`: non-empty
+/// allowlist from the **`parameters`** table (if `db` is set) or from the **`PR402_ALLOWED_PAYMENT_MINTS`**
+/// env var. `db: None` only means “no Postgres row source”; env allowlists still apply. The serverless
+/// binary passes `pr402_db()` so table and env both behave like production.
 pub async fn build_exact_spl_payment_tx(
     provider: &SolanaChainProvider,
+    db: Option<&crate::db::Pr402Db>,
     req: BuildExactPaymentTxRequest,
-) -> Result<BuildExactPaymentTxResponse, ExactPaymentBuildError> {
+) -> Result<crate::proto::v2::BuildPaymentTxResponse, ExactPaymentBuildError> {
     let payer_pk = Pubkey::from_str(&req.payer)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("payer: {}", e)))?;
 
-    let scheme = req
-        .accepted
-        .get("scheme")
-        .and_then(|x| x.as_str())
-        .unwrap_or("");
-    if scheme != "exact" {
+    let scheme = &req.accepted.scheme;
+    if scheme != "exact" && scheme != "v2:solana:exact" {
         return Err(ExactPaymentBuildError::InvalidRequest(format!(
-            "scheme must be \"exact\", got {:?}",
+            "scheme must be \"exact\" or \"v2:solana:exact\", got {:?}",
             scheme
         )));
     }
 
     let expected_network = provider.chain_id().to_string();
-    let got_net = req
-        .accepted
-        .get("network")
-        .and_then(|x| x.as_str())
-        .unwrap_or("");
+    let got_net = req.accepted.network.to_string();
     if got_net != expected_network {
         return Err(ExactPaymentBuildError::NetworkMismatch {
             expected: expected_network,
-            got: got_net.to_string(),
+            got: got_net,
         });
     }
 
-    let pay_to_str = req
-        .accepted
-        .get("payTo")
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| ExactPaymentBuildError::InvalidRequest("accepted.payTo missing".into()))?;
+    let pay_to_str = &req.accepted.pay_to;
     let pay_to = Pubkey::from_str(pay_to_str)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(e.to_string()))?;
 
-    let asset_str = req
+    let merchant_wallet = req
         .accepted
-        .get("asset")
+        .extra
+        .as_ref()
+        .and_then(|x| x.get("merchantWallet"))
         .and_then(|x| x.as_str())
-        .ok_or_else(|| ExactPaymentBuildError::InvalidRequest("accepted.asset missing".into()))?;
+        .and_then(|s| Pubkey::from_str(s).ok());
+
+    let asset_str = &req.accepted.asset;
     let pay_mint = Pubkey::from_str(asset_str)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(e.to_string()))?;
 
-    const NATIVE_SOL_MINT: Pubkey = solana_pubkey::pubkey!("11111111111111111111111111111111");
-    if pay_mint == NATIVE_SOL_MINT {
-        return Err(ExactPaymentBuildError::Unsupported(
-            "native SOL mint (111111…) requires a system-transfer layout; use a SPL USDC/wSOL mint or build locally"
-                .into(),
-        ));
+    if let Err(msg) = crate::parameters::ensure_allowed_payment_mint(db, &pay_mint).await {
+        return Err(ExactPaymentBuildError::InvalidRequest(msg));
     }
 
-    let amount: u64 = match req.accepted.get("amount") {
-        Some(v) if v.as_str().is_some() => v.as_str().unwrap().parse().map_err(|_| {
+    let amount: u64 = match &req.accepted.amount {
+        v if v.as_str().is_some() => v.as_str().unwrap().parse().map_err(|_| {
             ExactPaymentBuildError::InvalidRequest("amount: invalid u64 string".into())
         })?,
-        Some(v) if v.as_u64().is_some() => v.as_u64().unwrap(),
+        v if v.as_u64().is_some() => v.as_u64().unwrap(),
         _ => {
             return Err(ExactPaymentBuildError::InvalidRequest(
                 "accepted.amount missing or not string/u64".into(),
@@ -205,33 +184,9 @@ pub async fn build_exact_spl_payment_tx(
         }
     };
 
-    let us_prog = provider.universalsettle().map(|c| c.program_id);
+    let is_native_sol = pay_mint == NATIVE_SOL_MINT;
 
-    let mint_acc = provider
-        .rpc_client()
-        .get_account(&pay_mint)
-        .await
-        .map_err(|e| ExactPaymentBuildError::Rpc(e.to_string()))?;
-
-    let token_program = if mint_acc.owner == spl_token::ID {
-        spl_token::ID
-    } else if mint_acc.owner == TOKEN_2022_PROGRAM_ID {
-        TOKEN_2022_PROGRAM_ID
-    } else {
-        return Err(ExactPaymentBuildError::InvalidRequest(format!(
-            "mint owner {} is not Token or Token-2022",
-            mint_acc.owner
-        )));
-    };
-
-    let mint_state = spl_token::state::Mint::unpack(&mint_acc.data).map_err(|_| {
-        ExactPaymentBuildError::InvalidRequest("mint account: unpack failed".into())
-    })?;
-    let decimals = mint_state.decimals;
-
-    // UniversalSettle: provision vault + vault ATA **before** embedding `recentBlockhash` in the
-    // unsigned payment shell. Otherwise `/settle` runs JIT setup (slow `send_and_confirm`) after
-    // `/verify` and the payer-signed tx often hits BlockhashNotFound when the facilitator submits.
+    // ── Pre-build vault provisioning (UniversalSettle) ───────────────
     if let Some(us_config) = provider.universalsettle() {
         let fee_dest = us_config.fee_destination.ok_or_else(|| {
             ExactPaymentBuildError::InvalidRequest(
@@ -239,8 +194,10 @@ pub async fn build_exact_spl_payment_tx(
             )
         })?;
         let fee_bps = us_config.fee_bps.unwrap_or(100);
+        let mint_for_setup = if is_native_sol { None } else { Some(pay_mint) };
+        let setup_identity = merchant_wallet.unwrap_or(pay_to);
         provider
-            .ensure_vault_setup(&pay_to, &fee_dest, fee_bps, Some(pay_mint))
+            .ensure_vault_setup(&setup_identity, &fee_dest, fee_bps, mint_for_setup)
             .await
             .map_err(|e| {
                 ExactPaymentBuildError::Rpc(format!("ensure_vault_setup (pre-build): {e}"))
@@ -253,70 +210,160 @@ pub async fn build_exact_spl_payment_tx(
         .await
         .map_err(|e| ExactPaymentBuildError::Rpc(e.to_string()))?;
 
-    let source_ata = associated_token_address(&payer_pk, &pay_mint, &token_program);
-    let dest_ata = spl_destination_ata(&pay_to, &pay_mint, us_prog, &token_program);
-
-    if !req.skip_source_balance_check {
-        let bal = provider
-            .rpc_client()
-            .get_token_account_balance(&source_ata)
-            .await
-            .map_err(|e| {
-                ExactPaymentBuildError::InvalidRequest(format!(
-                    "payer source ATA {} (mint {}): {}; fund the payer token account first",
-                    source_ata, pay_mint, e
-                ))
-            })?;
-        let raw: u64 = bal
-            .amount
-            .parse()
-            .map_err(|_| ExactPaymentBuildError::Rpc("could not parse token balance".into()))?;
-        if raw < amount {
-            return Err(ExactPaymentBuildError::InvalidRequest(format!(
-                "payer balance {} raw < required {} (ATA {})",
-                raw, amount, source_ata
-            )));
-        }
-    }
-
+    // ── Build instructions ──────────────────────────────────────────
     let cu_limit = compute_budget_ix_set_limit(provider.max_compute_unit_limit());
     let cu_price = compute_budget_ix_set_price(provider.max_compute_unit_price());
-
     let mut ixs: Vec<Instruction> = vec![cu_limit, cu_price];
 
-    let need_create_dest = if us_prog.is_some() {
-        false
-    } else {
-        provider.rpc_client().get_account(&dest_ata).await.is_err()
-    };
+    if is_native_sol {
+        // ── Native SOL path: SystemProgram::Transfer ────────────────
+        if !req.skip_source_balance_check {
+            let bal = provider
+                .rpc_client()
+                .get_balance(&payer_pk)
+                .await
+                .map_err(|e| {
+                    ExactPaymentBuildError::Rpc(format!("payer SOL balance check: {}", e))
+                })?;
+            if bal < amount {
+                return Err(ExactPaymentBuildError::InvalidRequest(format!(
+                    "payer SOL balance {} lamports < required {}",
+                    bal, amount
+                )));
+            }
+        }
 
-    if need_create_dest {
-        ixs.push(create_associated_token_account_idempotent_ix(
-            &payer_pk,
+        let dest = sol_destination(&pay_to, provider, merchant_wallet);
+        ixs.push(system_transfer_ix(&payer_pk, &dest, amount));
+    } else {
+        // ── SPL token path: TransferChecked ─────────────────────────
+        let us_enabled = provider.universalsettle().is_some();
+
+        let mint_acc = provider
+            .rpc_client()
+            .get_account(&pay_mint)
+            .await
+            .map_err(|e| ExactPaymentBuildError::Rpc(e.to_string()))?;
+
+        let token_program = if mint_acc.owner == spl_token::ID {
+            spl_token::ID
+        } else if mint_acc.owner == TOKEN_2022_PROGRAM_ID {
+            TOKEN_2022_PROGRAM_ID
+        } else {
+            return Err(ExactPaymentBuildError::InvalidRequest(format!(
+                "mint owner {} is not Token or Token-2022",
+                mint_acc.owner
+            )));
+        };
+
+        let mint_state = spl_token::state::Mint::unpack(&mint_acc.data).map_err(|_| {
+            ExactPaymentBuildError::InvalidRequest("mint account: unpack failed".into())
+        })?;
+        let decimals = mint_state.decimals;
+
+        let source_ata = associated_token_address(&payer_pk, &pay_mint, &token_program);
+        let dest_ata = spl_destination_ata(
             &pay_to,
             &pay_mint,
+            provider,
+            merchant_wallet,
+            us_enabled,
             &token_program,
-        ));
+        );
+
+        let auto_wrap = req.auto_wrap_sol.unwrap_or(false);
+        const WSOL_MINT: Pubkey =
+            solana_pubkey::pubkey!("So11111111111111111111111111111111111111112");
+
+        if pay_mint == WSOL_MINT && auto_wrap {
+            // BUY-5: Auto-wrap wSOL injected by the builder
+            ixs.push(create_associated_token_account_idempotent_ix(
+                &payer_pk,
+                &payer_pk,
+                &WSOL_MINT,
+                &spl_token::ID,
+            ));
+            ixs.push(system_transfer_ix(&payer_pk, &source_ata, amount));
+            ixs.push(
+                spl_token::instruction::sync_native(&spl_token::ID, &source_ata).map_err(|e| {
+                    ExactPaymentBuildError::InvalidRequest(format!("sync_native: {}", e))
+                })?,
+            );
+        } else if !req.skip_source_balance_check {
+            let bal = provider
+                .rpc_client()
+                .get_token_account_balance(&source_ata)
+                .await
+                .map_err(|e| {
+                    ExactPaymentBuildError::InvalidRequest(format!(
+                        "payer source ATA {} (mint {}): {}; fund the payer token account first",
+                        source_ata, pay_mint, e
+                    ))
+                })?;
+            let raw: u64 = bal
+                .amount
+                .parse()
+                .map_err(|_| ExactPaymentBuildError::Rpc("could not parse token balance".into()))?;
+            if raw < amount {
+                return Err(ExactPaymentBuildError::InvalidRequest(format!(
+                    "payer balance {} raw < required {} (ATA {})",
+                    raw, amount, source_ata
+                )));
+            }
+        }
+
+        let need_create_dest = if us_enabled {
+            false
+        } else {
+            provider.rpc_client().get_account(&dest_ata).await.is_err()
+        };
+
+        if need_create_dest {
+            ixs.push(create_associated_token_account_idempotent_ix(
+                &payer_pk,
+                &pay_to,
+                &pay_mint,
+                &token_program,
+            ));
+        }
+
+        let transfer_ix = spl_token::instruction::transfer_checked(
+            &token_program,
+            &source_ata,
+            &pay_mint,
+            &dest_ata,
+            &payer_pk,
+            &[],
+            amount,
+            decimals,
+        )
+        .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("transfer_checked: {}", e)))?;
+        ixs.push(transfer_ix);
     }
 
-    let transfer_ix = spl_token::instruction::transfer_checked(
-        &token_program,
-        &source_ata,
-        &pay_mint,
-        &dest_ata,
-        &payer_pk,
-        &[],
-        amount,
-        decimals,
-    )
-    .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("transfer_checked: {}", e)))?;
-    ixs.push(transfer_ix);
-
+    // ── Assemble unsigned transaction ───────────────────────────────
     let fee_payer = provider.fee_payer();
     let fee_addr = Address::new_from_array(fee_payer.to_bytes());
     let message = Message::new_with_blockhash(&ixs, Some(&fee_addr), &blockhash);
     let tx = Transaction::new_unsigned(message);
     let vtx = VersionedTransaction::from(tx);
+
+    // BUY-4: Determine payer signature index from account keys (do not default — wrong index breaks
+    // browser flows that rely on `payerSignatureIndex` for wallet adapters).
+    let payer_signature_index = vtx
+        .message
+        .static_account_keys()
+        .iter()
+        .position(|k| *k == payer_pk)
+        .ok_or_else(|| {
+            ExactPaymentBuildError::InvalidRequest(
+                "internal: payer pubkey missing from transaction signers".into(),
+            )
+        })?;
+
+    // BUY-3: Estimate blockhash expiry (~60s conservative, Solana slots are ~400ms).
+    let recent_blockhash_expires_at = estimate_blockhash_expiry_unix();
+
     let wire = bincode::serialize(&vtx)
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("bincode serialize: {}", e)))?;
     let tx_b64 = STANDARD.encode(wire);
@@ -336,14 +383,18 @@ pub async fn build_exact_spl_payment_tx(
     let notes = vec![
         "Transaction is unsigned: sign with the payer keypair, then replace paymentPayload.payload.transaction with base64(bincode(VersionedTransaction)) of the signed tx.".into(),
         "Blockhashes expire: if verify/settle fails with BlockhashNotFound, request a fresh build.".into(),
+        format!("Payer must sign at signatures[{}]; fee payer (index 0) is added by the facilitator at settle.", payer_signature_index),
     ];
 
-    Ok(BuildExactPaymentTxResponse {
+    Ok(crate::proto::v2::BuildPaymentTxResponse {
         x402_version: 2,
         transaction: tx_b64,
         recent_blockhash: blockhash.to_string(),
+        recent_blockhash_expires_at,
         fee_payer: fee_payer.to_string(),
         payer: payer_pk.to_string(),
+        payer_signature_index,
+        payment_uid: None,
         verify_body_template,
         notes,
     })

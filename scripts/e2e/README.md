@@ -1,6 +1,6 @@
 # pr402 devnet end-to-end (policy + full x402 verify/settle)
 
-Scripts drive **Solana devnet** from your machine, hit a deployed **pr402** facilitator (default [preview.pr402.signer-payer.me](https://preview.pr402.signer-payer.me)), and optionally print **`payment_attempts` / `escrow_details`** via `DATABASE_URL` from `pr402/.env`.
+Scripts drive **Solana devnet** from your machine, hit a deployed **pr402** facilitator (default [preview.agent.pay402.me](https://preview.agent.pay402.me)), and optionally print **`payment_attempts` / `escrow_details`** via `DATABASE_URL` from `pr402/.env`.
 
 **HTTP contract:** canonical **OpenAPI 3.1** for the facilitator is at **`https://<host>/openapi.json`** (see [public/openapi.json](../public/openapi.json) in-repo).
 
@@ -60,7 +60,7 @@ x402 v2 expects a facilitator to support **verification** and **settlement** ([f
 ```bash
 cd pr402/scripts/e2e
 export RPC_URL="https://devnet.helius-rpc.com/?api-key=YOUR_KEY"
-export FACILITATOR_URL="https://preview.pr402.signer-payer.me"
+export FACILITATOR_URL="https://preview.agent.pay402.me"
 chmod +x *.sh
 
 ./02_exact_facilitator_verify.sh              # Scenario A (small exact amount)

@@ -166,7 +166,7 @@ echo ">>> [5/6] POST /api/v1/facilitator/verify"
 HTTP_CODE="$(curl -sS -o /tmp/e2e_verify_out.json -w "%{http_code}" \
   -X POST "$FACILITATOR_URL/api/v1/facilitator/verify" \
   -H "Content-Type: application/json" \
-  -H "X-Correlation-Id: $CORRELATION_ID" \
+  -H ": $CORRELATION_ID" \
   -d "$VERIFY_BODY")"
 
 cat /tmp/e2e_verify_out.json | jq .

@@ -3,8 +3,10 @@
 //! ## What is always available
 //!
 //! - **Path constants** and **local** unsigned transaction builders ([`build_exact_spl_payment_tx`],
-//!   [`build_sla_escrow_fund_payment_tx`]) used by the serverless binary and tests. **No** extra HTTP
-//!   dependencies.
+//!   [`build_sla_escrow_fund_payment_tx`]) used by the serverless binary and tests. `db` controls whether
+//!   the **`parameters`** table is consulted (with env as fallback); `db: None` still applies
+//!   **`PR402_ALLOWED_PAYMENT_MINTS`** from the process environment when set. Pass the deployment pool when
+//!   you want DB-backed parameter rows to match the live facilitator. **No** extra HTTP dependencies.
 //!
 //! ## Optional HTTPS client (`facilitator-http`)
 //!
@@ -14,12 +16,11 @@
 //! binary (use **default** features only).
 
 pub use crate::exact_payment_build::{
-    build_exact_spl_payment_tx, BuildExactPaymentTxRequest, BuildExactPaymentTxResponse,
-    ExactPaymentBuildError,
+    build_exact_spl_payment_tx, BuildExactPaymentTxRequest, ExactPaymentBuildError,
 };
+pub use crate::proto::v2::BuildPaymentTxResponse;
 pub use crate::sla_escrow_payment_build::{
-    build_sla_escrow_fund_payment_tx, BuildSlaEscrowPaymentTxRequest,
-    BuildSlaEscrowPaymentTxResponse, SlaEscrowPaymentBuildError,
+    build_sla_escrow_fund_payment_tx, BuildSlaEscrowPaymentTxRequest, SlaEscrowPaymentBuildError,
 };
 
 /// `GET /api/v1/facilitator/supported`
@@ -49,6 +50,15 @@ pub const FACILITATOR_OPENAPI_PATH: &str = "/openapi.json";
 
 /// `GET /agent-integration.md` — Markdown agent runbook (static `public/agent-integration.md`, like `openapi.json`); linked from `capabilities.httpEndpoints.agentIntegration`.
 pub const FACILITATOR_AGENT_INTEGRATION_PATH: &str = "/agent-integration.md";
+
+/// `GET /seller-quick-start.md` — Language-agnostic seller onboarding guide (static `public/seller-quick-start.md`).
+pub const FACILITATOR_SELLER_QUICK_START_PATH: &str = "/seller-quick-start.md";
+
+/// `GET /quickstart-buyer.md` — Concise 6-step buyer agent guide (static `public/quickstart-buyer.md`).
+pub const FACILITATOR_QUICKSTART_BUYER_PATH: &str = "/quickstart-buyer.md";
+
+/// `GET /quickstart-seller.md` — Concise 5-step seller guide with `/upgrade` as default path (static `public/quickstart-seller.md`).
+pub const FACILITATOR_QUICKSTART_SELLER_PATH: &str = "/quickstart-seller.md";
 
 #[cfg(feature = "facilitator-http")]
 pub mod http;

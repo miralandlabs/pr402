@@ -7,7 +7,7 @@ DROP TABLE IF EXISTS payment_attempts CASCADE;
 DROP TABLE IF EXISTS resource_providers CASCADE;
 
 
--- pr402 facilitator: consolidated PostgreSQL bootstrap (PostgreSQL 14+).
+-- pr402 facilitator: consolidated PostgreSQL bootstrap (PostgreSQL 15+; NULLS NOT DISTINCT).
 -- Run once: psql "$DATABASE_URL" -f migrations/init.sql
 -- Idempotent: CREATE IF NOT EXISTS + parameter seeds use ON CONFLICT DO UPDATE.
 --
@@ -20,18 +20,19 @@ DROP TABLE IF EXISTS resource_providers CASCADE;
 
 CREATE TABLE IF NOT EXISTS resource_providers (
     id                  BIGSERIAL PRIMARY KEY,
-    wallet_pubkey       TEXT NOT NULL UNIQUE,
+    wallet_pubkey       TEXT NOT NULL,
     -- native_sol | spl (one settlement rail per row; spl_mint set when spl)
     settlement_mode     TEXT NOT NULL DEFAULT 'native_sol',
     spl_mint            TEXT,
     split_vault_pda     TEXT,
     vault_sol_storage_pda TEXT,
+    sweep_threshold     BIGINT,
     registration_verified_at TIMESTAMPTZ,
-    first_seen_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_seen_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_sweep_attempt_at TIMESTAMPTZ,
     last_sweep_signature TEXT,
-    inactive            BOOLEAN NOT NULL DEFAULT FALSE
+    inactive            BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE resource_providers ENABLE ROW LEVEL SECURITY;
@@ -42,8 +43,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_resource_providers_dedup_trip
 ON resource_providers (wallet_pubkey, settlement_mode, spl_mint) 
 NULLS NOT DISTINCT;
 
-CREATE INDEX IF NOT EXISTS idx_resource_providers_last_seen
-    ON resource_providers (last_seen_at ASC);
+CREATE INDEX IF NOT EXISTS idx_resource_providers_created_at
+    ON resource_providers (created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_resource_providers_updated_at
+    ON resource_providers (updated_at ASC);
 
 CREATE TABLE IF NOT EXISTS payment_attempts (
     id                   BIGSERIAL PRIMARY KEY,
@@ -149,16 +153,50 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_parameters_param_name ON parameters (para
 CREATE INDEX IF NOT EXISTS idx_parameters_inactive ON parameters (inactive ASC);
 
 -- =============================================================================
--- Default parameter seeds (sweep preflight floors; safe to re-run)
+-- Default parameter seeds (safe to re-run).
+--
+-- Notes (DB parameter precedence > env in this project):
+-- - PR402_SWEEP_CRON_TOKEN:
+--     Bearer token required by POST /api/v1/facilitator/sweep.
+--     Default below is a bootstrap placeholder; rotate immediately in production.
+-- - PR402_SWEEP_CRON_COOLDOWN_SEC (default 300):
+--     Min seconds between sweep attempts per provider rail.
+-- - PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC (default 86400):
+--     Candidate must have a successful settle within this window.
+-- - PR402_SWEEP_CRON_BATCH_LIMIT (default 50):
+--     Max provider rails processed per cron run.
+-- - PR402_SWEEP_MIN_SPENDABLE_LAMPORTS (default 30000000):
+--     SOL floor (0.03 SOL) before sweep.
+-- - PR402_SWEEP_MIN_SPL_RAW_DEFAULT (default 3000000):
+--     SPL raw floor fallback (e.g. 3.0 @ 6 decimals).
+-- - PR402_SWEEP_MIN_SPL_RAW_BY_MINT:
+--     Optional per-mint SPL raw floor map.
+-- - PR402_ALLOWED_PAYMENT_MINTS:
+--     Comma- or whitespace-separated base58 mint pubkeys. Parsed in Rust by splitting on commas
+--     and ASCII whitespace (see `parameters::resolve_allowed_payment_mints`).
+--     Include native SOL explicitly as 11111111111111111111111111111111 (matches x402/Solana
+--     convention for `asset` on native SOL lines). WSOL uses mint So11111111111111111111111111111111111111112.
+--     Use exactly one USDC mint for your cluster (mainnet EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v;
+--     devnet 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU). Do not mix cluster mints on one deploy.
+--     Empty / omitted = allowlist disabled (permissive; not for production).
 -- =============================================================================
 
 INSERT INTO parameters (param_name, param_value) VALUES
+    ('PR402_MAX_DAILY_PROVISION_COUNT', '50'),
     ('PR402_ONBOARD_HMAC_SECRET', 'AgenticEconomics'),
     ('PR402_ONBOARD_CHALLENGE_TTL_SEC', '600'),
+    (
+        'PR402_ALLOWED_PAYMENT_MINTS',
+        '11111111111111111111111111111111,So11111111111111111111111111111111111111112,EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+    ),
+    ('PR402_SWEEP_CRON_TOKEN', 'SHARE_SAME_VALUE_BTW_CRON_SECRET_AND_CRON_TOKEN'),
+    ('PR402_SWEEP_CRON_COOLDOWN_SEC', '300'),
+    ('PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC', '86400'),
+    ('PR402_SWEEP_CRON_BATCH_LIMIT', '50'),
     ('PR402_SWEEP_MIN_SPENDABLE_LAMPORTS', '30000000'),
     (
         'PR402_SWEEP_MIN_SPL_RAW_BY_MINT',
-        '{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v":"3000000","4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU":"3000000","2gNCDGj8Xi9Zs7LNQTPWf4pfZvAM7UHusY4xhKNYg6W6":"3000000"}'
+        '{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v":"3000000","So11111111111111111111111111111111111111112":"30000000"}'
     ),
     ('PR402_SWEEP_MIN_SPL_RAW_DEFAULT', '3000000')
 ON CONFLICT (param_name) DO UPDATE SET

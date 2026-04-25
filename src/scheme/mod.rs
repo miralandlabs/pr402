@@ -21,6 +21,19 @@ pub trait X402SchemeFacilitator: Send + Sync {
     ) -> Result<proto::SettleResponse, X402SchemeFacilitatorError>;
     async fn supported(&self) -> Result<proto::SupportedResponse, X402SchemeFacilitatorError>;
     async fn onboard(&self, wallet: &str) -> Result<SchemeOnboardInfo, X402SchemeFacilitatorError>;
+    async fn build_onboard_tx(
+        &self,
+        wallet: &str,
+    ) -> Result<proto::v2::BuildPaymentTxResponse, X402SchemeFacilitatorError>;
+    async fn discovery(
+        &self,
+        wallet: &str,
+        asset: Option<&str>,
+    ) -> Result<SchemeOnboardInfo, X402SchemeFacilitatorError>;
+    async fn upgrade(
+        &self,
+        request: &proto::PaymentRequired,
+    ) -> Result<proto::PaymentRequired, X402SchemeFacilitatorError>;
 }
 
 /// Scheme identifier trait.
@@ -50,6 +63,8 @@ pub enum X402SchemeFacilitatorError {
     SolanaChain(#[from] crate::chain::solana::SolanaChainProviderError),
     #[error("Onchain error: {0}")]
     OnchainFailure(String),
+    #[error("Invalid payload: {0}")]
+    InvalidPayload(String),
 }
 
 impl proto::AsPaymentProblem for X402SchemeFacilitatorError {
@@ -61,6 +76,9 @@ impl proto::AsPaymentProblem for X402SchemeFacilitatorError {
             }
             X402SchemeFacilitatorError::OnchainFailure(e) => {
                 proto::PaymentProblem::new(proto::ErrorReason::UnexpectedError, e.to_string())
+            }
+            X402SchemeFacilitatorError::InvalidPayload(e) => {
+                proto::PaymentProblem::new(proto::ErrorReason::InvalidFormat, e.to_string())
             }
         }
     }

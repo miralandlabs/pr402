@@ -29,6 +29,9 @@ pub struct Config {
     pub universalsettle: Option<UniversalSettleConfig>,
     /// SLAEscrow configuration (optional)
     pub escrow: Option<SLAEscrowConfig>,
+    /// When true, HTTP `POST .../build-sla-escrow-payment-tx` accepts `facilitatorPaysTransactionFees: true`.
+    /// Default false. Env: `PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP` (`1` / `true` / `yes`).
+    pub sla_escrow_allow_facilitator_fee_sponsorship: bool,
     /// Challenge validity window (seconds). Default 600; max 3600 enforced in handlers. DB override: `parameters` / `PR402_ONBOARD_CHALLENGE_TTL_SEC`.
     pub onboard_challenge_ttl_sec: u64,
 }
@@ -42,6 +45,10 @@ pub struct UniversalSettleConfig {
     pub fee_destination: Option<Pubkey>,
     /// Fee basis points (read from on-chain Config account)
     pub fee_bps: Option<u16>,
+    /// Minimum fee for SPL tokens
+    pub min_fee_amount: Option<u64>,
+    /// Minimum fee for Native SOL
+    pub min_fee_amount_sol: Option<u64>,
 }
 
 /// SLAEscrow configuration for escrow-based settlements.
@@ -51,8 +58,9 @@ pub struct SLAEscrowConfig {
     pub program_id: Pubkey,
     /// Bank PDA (read from chain or derived)
     pub bank_address: Option<Pubkey>,
-    /// Fee basis points (read from on-chain Bank account)
     pub fee_bps: Option<u16>,
+    /// Oracle fee basis points (read from on-chain Escrow account, default 0)
+    pub oracle_fee_bps: Option<u16>,
     /// List of trusted oracle authorities as candidates for user selection
     pub oracle_authorities: Vec<Pubkey>,
 }
@@ -75,6 +83,7 @@ impl Config {
     /// - `MAX_COMPUTE_UNIT_PRICE`: Max compute unit price (default: 1000000)
     /// - `UNIVERSALSETTLE_PROGRAM_ID`: Enables `v2:solana:exact` with UniversalSettle (vault, fees, sweep). Omit only if you do not serve that scheme.
     /// - `ESCROW_PROGRAM_ID`: Registers `v2:solana:sla-escrow`. Omit if you do not serve escrow. At least one settlement program should match what RPs advertise.
+    /// - `PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`: If `1`/`true`/`yes`, clients may request facilitator-paid Solana fees on SLA-Escrow build (`facilitatorPaysTransactionFees: true`). Default: disabled (such requests return 400).
     pub fn from_env() -> Result<Self, ConfigError> {
         let solana_rpc_url = std::env::var("SOLANA_RPC_URL")
             .map_err(|_| ConfigError::MissingEnvVar("SOLANA_RPC_URL"))?
@@ -113,8 +122,10 @@ impl Config {
             })?;
             Some(UniversalSettleConfig {
                 program_id,
-                fee_destination: None, // Will be read from chain
-                fee_bps: None,         // Will be read from chain
+                fee_destination: None,
+                fee_bps: None,
+                min_fee_amount: None,
+                min_fee_amount_sol: Some(200_000),
             })
         } else {
             None
@@ -144,6 +155,7 @@ impl Config {
                 program_id,
                 bank_address: None,
                 fee_bps: None,
+                oracle_fee_bps: None,
                 oracle_authorities,
             })
         } else {
@@ -155,6 +167,9 @@ impl Config {
             .and_then(|s| s.parse().ok())
             .unwrap_or(600);
 
+        let sla_escrow_allow_facilitator_fee_sponsorship =
+            env_truthy("PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP");
+
         Ok(Config {
             solana_rpc_url,
             solana_pubsub_url,
@@ -164,9 +179,18 @@ impl Config {
             max_compute_unit_price,
             universalsettle,
             escrow,
+            sla_escrow_allow_facilitator_fee_sponsorship,
             onboard_challenge_ttl_sec,
         })
     }
+}
+
+/// Env var is true when set to `1`, `true`, or `yes` (ASCII case-insensitive). Unset or other values → false.
+fn env_truthy(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|s| matches!(s.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false)
 }
 
 impl UniversalSettleConfig {
@@ -187,23 +211,24 @@ impl UniversalSettleConfig {
         })?;
 
         // Deserialize Config using bytemuck (skipping 8-byte discriminator)
-        if account.data.len() < 8 {
+        let config_size = std::mem::size_of::<USConfig>();
+        if account.data.len() < 8 + config_size {
             return Err(ConfigError::InvalidChainId(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
-                "Config account data too short".to_string(),
+                format!(
+                    "Config account data too short (need {} bytes, got {})",
+                    8 + config_size,
+                    account.data.len()
+                ),
             ));
         }
 
-        let config_state =
-            bytemuck::try_from_bytes::<USConfig>(&account.data[8..]).map_err(|e| {
-                ConfigError::InvalidChainId(
-                    "UNIVERSALSETTLE_CONFIG".to_string(),
-                    format!("Failed to deserialize UniversalSettle Config: {}", e),
-                )
-            })?;
+        let config_state = bytemuck::from_bytes::<USConfig>(&account.data[8..8 + config_size]);
 
         self.fee_destination = Some(Pubkey::from(config_state.fee_destination.to_bytes()));
         self.fee_bps = Some(config_state.fee_bps);
+        self.min_fee_amount = Some(config_state.min_fee_amount);
+        self.min_fee_amount_sol = Some(config_state.min_fee_amount_sol);
 
         Ok(())
     }
@@ -231,20 +256,19 @@ impl SLAEscrowConfig {
         })?;
 
         // Deserialize Bank using bytemuck (skipping 8-byte discriminator)
-        if account.data.len() < 8 {
+        let bank_size = std::mem::size_of::<EscrowBank>();
+        if account.data.len() < 8 + bank_size {
             return Err(ConfigError::InvalidChainId(
                 "SLAESCROW_BANK".to_string(),
-                "Bank account data too short".to_string(),
+                format!(
+                    "Bank account data too short (need {} bytes, got {})",
+                    8 + bank_size,
+                    account.data.len()
+                ),
             ));
         }
 
-        let bank_state =
-            bytemuck::try_from_bytes::<EscrowBank>(&account.data[8..]).map_err(|e| {
-                ConfigError::InvalidChainId(
-                    "SLAESCROW_BANK".to_string(),
-                    format!("Failed to deserialize SLAEscrow Bank: {}", e),
-                )
-            })?;
+        let bank_state = bytemuck::from_bytes::<EscrowBank>(&account.data[8..8 + bank_size]);
 
         self.fee_bps = Some(bank_state.fee_bps);
         self.bank_address = Some(bank_pda);

@@ -52,76 +52,6 @@ impl Display for X402Version2 {
     }
 }
 
-/// Verify response for v2 (reuses v1 structure).
-pub enum VerifyResponse {
-    Valid { payer: String },
-    Invalid { reason: String },
-}
-
-impl VerifyResponse {
-    /// Create a valid verification response.
-    pub fn valid(payer: String) -> Self {
-        VerifyResponse::Valid { payer }
-    }
-}
-
-impl From<VerifyResponse> for proto::VerifyResponse {
-    fn from(val: VerifyResponse) -> Self {
-        // x402 v2 spec §7.1: `isValid`, `invalidReason` (camelCase). Keep `valid`/`reason` for older clients.
-        let json = match val {
-            VerifyResponse::Valid { payer } => serde_json::json!({
-                "isValid": true,
-                "valid": true,
-                "payer": payer,
-            }),
-            VerifyResponse::Invalid { reason } => serde_json::json!({
-                "isValid": false,
-                "valid": false,
-                "invalidReason": reason,
-                "reason": reason,
-            }),
-        };
-        proto::VerifyResponse::new(json)
-    }
-}
-
-/// Settle response for v2 (reuses v1 structure).
-pub enum SettleResponse {
-    Success {
-        payer: String,
-        transaction: String,
-        network: String,
-    },
-    Error {
-        reason: String,
-        network: String,
-    },
-}
-
-impl From<SettleResponse> for proto::SettleResponse {
-    fn from(val: SettleResponse) -> Self {
-        let json = match val {
-            SettleResponse::Success {
-                payer,
-                transaction,
-                network,
-            } => serde_json::json!({
-                "success": true,
-                "payer": payer,
-                "transaction": transaction,
-                "network": network,
-            }),
-            SettleResponse::Error { reason, network } => serde_json::json!({
-                "success": false,
-                "errorReason": reason,
-                "error_reason": reason,
-                "network": network,
-            }),
-        };
-        proto::SettleResponse::new(json)
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResourceInfo {
@@ -191,4 +121,21 @@ pub struct PaymentRequired {
     pub x402_version: X402Version2,
     pub resource: ResourceInfo,
     pub accepts: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildPaymentTxResponse {
+    pub x402_version: u8,
+    pub transaction: String,
+    pub recent_blockhash: String,
+    pub recent_blockhash_expires_at: u64,
+    pub fee_payer: String,
+    pub payer: String,
+    pub payer_signature_index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_uid: Option<String>,
+    pub verify_body_template: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }

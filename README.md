@@ -2,6 +2,15 @@
 
 **A minimal, x402-compliant facilitator for Solana, optimized for Vercel Serverless Functions. It bridges human/agent requests with on-chain settlement engines like `UniversalSettle` and `SLA-Escrow`.**
 
+## For resource provider agents (sellers)
+
+Sellers can onboard either **Proactively** (Protocol Onboarding) to receive a fee discount, or **Just-In-Time** (Facilitated) with a small setup recovery fee.
+
+**Agentic Onboarding Flow:**
+1. **Discover**: Find your `payTo` (vault PDA) address via `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact`.
+2. **On-Chain Provisioning**: Build a sovereign vault tx via `GET /api/v1/facilitator/onboard/build-tx?wallet=<PUBKEY>`. Sign & Send locally to receive the 95 bps rate.
+3. **Registry (Off-Chain)**: Use `/onboard/challenge` to persist verified metadata for high-fidelity discovery.
+
 ## For buyer agents (payers)
 
 This section is for **buyer-side** code: wallets, automation, and agents that **pay** after a resource returns **HTTP 402** with `accepts[]`. Resource providers only return the challenge; they do not normally call the build endpoints below.
@@ -10,11 +19,11 @@ This section is for **buyer-side** code: wallets, automation, and agents that **
 
 1. **Receive** the `402` body from the resource: keep `paymentRequirements` and pick one matching `accepts[]` line.
 2. **Discover** your facilitator (same host the RP referenced, if any): `GET /api/v1/facilitator/capabilities` or `GET /api/v1/facilitator/supported`. Use `httpEndpoints` + `GET /openapi.json` for the machine-readable contract.
-3. **Build** (optional): if the RP relies on this facilitator for tx assembly, call **`POST .../build-exact-payment-tx`** when `scheme` is `exact`, or **`POST .../build-sla-escrow-payment-tx`** when `scheme` is `sla-escrow` — not both. You send `payer`, `accepted`, `resource`, and (escrow only) `slaHash` + `oracleAuthority`.
+3. **Build** (optional): if the RP relies on this facilitator for tx assembly, call **`POST .../build-exact-payment-tx`** when `scheme` is `exact` or `v2:solana:exact`, or **`POST .../build-sla-escrow-payment-tx`** when `scheme` is `sla-escrow` or `v2:solana:sla-escrow` — not both. You send `payer`, `accepted`, `resource`, and (escrow only) `slaHash` + `oracleAuthority`.
 4. **Sign** the unsigned `transaction` (base64 bincode) with the payer’s Solana signer, then put the signed bytes back into `paymentPayload.payload.transaction` inside the `verifyBodyTemplate` from the build response (see OpenAPI / runbook).
-5. **Verify** then **settle**: `POST .../verify` and `POST .../settle` with the **same** JSON body; reuse `correlationId` / `X-Correlation-Id` if the facilitator returned one on verify.
+5. **Verify** then **settle**: `POST .../verify` and `POST .../settle` with the **same** JSON body; reuse `correlationId` / `X-Correlation-ID` if the facilitator returned one on verify.
 
-If **BlockhashNotFound** appears on settle, repeat build → sign → verify → settle. If the RP already gave a fully built fund tx (some escrow CLI flows), skip step 3 and still use steps 4–5.
+Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blockhash expires. If the RP already gave a fully built fund tx (some escrow CLI flows), skip step 3 and still use steps 4–5.
 
 ### SDKs and docs
 
@@ -31,6 +40,7 @@ This facilitator implements a tailored version of the [x402-rs](https://github.c
 - ✅ **Solana-Only**: High-performance, lightweight implementation with no dependencies on multi-chain libraries.
 - ✅ **Protocol v2**: Latest protocol version for agentic economies.
 - ✅ **Multi-Scheme Settlement**: Native support for "Exact" and "Escrow" payment schemes.
+- ✅ **Agent-Native Onboarding**: Proactive, machine-readable onboarding for sovereign status.
 - ✅ **Vercel Serverless Functions**: Optimized for low-latency, stateless API endpoints.
 
 ## 🛠️ Supported Schemes
@@ -64,6 +74,16 @@ Scheme Configuration:
 
 ---
 
+## 🛡️ Institutional Identity Standard
+In the UniversalSettle and SLA-Escrow ecosystems, the concept of a "beneficiary" is split to ensure buyer agents can be stateless:
+
+1.  **`payTo` (The Destination)**: This is MUST be the direct on-chain destination for the transaction. For institutional payments, this is the **SplitVault PDA** or **Escrow Bank PDA**.
+2.  **`extra.merchantWallet` (The Identity)**: This is the original merchant wallet. The Facilitator uses this to re-derive PDAs for fee-sweeping and provisioning. 
+
+**Standard Compliance Rule**: Buyers SHOULD always pay the address in `payTo`. Facilitators MUST look for the merchant's identity in `extra.merchantWallet` if `payTo` is a PDA.
+
+---
+
 ## 🛡️ Reliability & Security Standard
 To ensure the highest level of transparency for the Agentic Economy, the facilitator implements the following standards:
 
@@ -79,10 +99,16 @@ To ensure the highest level of transparency for the Agentic Economy, the facilit
 - `GET /api/v1/facilitator/supported`: Returns the **Enriched Metadata** for all active schemes. This is the primary discovery endpoint for AI Agents.
 - `POST /api/v1/facilitator/verify`: Validates transactions against the protocol requirements and the agent's selected oracle.
 - `POST /api/v1/facilitator/settle`: Relays the signed transaction to the blockchain.
-- `GET /api/v1/facilitator/health` — Same handler as `supported` (load balancer / uptime check).
-- `GET /api/v1/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags (UniversalSettle, escrow, unsigned tx build), and relative HTTP endpoint paths + x402 v2 spec link.
-- `POST /api/v1/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL payment transaction (compute budget + optional merchant ATA create + `TransferChecked`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"? }`. Response includes `transaction` (base64 bincode) and `verify_body_template` (replace `paymentPayload.payload.transaction` after the payer signs). Same layout as the local `x402_pr402_pay` helper in spl-token-balance-serverless; **native SOL** mint is rejected here (use a different path). **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/v1/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.
-- `POST /api/v1/facilitator/build-sla-escrow-payment-tx` — Build an **unsigned** SLA-Escrow **`FundPayment`** transaction (compute budget + optional escrow vault ATA create + fund). Body: `payer`, `accepted` (`scheme: "sla-escrow"`), `resource`, **`slaHash`** (64 hex), **`oracleAuthority`**, optional `paymentUid`, optional `skipSourceBalanceCheck`, optional **`buyerPaysTransactionFees`** (default `false`). **Default:** facilitator pays Solana fees (same signer layout as `build-exact-payment-tx`; buyer partially signs, facilitator completes at `/settle`). **`buyerPaysTransactionFees: true`:** buyer fee payer / one signer (CLI-compatible). Requires `ESCROW_PROGRAM_ID` / SLA escrow config. Classic SPL Token mints only in this builder (Token-2022 and native SOL fund layouts: use `sla-escrow` CLI or extend the builder).
+- `GET /api/v1/facilitator/health` — Liveness and dependency snapshot (`status`, `schemaVersion`, `database`, `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`). **Not** the same handler or JSON shape as `GET /supported` (that endpoint returns scheme `kinds[]` only).
+- `GET /api/v1/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags, and relative HTTP endpoint paths.
+- `GET /api/v1/facilitator/discovery?wallet=...&scheme=...&asset=...` — Lightweight programmatic discovery of `payTo` address and institutional metadata for a specific scheme and asset. (Preferred for resource provider configuration).
+- **Onboarding (Sellers)**:
+    - `GET /api/v1/facilitator/onboard?wallet=...` — Preview current status and "Sovereign" eligibility.
+    - `GET /api/v1/facilitator/onboard/build-tx?wallet=...` — Build an unsigned `create_vault` tx for proactive agents.
+    - `GET /api/v1/facilitator/onboard/challenge?wallet=...` — Receive a unique message for DB registration.
+    - `POST /api/v1/facilitator/onboard` — Submit checked challenge to persist seller metadata.
+- `POST /api/v1/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL or native SOL payment transaction (compute budget + optional merchant ATA create + `TransferChecked` / `SystemTransfer`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"?, "autoWrapSol"? }`. JSON response uses **camelCase**; fields include `transaction` (base64 bincode), `verifyBodyTemplate`, `payerSignatureIndex`, `recentBlockhashExpiresAt`, `notes`, etc. Rust struct: [`BuildExactPaymentTxResponse`](src/exact_payment_build.rs). OpenAPI schema: **`BuildExactPaymentTxResponse`** in [`public/openapi.json`](public/openapi.json). **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/v1/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.
+- `POST /api/v1/facilitator/build-sla-escrow-payment-tx` — Build an **unsigned** SLA-Escrow **`FundPayment`** transaction (compute budget + optional escrow vault ATA create + fund). Body: `payer`, `accepted` (`scheme: "sla-escrow"`; `extra` must include **`beneficiary`** or **`merchantWallet`**), `resource`, **`slaHash`** (64 hex), **`oracleAuthority`**, optional `paymentUid`, optional `skipSourceBalanceCheck`, optional **`autoWrapSol`**, optional **`facilitatorPaysTransactionFees`**. **Default (`facilitatorPaysTransactionFees` omitted/false):** buyer pays Solana fees (single-signer). **`facilitatorPaysTransactionFees: true`:** facilitator fee payer (two-signer; same pattern as build-exact); allowed on HTTP only if the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`**, otherwise **400**. Requires `ESCROW_PROGRAM_ID` / SLA escrow config. SPL: legacy Token and Token-2022 **plain** mints (82-byte mint account). OpenAPI schema: **`BuildSlaEscrowPaymentTxResponse`**. `GET .../onboard/build-tx` uses **`BuildOnboardTxResponse`**.
 
 ### Vercel deployment
 - **`vercel.json`** uses `vercel-rust@4.0.8` and maps each `/api/v1/facilitator/...` path to the `facilitator` binary.
@@ -92,9 +118,9 @@ To ensure the highest level of transparency for the Agentic Economy, the facilit
 ### Correlation id (optional DB merge key)
 x402 does not require a correlation id. For integrators who **do** enable Postgres (`DATABASE_URL`), pr402 merges `/verify` and `/settle` into one `payment_attempts` row when the **same** id is used.
 
-**Easiest path (no id in the request):** On **successful** `/verify`, if the body includes `paymentRequirements.payTo` and the request omits `correlationId` / `X-Correlation-Id`, the facilitator **mints** a ULID, persists the verify outcome, and returns it as **`correlationId`** in the JSON body and **`X-Correlation-Id`** on the response. Re-send that value on **`/settle`** (same header or `correlationId` in JSON) so settlement updates the same row.
+**Easiest path (no id in the request):** On **successful** `/verify`, if the body includes `paymentRequirements.payTo` and the request omits `correlationId` / `X-Correlation-ID`, the facilitator **mints** a ULID, persists the verify outcome, and returns it as **`correlationId`** in the JSON body and **`X-Correlation-ID`** on the response. Re-send that value on **`/settle`** (same header or `correlationId` in JSON) so settlement updates the same row.
 
-**Bring your own id:** Set `correlationId` or `X-Correlation-Id` on both calls as before; server minting is skipped.
+**Bring your own id:** Set `correlationId` or `X-Correlation-ID` on both calls as before; server minting is skipped.
 
 ---
 Part of the **x402 Agentic Protocol** ecosystem.
