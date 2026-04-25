@@ -43,11 +43,11 @@
           "x402 Core"
         ],
         "summary": "Health check",
-        "description": "Liveness and dependency snapshot: `status`, `schemaVersion`, `database` (connected | disabled | error), `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`. Not the same payload as `/supported`.",
+        "description": "Liveness and dependency snapshot: `status`, `schemaVersion`, `database` (connected | disabled | error), `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`, `solanaWalletRpcUrl` (HTTP RPC for browser wallets; avoids public-cluster 403s). Not the same payload as `/supported`.",
         "operationId": "facilitatorHealth",
         "responses": {
           "200": {
-            "description": "Health snapshot: `status`, `schemaVersion`, `database`, `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork` (camelCase JSON). Distinct from `GET /supported`.",
+            "description": "Health snapshot: `status`, `schemaVersion`, `database`, `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`, `solanaWalletRpcUrl` (camelCase JSON). Distinct from `GET /supported`.",
             "content": {
               "application/json": {
                 "schema": {

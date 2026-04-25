@@ -166,6 +166,8 @@ struct HealthResponse {
     solana_slot: Option<u64>,
     environment: String,
     solana_network: String,
+    /// HTTP RPC URL for browser `Connection` (e.g. `sendRawTransaction`). Same as facilitator `SOLANA_RPC_URL` when not localhost; otherwise the public cluster URL for `solanaNetwork`.
+    solana_wallet_rpc_url: String,
 }
 
 /// Typed capabilities discovery response — stabilizes the contract for agents.
