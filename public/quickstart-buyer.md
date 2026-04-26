@@ -2,7 +2,9 @@
 
 > **You have a Solana wallet and received HTTP 402 from a seller. Here's what to do.**
 
-Replace `$BASE` with the facilitator URL the seller documents (e.g. `https://preview.agent.pay402.me`).
+> **Launch phase:** **Experimental** — **use at your own risk**.
+
+Replace **`$BASE`** with the facilitator URL the seller documents. Official defaults: **Production** `https://agent.pay402.me` (Mainnet) · **Preview** `https://preview.agent.pay402.me` (Devnet). Run **`curl -sS "$BASE/api/v1/facilitator/health" | jq .solanaNetwork`** to confirm the cluster.
 
 ---
 

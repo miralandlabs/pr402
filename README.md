@@ -2,6 +2,27 @@
 
 **A minimal, x402-compliant facilitator for Solana, optimized for Vercel Serverless Functions. It bridges human/agent requests with on-chain settlement engines like `UniversalSettle` and `SLA-Escrow`.**
 
+> **Launch phase:** pr402 is **experimental**. Use **at your own risk** — behavior, fees, allowlists, and availability may change without notice.
+
+## Official deployments
+
+| Environment | Base URL | Solana |
+|-------------|----------|--------|
+| **Production** | `https://agent.pay402.me` | Mainnet |
+| **Preview** | `https://preview.agent.pay402.me` | Devnet |
+
+Call **`GET /api/v1/facilitator/health`** or **`GET /api/v1/facilitator/capabilities`** on the **same host** you use for `verify` / `settle` to confirm **`solanaNetwork`**, **`chainId`**, and feature flags. Integrations must use the origin the **seller documents** for that resource (do not silently swap preview vs production).
+
+**Wallet RPC:** If your client needs the deployment’s wallet-facing HTTP RPC, read **`solanaWalletRpcUrl`** from **`GET /health`** at runtime. Do not copy RPC URLs from static markdown into apps — they are environment-specific and may rotate or carry credentials.
+
+| Served doc | Production | Preview |
+|------------|------------|---------|
+| OpenAPI 3.1 | [`/openapi.json`](https://agent.pay402.me/openapi.json) | [`/openapi.json`](https://preview.agent.pay402.me/openapi.json) |
+| Buyer runbook | [`/agent-integration.md`](https://agent.pay402.me/agent-integration.md) | [`/agent-integration.md`](https://preview.agent.pay402.me/agent-integration.md) |
+| Seller onboarding | [`/onboarding_guide.md`](https://agent.pay402.me/onboarding_guide.md) | [`/onboarding_guide.md`](https://preview.agent.pay402.me/onboarding_guide.md) |
+
+In-repo copies: [`public/openapi.json`](public/openapi.json), [`public/agent-integration.md`](public/agent-integration.md), [`public/onboarding_guide.md`](public/onboarding_guide.md).
+
 ## For resource provider agents (sellers)
 
 Sellers can onboard either **Proactively** (Protocol Onboarding) to receive a fee discount, or **Just-In-Time** (Facilitated) with a small setup recovery fee.
@@ -93,22 +114,13 @@ To ensure the highest level of transparency for the Agentic Economy, the facilit
 
 ---
 
-## 🚀 API Endpoints (v1)
-- **OpenAPI 3.1:** [`public/openapi.json`](public/openapi.json) — served at **`GET /openapi.json`** on the deployed host (and `GET /api/v1/facilitator/openapi.json` redirects there). Use it for agents, codegen, and contract tests. `GET /api/v1/facilitator/capabilities` includes `httpEndpoints.openApi` pointing to this path.
-- **Agent runbook:** edit [`public/agent-integration.md`](public/agent-integration.md) (static, like **`public/openapi.json`**); served at **`GET /agent-integration.md`** (`vercel.json` route). [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). Listed under `capabilities.httpEndpoints.agentIntegration`.
-- `GET /api/v1/facilitator/supported`: Returns the **Enriched Metadata** for all active schemes. This is the primary discovery endpoint for AI Agents.
-- `POST /api/v1/facilitator/verify`: Validates transactions against the protocol requirements and the agent's selected oracle.
-- `POST /api/v1/facilitator/settle`: Relays the signed transaction to the blockchain.
-- `GET /api/v1/facilitator/health` — Liveness and dependency snapshot (`status`, `schemaVersion`, `database`, `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`). **Not** the same handler or JSON shape as `GET /supported` (that endpoint returns scheme `kinds[]` only).
-- `GET /api/v1/facilitator/capabilities` — Discovery JSON: `chainId`, `feePayer`, `supported` kinds, feature flags, and relative HTTP endpoint paths.
-- `GET /api/v1/facilitator/discovery?wallet=...&scheme=...&asset=...` — Lightweight programmatic discovery of `payTo` address and institutional metadata for a specific scheme and asset. (Preferred for resource provider configuration).
-- **Onboarding (Sellers)**:
-    - `GET /api/v1/facilitator/onboard?wallet=...` — Preview current status and "Sovereign" eligibility.
-    - `POST /api/v1/facilitator/onboard/provision` — Build an unsigned provisioning tx per **asset** (`SplitVault` + SOL storage and/or vault ATA). **JSON body** fields `wallet`, `asset` (not query parameters).
-    - `GET /api/v1/facilitator/onboard/challenge?wallet=...` — Receive a unique message for DB registration.
-    - `POST /api/v1/facilitator/onboard` — Submit checked challenge to persist seller metadata.
-- `POST /api/v1/facilitator/build-exact-payment-tx` — Build an **unsigned** SPL or native SOL payment transaction (compute budget + optional merchant ATA create + `TransferChecked` / `SystemTransfer`) matching one `accepts[]` line. Body: `{ "payer", "accepted", "resource", "skipSourceBalanceCheck"?, "autoWrapSol"? }`. JSON response uses **camelCase**; fields include `transaction` (base64 bincode), `verifyBodyTemplate`, `payerSignatureIndex`, `recentBlockhashExpiresAt`, `notes`, etc. Rust struct: [`BuildExactPaymentTxResponse`](src/exact_payment_build.rs). OpenAPI schema: **`BuildExactPaymentTxResponse`** in [`public/openapi.json`](public/openapi.json). **Who calls it:** the **buyer** (wallet, browser, or agent) over HTTPS — not the resource provider; RP only issues the `402` and `accepts[]`. **Why “shared”:** one facilitator implements this for **all** RPs on that deployment (RPs are not required to host Solana tx construction). **CORS:** `OPTIONS /api/v1/facilitator/*` returns **204** with `Access-Control-Allow-*`; JSON responses include `Access-Control-Allow-Origin: *`.
-- `POST /api/v1/facilitator/build-sla-escrow-payment-tx` — Build an **unsigned** SLA-Escrow **`FundPayment`** transaction (compute budget + optional escrow vault ATA create + fund). Body: `payer`, `accepted` (`scheme: "sla-escrow"`; `extra` must include **`beneficiary`** or **`merchantWallet`**), `resource`, **`slaHash`** (64 hex), **`oracleAuthority`**, optional `paymentUid`, optional `skipSourceBalanceCheck`, optional **`autoWrapSol`**, optional **`facilitatorPaysTransactionFees`**. **Default (`facilitatorPaysTransactionFees` omitted/false):** buyer pays Solana fees (single-signer). **`facilitatorPaysTransactionFees: true`:** facilitator fee payer (two-signer; same pattern as build-exact); allowed on HTTP only if the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`**, otherwise **400**. Requires `ESCROW_PROGRAM_ID` / SLA escrow config. SPL: legacy Token and Token-2022 **plain** mints (82-byte mint account). OpenAPI schema: **`BuildSlaEscrowPaymentTxResponse`**. Seller **`POST .../onboard/provision`** uses **`SellerProvisionTxResponse`**.
+## API surface (v1)
+
+The **authoritative** list of paths, request bodies, and schemas is **[`public/openapi.json`](public/openapi.json)** (`GET /openapi.json` on each deployment). **`GET /api/v1/facilitator/capabilities`** returns relative paths and `httpEndpoints.openApi`.
+
+**Core x402 path:** `supported` → optional **`build-exact-payment-tx`** or **`build-sla-escrow-payment-tx`** → **`verify`** → **`settle`** (same JSON body for verify/settle; see [`public/agent-integration.md`](public/agent-integration.md)).
+
+**Discovery & ops:** `health`, `capabilities`, `discovery`, seller `onboard/*`, `upgrade`, operator sweep/snapshot (OpenAPI tag **Operations**).
 
 ### Vercel deployment
 - **`vercel.json`** uses `vercel-rust@4.0.8` and maps each `/api/v1/facilitator/...` path to the `facilitator` binary.

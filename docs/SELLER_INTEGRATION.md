@@ -4,6 +4,8 @@ If you are a builder (Resource Provider) wishing to monetize your APIs using the
 
 The `pr402` platform uses **UniversalSettle** and **SplitVaults** to enforce institutional-grade fee routing. As a result, there are specific **pr402-native enhancements** to the x402 specification that you must adhere to.
 
+> **Launch phase:** **Experimental** — integrate **at your own risk**.
+
 > **x402 v2 Header Convention** (per [HTTP transport spec](https://github.com/coinbase/x402/blob/main/specs/transports-v2/http.md)):
 >
 > | Header | Direction | Description |
@@ -21,14 +23,16 @@ However, **pr402 enforces routing into autonomous SplitVault PDAs (Program Deriv
 
 When your API server spins up (or dynamically upon handling a request), your server should contact the Facilitator to discover the SplitVault PDAs associated with your seller wallet.
 
+Replace **`$BASE`** with your facilitator origin (the same URL buyers use for `verify` / `settle`). Official deployments: **Production** `https://agent.pay402.me` (Mainnet), **Preview** `https://preview.agent.pay402.me` (Devnet). Confirm cluster with **`GET $BASE/api/v1/facilitator/health`**.
+
 ### Quick lookup (single scheme):
 ```http
-GET https://preview.agent.pay402.me/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact
+GET $BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact
 ```
 
 ### Full onboard preview (all schemes):
 ```http
-GET https://preview.agent.pay402.me/api/v1/facilitator/onboard?wallet=YOUR_PUBKEY
+GET $BASE/api/v1/facilitator/onboard?wallet=YOUR_PUBKEY
 ```
 
 The response will contain the derived Vault PDAs for your supported schemes. Cache these!
@@ -109,7 +113,7 @@ When you extract this header, you do not need to parse or verify the Solana tran
 Submit a `POST /api/v1/facilitator/verify` or `/settle` request containing the decoded contents of the `PAYMENT-SIGNATURE` header.
 
 ```bash
-curl -X POST https://preview.agent.pay402.me/api/v1/facilitator/settle \
+curl -X POST "$BASE/api/v1/facilitator/settle" \
      -H "Content-Type: application/json" \
      -d '<DECODED_PAYMENT_SIGNATURE_JSON>'
 ```
@@ -141,7 +145,7 @@ After successful settlement, x402 v2 sellers should return a **`PAYMENT-RESPONSE
 
 **Example:**
 ```bash
-curl -X POST https://preview.agent.pay402.me/api/v1/facilitator/upgrade \
+curl -X POST "$BASE/api/v1/facilitator/upgrade" \
   -H "Content-Type: application/json" \
   -d '{"x402Version":2,"accepts":[{"scheme":"exact","network":"solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1","payTo":"YOUR_BARE_WALLET","amount":"50000","asset":"USDC_MINT"}]}'
 ```

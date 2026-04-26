@@ -3,7 +3,7 @@
   "info": {
     "title": "pr402 Facilitator API",
     "version": "1.0.0",
-    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Who uses this API:**\n- **Seller / resource provider agents** \u2014 onboard UniversalSettle vaults, per-asset provisioning (`POST /onboard/provision`), preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` \u2192 Seller agents).\n- **Buyer / payer agents** \u2014 match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` \u2192 Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)\u2014not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**SLA-Escrow `FundPayment.seller`:** Build and verify require `paymentRequirements.accepted.extra` (**or** mirrored `extra` on the proof) to include **`beneficiary`** or **`merchantWallet`** (base58). That pubkey is the on-chain **seller** encoded in `FundPayment` and must **not** equal the escrow PDA.\n\n**Who pays Solana transaction fees:** The x402 v2 specification centers facilitator-paid **landing** for the standard **`exact`** rail. **SLA-Escrow** is a pr402 extension: **`facilitatorPaysTransactionFees` defaults to `false`**, so the **buyer** pays network fees unless you opt in to facilitator sponsorship (`true`, two-signer flow like `build-exact-payment-tx`). **FundPayment** token principal always comes from the buyer\u2019s funded ATA; only the **SOL fee payer** toggles. **Operator gate:** even when a client sends `facilitatorPaysTransactionFees: true`, the HTTP build is **rejected (400)** unless the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** to `true`/`1`/`yes`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**Examples:** Schema **`X402V2VerifySettleBody`** includes a worked **`example`** (exact rail). **`BuildExactPaymentTxRequest`** includes an **`example`** request for the builder.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md` (includes **Golden path** section for naive integrators).\n\n**Agent manifest (machine-readable):** `/agent-payTo-semantics.json` \u2014 `payTo` resolution rules and `paymentMintAllowlist` metadata; the same path is advertised as `agentManifest.payToSemantics` on `GET /capabilities`.\n",
+    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Launch phase:** This service and its documentation are provided on an **experimental** basis — **use at your own risk**. Protocol, fees, allowlists, and availability may change.\n\n**Official deployments:** **Production** (Solana Mainnet) — `https://agent.pay402.me`. **Preview** (Solana Devnet) — `https://preview.agent.pay402.me`. Select the matching entry under **`servers`** below. Always confirm **`solanaNetwork`** and **`chainId`** via **`GET /api/v1/facilitator/health`** or **`GET /api/v1/facilitator/capabilities`** on the host you call.\n\n**RPC URLs:** Integrators needing the deployment\u2019s wallet RPC should read **`solanaWalletRpcUrl`** from **`GET /health`** at runtime. **Do not** copy RPC URLs or API keys from static markdown into your app; they are environment-specific and may rotate.\n\n**Who uses this API:**\n- **Seller / resource provider agents** \u2014 onboard UniversalSettle vaults, per-asset provisioning (`POST /onboard/provision`), preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` \u2192 Seller agents).\n- **Buyer / payer agents** \u2014 match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` \u2192 Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)\u2014not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**SLA-Escrow `FundPayment.seller`:** Build and verify require `paymentRequirements.accepted.extra` (**or** mirrored `extra` on the proof) to include **`beneficiary`** or **`merchantWallet`** (base58). That pubkey is the on-chain **seller** encoded in `FundPayment` and must **not** equal the escrow PDA.\n\n**Who pays Solana transaction fees:** The x402 v2 specification centers facilitator-paid **landing** for the standard **`exact`** rail. **SLA-Escrow** is a pr402 extension: **`facilitatorPaysTransactionFees` defaults to `false`**, so the **buyer** pays network fees unless you opt in to facilitator sponsorship (`true`, two-signer flow like `build-exact-payment-tx`). **FundPayment** token principal always comes from the buyer\u2019s funded ATA; only the **SOL fee payer** toggles. **Operator gate:** even when a client sends `facilitatorPaysTransactionFees: true`, the HTTP build is **rejected (400)** unless the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** to `true`/`1`/`yes`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**Examples:** Schema **`X402V2VerifySettleBody`** includes a worked **`example`** (exact rail). **`BuildExactPaymentTxRequest`** includes an **`example`** request for the builder.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md` (includes **Golden path** section for naive integrators).\n\n**Agent manifest (machine-readable):** `/agent-payTo-semantics.json` \u2014 `payTo` resolution rules and `paymentMintAllowlist` metadata; the same path is advertised as `agentManifest.payToSemantics` on `GET /capabilities`.\n",
     "license": {
       "name": "Apache-2.0"
     }
@@ -11,19 +11,19 @@
   "tags": [
     {
       "name": "x402 Core",
-      "description": "Standard x402 v2 facilitator endpoints: verify, settle, supported, and discovery. These are the endpoints defined by the x402 protocol specification."
+      "description": "Discovery and settlement core: **`/health`**, **`/capabilities`**, **`/supported`**, **`/verify`**, **`/settle`**, **`/discovery`**. Called by **buyer agents** (and sometimes sellers for discovery). Align requests with the **`servers`** entry you chose (Mainnet production vs Devnet preview)."
     },
     {
       "name": "pr402 Extension: Tx Build",
-      "description": "pr402-specific unsigned transaction builders. These are value-added endpoints that eliminate blockchain SDK dependencies for buyer agents."
+      "description": "**Buyer agents:** **`/build-exact-payment-tx`**, **`/build-sla-escrow-payment-tx`** \u2014 unsigned `VersionedTransaction` + `verifyBodyTemplate`. Eliminates Solana SDK work in the browser or agent runtime."
     },
     {
       "name": "pr402 Extension: Seller Onboarding",
-      "description": "Seller registration, vault provisioning, and PDA discovery. These endpoints help sellers prepare their `accepts[]` lines and manage vault lifecycle."
+      "description": "**Seller / resource providers:** **`/onboard/*`**, **`/onboard/provision`**, **`/upgrade`**. Prepare UniversalSettle / escrow PDAs and optional Postgres registry. Human-readable runbook: **`/onboarding_guide.md`** on the same host."
     },
     {
       "name": "pr402 Extension: Operations",
-      "description": "Internal and operational endpoints (sweep, vault snapshot). Typically used by schedulers or dashboards, not by buyer/seller agents."
+      "description": "**Operators:** sweep, vault snapshot, cron helpers. Not part of the buyer x402 payment path."
     }
   ],
   "externalDocs": {
@@ -32,8 +32,12 @@
   },
   "servers": [
     {
+      "url": "https://agent.pay402.me",
+      "description": "Production (Solana Mainnet). Experimental \u2014 use at your own risk. No trailing slash in base URL."
+    },
+    {
       "url": "https://preview.agent.pay402.me",
-      "description": "Example deployment \u2014 substitute your facilitator base URL (no trailing slash)."
+      "description": "Preview (Solana Devnet). Experimental \u2014 use at your own risk. For integration testing and devnet programs."
     }
   ],
   "paths": {
@@ -43,7 +47,7 @@
           "x402 Core"
         ],
         "summary": "Health check",
-        "description": "Liveness and dependency snapshot: `status`, `schemaVersion`, `database` (connected | disabled | error), `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`, `solanaWalletRpcUrl` (HTTP RPC for browser wallets; avoids public-cluster 403s). Not the same payload as `/supported`.",
+        "description": "Liveness and dependency snapshot: `status`, `schemaVersion`, `database` (connected | disabled | error), `solanaRpc`, `solanaSlot`, `environment`, `solanaNetwork`, `solanaWalletRpcUrl` (deployment-specific wallet RPC \u2014 may include credentials; **read at runtime**, do not hardcode from docs). Not the same payload as `/supported`.",
         "operationId": "facilitatorHealth",
         "responses": {
           "200": {
