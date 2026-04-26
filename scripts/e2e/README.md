@@ -34,6 +34,7 @@ Default **`run_all_devnet.sh`** exercises **both** rails where the **facilitator
 | **B1** | **1 USDC** | SLA-Escrow (buyer pays fees; CLI) | `01_sla_escrow_facilitator_verify.sh` | on-chain `fund-payment` → **`/verify`** → **`/settle`** |
 | **B+** | (same fund as B1/B2) | SLA post-fund lifecycle + DB | `04_sla_escrow_post_fund_lifecycle.sh` | `submit-delivery` → `confirm-oracle` → `release-payment` (or refund); writes **`escrow_lifecycle_events`** + **`escrow_details`** via `record_escrow_lifecycle` |
 | **B★** | **1 USDC** (default) | **Full SLA** one script | **`05_sla_escrow_full_cycle_devnet.sh`** | B1 fund + `/verify` + `/settle` + delivery + oracle + **release** (or refund); uses **`E2E_ORACLE_KEYPAIR`** (defaults to buyer) so confirm-oracle is signable; needs **`DATABASE_URL`** + migration **003** |
+| **P** | **~0.5 SOL ×3** (devnet) | **Seller provision API** | **`06_seller_provision_devnet.sh`** | `POST /onboard/provision` → sign as seller → `sendTransaction`; asserts SplitVault + SOL storage + SPL vault ATA for **USDC**, **WSOL**, and a **custom devnet mint**; optional **A2** second-rail **400** after signed **`POST /onboard`** (needs facilitator **Postgres** + **`PR402_ONBOARD_HMAC_SECRET`**). Funds new keypairs from **`DEMO_FUNDER_KEYPAIR`** (default **`x402/demo-wallets/buyer-keypair.json`**). |
 
 **Production reference** (not enforced by these small defaults): `USDC_POLICY_THRESHOLD_WHOLE` (default 10) — below → prefer `exact`, at or above → prefer `sla-escrow`. Override amounts with env vars anytime.
 
@@ -68,8 +69,9 @@ chmod +x *.sh
 ./01_sla_escrow_facilitator_verify.sh         # Scenario B1 (SLA, CLI buyer-paid)
 ./04_sla_escrow_post_fund_lifecycle.sh       # After B1/B2: delivery / oracle / release + DB (see script header)
 ./05_sla_escrow_full_cycle_devnet.sh         # **Full** SLA in one go (fund…release + DB); or: RUN_FULL_SLA_LIFECYCLE=1 ./run_all_devnet.sh
+./06_seller_provision_devnet.sh              # Seller `POST /onboard/provision` + on-chain account checks (see script header)
 # or
-./run_all_devnet.sh                           # B2 → B1 → A. RUN_FULL_SLA_LIFECYCLE=1 → B2 → 05 → A. RUN_SLA_LIFECYCLE=1 chains 04 after B1.
+./run_all_devnet.sh                           # B2 → B1 → A. RUN_FULL_SLA_LIFECYCLE=1 → B2 → 05 → A. RUN_SLA_LIFECYCLE=1 chains 04 after B1. RUN_SELLER_PROVISION=1 appends 06.
 ```
 
 **Facilitator build:** B1 (**buyer-paid**) `/settle` expects a **fully signed** fund tx (often already on-chain). B2 (**facilitator-paid**) matches **A**: partial buyer sign, facilitator completes at `/settle`. See `docs/sla_escrow_fee_payer_and_settle.md`.

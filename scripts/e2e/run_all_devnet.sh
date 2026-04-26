@@ -19,6 +19,7 @@
 #   SKIP_SLA_CLI=1     — skip B1 (CLI fund-payment / buyer-paid only)
 #   RUN_SLA_LIFECYCLE=1 — after B1, run post-fund lifecycle (sets E2E_SLA_FULL_LIFECYCLE; needs oracle key + DB migration 003)
 #   RUN_FULL_SLA_LIFECYCLE=1 — B2 (unless SKIP_SLA_HTTP) → 05 (B1 fund + verify/settle + 04 lifecycle + DB) → A
+#   RUN_SELLER_PROVISION=1 — after other scenarios, run 06_seller_provision_devnet.sh (needs demo-wallets funder SOL)
 #
 set -euo pipefail
 HERE="$(dirname "$0")"
@@ -82,4 +83,11 @@ else
 fi
 
 echo ""
+
+if [[ "${RUN_SELLER_PROVISION:-}" == "1" ]]; then
+  echo ">>> RUN_SELLER_PROVISION=1 — seller SplitVault provision API (06_seller_provision_devnet.sh)"
+  "$HERE/06_seller_provision_devnet.sh"
+  echo ""
+fi
+
 echo "🎉 run_all_devnet: enabled scenarios completed."

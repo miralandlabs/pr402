@@ -6,6 +6,10 @@ E2E_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PR402_ROOT="$(cd "$E2E_ROOT/../.." && pwd)"
 WORKSPACE_ROOT="$(cd "$PR402_ROOT/.." && pwd)"
 
+# Monorepo demo keypairs (e.g. fund fresh seller wallets on devnet — see 06_seller_provision_devnet.sh).
+export DEMO_WALLETS_ROOT="${DEMO_WALLETS_ROOT:-$WORKSPACE_ROOT/demo-wallets}"
+export DEMO_FUNDER_KEYPAIR="${DEMO_FUNDER_KEYPAIR:-$DEMO_WALLETS_ROOT/buyer-keypair.json}"
+
 export FACILITATOR_URL="${FACILITATOR_URL:-https://preview.agent.pay402.me}"
 export RPC_URL="${RPC_URL:-${SOLANA_RPC_URL:-https://api.devnet.solana.com}}"
 # Circle USDC on devnet (same family as scripts elsewhere in the monorepo)
