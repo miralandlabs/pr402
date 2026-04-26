@@ -256,7 +256,8 @@
         }
 
         .endpoint {
-            display: flex;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) minmax(11rem, 38%);
             align-items: center;
             gap: 1.5rem;
             padding: 1.25rem;
@@ -288,10 +289,13 @@
             font-family: var(--font-code);
             font-size: 0.85rem;
             color: #cbd5e1;
+            min-width: 0;
         }
 
         .description {
-            margin-left: auto;
+            margin-left: 0;
+            justify-self: end;
+            text-align: right;
             color: var(--text-dim);
             font-size: 0.8rem;
             font-family: var(--font-mono);
@@ -569,8 +573,15 @@
             .container { padding: 2rem 1rem; }
             .grid { grid-template-columns: 1fr; }
             .discovery-docs { padding: 1.5rem; }
-            .endpoint { flex-direction: column; align-items: flex-start; }
-            .description { margin-left: 0; margin-top: 0.5rem; }
+            .endpoint {
+                grid-template-columns: 1fr;
+                justify-items: start;
+            }
+            .description {
+                margin-top: 0.5rem;
+                justify-self: stretch;
+                text-align: left;
+            }
             .system-pulse { gap: 1.5rem; padding: 0.6rem 1rem; }
             .pulse-label { display: none; }
         }
@@ -664,15 +675,16 @@
             </p>
             <p style="font-size: 0.85rem; margin-bottom: 0;">
                 <strong>Steps:</strong> pick an <strong>asset</strong> (default <strong>USDC</strong> for typical agent flows; SOL, …) → <strong>🔗 Connect wallet</strong> → <strong>Provision</strong>. Re-running for the same wallet + asset is a no-op when already on-chain.
+                Presets like <strong>USDC</strong> are <strong>cluster-aware</strong>: this facilitator resolves them to the correct SPL mint for <strong>its</strong> Solana cluster (e.g. Circle devnet vs mainnet USDC are different addresses—the server picks the right one; you do not paste a mint for normal USDC).
             </p>
             <label for="provision-asset" class="mint-hint" style="display:block;margin-top:1rem;">Payment asset to provision</label>
             <select id="provision-asset" aria-describedby="provision-asset-desc">
-                <option value="USDC" selected>USDC (default)</option>
+                <option value="USDC" selected>USDC (default — mint resolved for this deployment’s cluster)</option>
                 <option value="SOL">SOL (native — virtual mint 1111…1111)</option>
-                <option value="WSOL">WSOL (wrapped SOL)</option>
-                <option value="USDT">USDT (mainnet; devnet — paste mint below)</option>
+                <option value="WSOL">WSOL (wrapped SOL — same well-known mint across clusters)</option>
+                <option value="USDT">USDT (mainnet mint built-in; devnet — paste mint below)</option>
             </select>
-            <p id="provision-asset-desc" class="mint-hint">Optional: paste any SPL mint to override the list (devnet USDT, memecoins, etc.).</p>
+            <p id="provision-asset-desc" class="mint-hint">Optional: paste any SPL mint to override the list (required for <strong>USDT on devnet</strong>, custom test mints, memecoins, etc.).</p>
             <input type="text" id="provision-mint-override" class="mint-override" placeholder="Override with base58 mint (optional)" autocomplete="off" spellcheck="false">
             <div class="provision-actions">
                 <button type="button" class="btn btn-secondary" id="btn-wallet-connect">🔗 Connect wallet</button>
