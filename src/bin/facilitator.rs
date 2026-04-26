@@ -213,7 +213,7 @@ struct CapabilitiesHttpEndpoints {
     sweep: HttpEndpointInfo,
     sweep_cron: HttpEndpointInfo,
     onboard: HttpEndpointInfo,
-    build_onboard_tx: HttpEndpointInfo,
+    onboard_provision: HttpEndpointInfo,
     supported: HttpEndpointInfo,
     health: HttpEndpointInfo,
     capabilities: HttpEndpointInfo,
@@ -543,8 +543,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("GET", "/api/v1/facilitator/onboard") => {
                     handle_onboard_preview(facilitator.clone(), &query).await
                 }
-                ("GET", "/api/v1/facilitator/onboard/build-tx") => {
-                    handle_onboard_build_tx(facilitator.clone(), &query).await
+                ("POST", "/api/v1/facilitator/onboard/provision") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handle_onboard_provision(facilitator.clone(), body).await
+                    }
                 }
                 ("GET", "/api/v1/facilitator/vault-snapshot") => {
                     handle_vault_snapshot(&query).await

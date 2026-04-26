@@ -26,18 +26,31 @@ pub async fn handle_verify(
     let payee = payee_wallet_opt.as_deref().or(backup_payee.as_deref());
     let (settlement_mode, spl_mint_owned) = verify_request.resource_provider_settlement();
     let spl_mint_ref = spl_mint_owned.as_deref();
+    let merchant_wallet = verify_request.resource_provider_merchant_wallet();
+    let persist_wallet = merchant_wallet.as_deref().or(payee);
+
+    if let Some(db) = pr402_db() {
+        if let Some(ref m) = merchant_wallet {
+            if let Err(e) = db
+                .assert_merchant_single_rail_policy(m, settlement_mode.as_str(), spl_mint_ref)
+                .await
+            {
+                return error_response(StatusCode::BAD_REQUEST, &e.to_string());
+            }
+        }
+    }
 
     match facilitator.verify(&verify_request).await {
         Ok(response) => {
             let effective_cid = persist_meta.clone().or_else(|| {
-                if pr402_db().is_some() && payee.is_some() {
+                if pr402_db().is_some() && persist_wallet.is_some() {
                     Some(pr402::payment_attempt::mint_correlation_id())
                 } else {
                     None
                 }
             });
             if let (Some(db), Some(cid), Some(wallet)) =
-                (pr402_db(), effective_cid.as_deref(), payee)
+                (pr402_db(), effective_cid.as_deref(), persist_wallet)
             {
                 match db
                     .record_payment_verify(
@@ -87,14 +100,14 @@ pub async fn handle_verify(
                     target: LOG_SERVER_LOG,
                     correlation_id = %cid,
                     minted,
-                    payee = %payee.unwrap_or("(none)"),
+                    payee = %persist_wallet.unwrap_or("(none)"),
                     "verify ok"
                 );
             } else {
                 // No pool (`DATABASE_URL` unset) or no `payTo` / client correlation id — no minted id.
                 info!(
                     target: LOG_SERVER_LOG,
-                    payee = %payee.unwrap_or("(none)"),
+                    payee = %persist_wallet.unwrap_or("(none)"),
                     db_enabled = pr402_db().is_some(),
                     note = "no correlation id: need DB+payTo to mint, or client sends correlationId",
                     "verify ok"
@@ -117,7 +130,7 @@ pub async fn handle_verify(
         }
         Err(e) => {
             if let (Some(db), Some(cid), Some(wallet)) =
-                (pr402_db(), persist_meta.as_deref(), payee)
+                (pr402_db(), persist_meta.as_deref(), persist_wallet)
             {
                 let msg = format!("{}", e);
                 if let Err(err) = db

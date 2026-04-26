@@ -273,6 +273,16 @@ pub async fn build_sla_escrow_fund_payment_tx(
 
     let seller_pk = resolve_fund_payment_seller_pk(extra, &escrow_pda)?;
 
+    if let Some(pool) = db {
+        let (sm, om) = crate::proto::settlement_rail_from_x402_asset(asset_str);
+        if let Err(e) = pool
+            .assert_merchant_single_rail_policy(&seller_pk.to_string(), sm.as_str(), om.as_deref())
+            .await
+        {
+            return Err(SlaEscrowPaymentBuildError::InvalidRequest(e.to_string()));
+        }
+    }
+
     let mint_acc = provider
         .rpc_client()
         .get_account(&mint)

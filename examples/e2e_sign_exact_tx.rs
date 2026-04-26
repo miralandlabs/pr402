@@ -1,5 +1,7 @@
-//! Devnet E2E helper: sign an **unsigned** legacy-shell `VersionedTransaction` from
-//! `POST /api/v1/facilitator/build-exact-payment-tx` so it can be pasted into `/verify`.
+//! Devnet E2E helper: sign an **unsigned** `VersionedTransaction` (bincode) from the facilitator.
+//!
+//! - **Legacy** messages (`build-exact-payment-tx`, etc.): `try_partial_sign` + `recentBlockhash`.
+//! - **v0** messages (`POST /onboard/provision` sovereign tx): [`VersionedTransaction::try_new`].
 //!
 //! ```text
 //! curl -s .../build-exact-payment-tx -d @body.json | jq -r .transaction \
@@ -33,12 +35,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hash = Hash::from_str(&recent_bh)?;
     let kp = Keypair::read_from_file(&keypair_path)?;
 
-    let signed = match vtx.into_legacy_transaction() {
-        Some(mut legacy) => {
-            legacy.try_partial_sign(&[&kp], hash)?;
-            VersionedTransaction::from(legacy)
-        }
-        None => return Err("only legacy-shell transactions are supported by this example".into()),
+    let signed = if let Some(mut legacy) = vtx.clone().into_legacy_transaction() {
+        legacy.try_partial_sign(&[&kp], hash)?;
+        VersionedTransaction::from(legacy)
+    } else {
+        VersionedTransaction::try_new(vtx.message, &[&kp])
+            .map_err(|e| anyhow::anyhow!("versioned try_new (v0 message): {e:?}"))?
     };
 
     let out = bincode::serialize(&signed)?;

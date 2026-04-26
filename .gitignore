@@ -3,7 +3,7 @@ target/
 .env
 .env.local
 *.log
-
+scripts/
 sdk/ts/node_modules/
 sdk/ts/package-lock.json
 

@@ -7,6 +7,7 @@ use crate::scheme::v2_solana_exact::V2SolanaExact;
 use crate::scheme::{
     X402SchemeFacilitator, X402SchemeFacilitatorBuilder, X402SchemeFacilitatorError, X402SchemeId,
 };
+pub use crate::seller_provision::SellerProvisionTxResponse;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -37,11 +38,12 @@ pub trait Facilitator: Send + Sync {
     /// Onboards a resource owner's wallet by ensuring vaults are provisioned.
     async fn onboard(&self, wallet: &str) -> Result<OnboardResponse, Self::Error>;
 
-    /// Builds an unsigned transaction for proactive onboarding to become Sovereign.
-    async fn build_onboard_tx(
+    /// Builds an unsigned transaction for seller provisioning (SplitVault + asset surface), idempotent.
+    async fn build_onboard_provision_tx(
         &self,
         wallet: &str,
-    ) -> Result<proto::v2::BuildPaymentTxResponse, Self::Error>;
+        asset: &str,
+    ) -> Result<SellerProvisionTxResponse, Self::Error>;
 
     /// Programmatic discovery of `payTo` address and required institutional `extra` metadata.
     async fn discovery(
@@ -250,23 +252,20 @@ impl Facilitator for FacilitatorLocal {
         Ok(response)
     }
 
-    async fn build_onboard_tx(
+    async fn build_onboard_provision_tx(
         &self,
         wallet: &str,
-    ) -> Result<proto::v2::BuildPaymentTxResponse, Self::Error> {
-        // UniversalSettle Proactive Onboarding: Any scheme handler can build it since they
-        // all share the same UniversalSettle infrastructure. We pick the first one.
-        for handler in self.scheme_handlers.values() {
-            if let Ok(tx) = handler.build_onboard_tx(wallet).await {
-                return Ok(tx);
-            }
-        }
-
-        Err(FacilitatorLocalError::Onboard(
-            X402SchemeFacilitatorError::OnchainFailure(
-                "No scheme handler could build onboarding transaction".to_string(),
-            ),
-        ))
+        asset: &str,
+    ) -> Result<SellerProvisionTxResponse, Self::Error> {
+        let handler = self.scheme_handlers.get("exact").ok_or_else(|| {
+            FacilitatorLocalError::Onboard(X402SchemeFacilitatorError::OnchainFailure(
+                "v2:solana:exact (UniversalSettle) is required for seller provisioning".into(),
+            ))
+        })?;
+        handler
+            .build_onboard_provision_tx(wallet, asset)
+            .await
+            .map_err(FacilitatorLocalError::Onboard)
     }
 
     async fn discovery(

@@ -85,9 +85,9 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/onboard",
                 auth: None,
             },
-            build_onboard_tx: HttpEndpointInfo {
-                method: "GET",
-                path: "/api/v1/facilitator/onboard/build-tx",
+            onboard_provision: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/onboard/provision",
                 auth: None,
             },
             supported: HttpEndpointInfo {

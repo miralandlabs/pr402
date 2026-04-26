@@ -45,6 +45,19 @@ pub struct VerifyRequest {
     pub extra: HashMap<String, serde_json::Value>,
 }
 
+/// Maps x402 payment `asset` mint string to `resource_providers` rail (same rules as
+/// [`VerifyRequest::resource_provider_settlement`]).
+pub fn settlement_rail_from_x402_asset(asset: &str) -> (String, Option<String>) {
+    let asset = asset.trim();
+    const NATIVE: &str = "11111111111111111111111111111111";
+    const WSOL: &str = "So11111111111111111111111111111111111111112";
+    if asset.is_empty() || asset == NATIVE || asset == WSOL {
+        ("native_sol".to_owned(), None)
+    } else {
+        ("spl".to_owned(), Some(asset.to_owned()))
+    }
+}
+
 impl VerifyRequest {
     pub fn into_json(self) -> serde_json::Value {
         serde_json::to_value(self).unwrap_or_default()
@@ -97,13 +110,41 @@ impl VerifyRequest {
             })
             .unwrap_or("")
             .trim();
-        const NATIVE: &str = "11111111111111111111111111111111";
-        const WSOL: &str = "So11111111111111111111111111111111111111112";
-        if asset.is_empty() || asset == NATIVE || asset == WSOL {
-            ("native_sol".to_owned(), None)
-        } else {
-            ("spl".to_owned(), Some(asset.to_owned()))
+        settlement_rail_from_x402_asset(asset)
+    }
+
+    /// Seller pubkey (base58) for facilitator DB policy: `extra.merchantWallet` / `beneficiary` on
+    /// `paymentRequirements` or nested `accepted.extra` / payload `accepted.extra`.
+    pub fn resource_provider_merchant_wallet(&self) -> Option<String> {
+        fn pick(extra: &serde_json::Value) -> Option<String> {
+            extra
+                .get("merchantWallet")
+                .or_else(|| extra.get("beneficiary"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
         }
+        let req = &self.payment_requirements;
+        if let Some(e) = req.get("extra") {
+            if let Some(m) = pick(e) {
+                return Some(m);
+            }
+        }
+        if let Some(a) = req.get("accepted") {
+            if let Some(ex) = a.get("extra") {
+                if let Some(m) = pick(ex) {
+                    return Some(m);
+                }
+            }
+        }
+        if let Some(a) = self.payment_payload.get("accepted") {
+            if let Some(ex) = a.get("extra") {
+                if let Some(m) = pick(ex) {
+                    return Some(m);
+                }
+            }
+        }
+        None
     }
 
     /// Extract common x402 V2 metadata for database persistence.

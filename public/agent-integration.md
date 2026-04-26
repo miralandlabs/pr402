@@ -54,16 +54,16 @@ If you receive payment for resources and want **Sovereign** status (95 bps fee t
 2. **Protocol onboarding (on-chain provisioning)**:
    - **CLI**: `universalsettle create-vault --seller <YOUR_PUBKEY>`
    - **API (agent-native)**:
-     1. **Build**: `GET /api/v1/facilitator/onboard/build-tx?wallet=<YOUR_PUBKEY>`
-     2. **Sign**: Sign the returned `VersionedTransaction` (base64 bincode) with your seller key.
-     3. **Send**: Broadcast to Solana.
+     1. **Build**: `POST /api/v1/facilitator/onboard/provision` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a mint). Repeat per asset; same pair is idempotent (`alreadyProvisioned` + no `transaction` when done).
+     2. **Sign**: When `transaction` is present, sign the `VersionedTransaction` (base64 bincode) with your seller key.
+     3. **Send**: Broadcast to Solana when applicable.
    - **Incentive**: Proactive vault creation earns an ongoing **5 bps** protocol fee discount.
 3. **Status**: Discover your `payTo` (vault PDA) and metadata:
    ```bash
    curl -sS "https://<facilitator-url>/api/v1/facilitator/discovery?wallet=<YOUR_PUBKEY>&scheme=exact" | jq .
    ```
    Try the **Vault Explorer** on the facilitator `/` landing page for the same resolution. (Note: `/onboard` is for institutional status and proactive onboarding).
-4. **Off-chain registry (optional)**: `GET /api/v1/facilitator/onboard/challenge?wallet=…` then `POST /api/v1/facilitator/onboard` with the signed payload (requires `DATABASE_URL` + HMAC secret on the server). Persists verified vault metadata for discovery.
+4. **Off-chain registry (optional)**: `GET /api/v1/facilitator/onboard/challenge?wallet=…` then `POST /api/v1/facilitator/onboard` with the signed payload plus optional **`asset`** (defaults to **USDC**) — selects the single settlement rail recorded in Postgres for that merchant wallet. **One asset per wallet:** use another seller key for a second coin. Requires `DATABASE_URL` + HMAC secret on the server; persists verified vault metadata for discovery.
 5. **Publishing x402**: See [Publishing a Payment Required line](#publishing-a-payment-required-line-sellers) so your `accepts[]` matches what this facilitator verifies.
 
 <a id="publishing-a-payment-required-line-sellers"></a>
@@ -77,6 +77,8 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 
 2. **Bootstrap shape from discovery**  
    Call **`GET /api/v1/facilitator/supported`** (or read **`supported`** inside **`GET /capabilities`**). Copy the structure of a `kinds[]` entry for your rail (`v2:solana:exact` or `v2:solana:sla-escrow`): `network`, `scheme`, and especially **`extra`** (fee payer, program IDs, oracle lists, bank/config PDAs). Your **`accepts[]`** lines should be consistent with that shape so buyers can call builders without guessing.
+
+   **Several options in one 402:** x402 **`accepts[]`** is an **array**—each entry is a full payment requirement with its own **`payTo`**, **`asset`**, and metadata; the buyer returns **one** chosen line as **`accepted`**. This is how you advertise more than one token or rail on the same resource. With this facilitator’s **one asset per merchant wallet** rule, use **distinct seller pubkeys** per rail and give each `accepts[]` row the **`payTo`** / **`extra.merchantWallet`** from discovery for **that** key (see [`onboarding_guide.md`](./onboarding_guide.md) — *Launch phase: one payment asset per merchant wallet*).
 
 3. **`v2:solana:exact` (UniversalSettle)**  
    - **`payTo`**: Must identify the **vault rail** the facilitator checks on-chain (split-vault / SOL storage / vault ATA semantics per deployment). Use PDAs from **`GET /api/v1/facilitator/discovery?wallet=<your_seller_pubkey>&scheme=exact`** (`vaultPda`, `solStoragePda`, etc.). Do **not** publish only your personal wallet as `payTo` unless that is explicitly the derived rail for your deployment.  
@@ -98,11 +100,11 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 
 ### Seller agent checklist (automation)
 
-1. **Discovery**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Onboard tx is under `httpEndpoints.buildOnboardTx`.
+1. **Discovery**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Seller provisioning is under `httpEndpoints.onboardProvision`.
 2. **State**: `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact`. If `isSovereign: true`, you already have the discount path where applicable.
 3. **Full Onboarding**: `GET /api/v1/facilitator/onboard?wallet=<PUBKEY>` for all schemes.
-4. **Create vault tx**: `GET /api/v1/facilitator/onboard/build-tx?wallet=<PUBKEY>`.
-5. **Sign & send** the unsigned shell; then re-check onboard JSON for sovereign / provisioning fields.
+4. **Provision**: `POST /api/v1/facilitator/onboard/provision` with `wallet` + **`asset`** for that seller key’s single rail (see OpenAPI `SellerProvisionTxResponse`); use **another seller key** for a second coin.
+5. **Sign & send** when `transaction` is returned; then re-check onboard JSON for sovereign / provisioning fields.
 6. **Balances (debug)**: `GET /api/v1/facilitator/vault-snapshot?wallet=<PUBKEY>` (UniversalSettle deployments).
 
 ---

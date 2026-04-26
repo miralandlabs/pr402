@@ -2,7 +2,6 @@
 
 pub mod types;
 
-use base64::{engine::general_purpose::STANDARD, Engine};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Write as _;
@@ -24,7 +23,6 @@ use crate::scheme::v2_solana_exact::shared::{
     settle_transaction, verify_compute_limit_instruction, verify_compute_price_instruction,
     TransactionInt, VerifyTransferResult,
 };
-use crate::util::tx_builder::estimate_blockhash_expiry_unix;
 use crate::util::{
     decode_versioned_transaction_from_bincode, reject_versioned_tx_with_address_lookup_tables,
     Base64Bytes,
@@ -256,54 +254,16 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         })
     }
 
-    async fn build_onboard_tx(
+    async fn build_onboard_provision_tx(
         &self,
-        wallet: &str,
-    ) -> Result<proto::v2::BuildPaymentTxResponse, X402SchemeFacilitatorError> {
-        // Institutional Consistency: Onboarding always targets the core UniversalSettle SplitVault
-        // so that the seller qualifies for the 95 bps rate regardless of payment scheme.
-        let seller = solana_pubkey::Pubkey::from_str(wallet)
-            .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?;
-        let us_config = self.provider.universalsettle().ok_or_else(|| {
-            X402SchemeFacilitatorError::OnchainFailure("UniversalSettle not enabled".to_string())
-        })?;
-
-        let ix = crate::chain::solana_universalsettle::build_create_vault_instruction(
-            us_config.program_id,
-            seller,
-            seller,
-        );
-
-        let blockhash = self
-            .provider
-            .rpc_client()
-            .get_latest_blockhash()
-            .await
-            .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?;
-
-        // Manual construction of VersionedTransaction (unsigned shell)
-        let message = solana_message::v0::Message::try_compile(&seller, &[ix], &[], blockhash)
-            .map_err(|e| X402SchemeFacilitatorError::OnchainFailure(e.to_string()))?;
-
-        let tx = solana_transaction::versioned::VersionedTransaction {
-            signatures: vec![solana_signature::Signature::default()],
-            message: solana_message::VersionedMessage::V0(message),
-        };
-
-        let tx_b64 = STANDARD.encode(bincode::serialize(&tx).unwrap());
-
-        Ok(proto::v2::BuildPaymentTxResponse {
-            x402_version: 2,
-            transaction: tx_b64,
-            recent_blockhash: blockhash.to_string(),
-            recent_blockhash_expires_at: estimate_blockhash_expiry_unix(),
-            fee_payer: seller.to_string(),
-            payer: seller.to_string(),
-            payer_signature_index: 0,
-            payment_uid: None,
-            verify_body_template: serde_json::Value::Null,
-            notes: vec!["Sovereign onboarding transaction created. Sign and send to receive the 95 bps institutional discount.".to_string()],
-        })
+        _wallet: &str,
+        _asset: &str,
+    ) -> Result<crate::seller_provision::SellerProvisionTxResponse, X402SchemeFacilitatorError>
+    {
+        Err(X402SchemeFacilitatorError::InvalidPayload(
+            "Seller SplitVault provisioning is only supported on v2:solana:exact (UniversalSettle); use POST /api/v1/facilitator/onboard/provision with the exact scheme deployment."
+                .into(),
+        ))
     }
 
     async fn discovery(

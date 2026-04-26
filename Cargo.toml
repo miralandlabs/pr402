@@ -101,6 +101,10 @@ path = "examples/e2e_sign_exact_tx.rs"
 name = "e2e_sign_sla_escrow_tx"
 path = "examples/e2e_sign_sla_escrow_tx.rs"
 
+[[example]]
+name = "e2e_sign_onboard_raw"
+path = "examples/e2e_sign_onboard_raw.rs"
+
 [profile.release]
 opt-level = "z"   # Optimize for size
 lto = true        # Link-time optimization
