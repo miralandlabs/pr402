@@ -172,6 +172,18 @@ pub async fn build_exact_spl_payment_tx(
         return Err(ExactPaymentBuildError::InvalidRequest(msg));
     }
 
+    if let Some(pool) = db {
+        if let Some(mw) = merchant_wallet {
+            let (sm, om) = crate::proto::settlement_rail_from_x402_asset(asset_str);
+            if let Err(e) = pool
+                .assert_merchant_single_rail_policy(&mw.to_string(), sm.as_str(), om.as_deref())
+                .await
+            {
+                return Err(ExactPaymentBuildError::InvalidRequest(e.to_string()));
+            }
+        }
+    }
+
     let amount: u64 = match &req.accepted.amount {
         v if v.as_str().is_some() => v.as_str().unwrap().parse().map_err(|_| {
             ExactPaymentBuildError::InvalidRequest("amount: invalid u64 string".into())

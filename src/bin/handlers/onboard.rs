@@ -1,5 +1,9 @@
 use super::*;
 
+use pr402::db::DbError;
+use pr402::facilitator::FacilitatorLocalError;
+use pr402::scheme::X402SchemeFacilitatorError;
+
 pub async fn handle_onboard_preview(
     facilitator: Arc<
         dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,
@@ -29,20 +33,44 @@ pub async fn handle_onboard_preview(
     }
 }
 
-/// Agent-Native Onboarding: Build an unsigned UniversalSettle `create_vault` transaction.
-/// Query: `wallet=<PUBKEY>`. Return: [`pr402::proto::v2::BuildPaymentTxResponse`].
-pub async fn handle_onboard_build_tx(
+/// Agent-native seller provisioning: unsigned tx for UniversalSettle SplitVault + asset surface (SOL or SPL vault ATA).
+/// Body JSON: `wallet`, `asset` (`SOL` | `USDC` | `WSOL` | `USDT` | base58 mint). Idempotent per `(wallet, asset)`.
+pub async fn handle_onboard_provision(
     facilitator: Arc<
         dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,
     >,
-    query: &str,
+    body: Body,
 ) -> Response<Body> {
-    let wallet = query_param(query, "wallet");
-    if wallet.is_empty() {
-        return error_response(StatusCode::BAD_REQUEST, "Missing wallet parameter");
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+    };
+
+    #[derive(Debug, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OnboardProvisionBody {
+        wallet: String,
+        asset: String,
     }
 
-    match facilitator.build_onboard_tx(&wallet).await {
+    let submit: OnboardProvisionBody = match serde_json::from_str(&body_str) {
+        Ok(b) => b,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
+    };
+    let wallet = submit.wallet.trim();
+    let asset = submit.asset.trim();
+    if wallet.is_empty() {
+        return error_response(StatusCode::BAD_REQUEST, "Missing wallet");
+    }
+    if asset.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "Missing asset (e.g. SOL, USDC, WSOL, USDT, or a base58 mint address)",
+        );
+    }
+
+    match facilitator.build_onboard_provision_tx(wallet, asset).await {
         Ok(response) => facilitator_response!()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
@@ -50,9 +78,12 @@ pub async fn handle_onboard_build_tx(
                 |_| r#"{"error":"serialization failed"}"#.to_string(),
             )))
             .unwrap(),
+        Err(FacilitatorLocalError::Onboard(X402SchemeFacilitatorError::InvalidPayload(m))) => {
+            error_response(StatusCode::BAD_REQUEST, &m)
+        }
         Err(e) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
-            &format!("Build onboard tx failed: {}", e),
+            &format!("Provision build failed: {}", e),
         ),
     }
 }
@@ -101,12 +132,19 @@ pub async fn handle_onboard_challenge(query: &str) -> Response<Body> {
         .unwrap()
 }
 
+fn default_onboard_registration_asset() -> String {
+    "USDC".to_string()
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OnboardSubmitBody {
     wallet: String,
     message: String,
     signature: String,
+    /// Declared settlement asset for `resource_providers` (one per merchant wallet). Default **USDC**.
+    #[serde(default = "default_onboard_registration_asset")]
+    asset: String,
 }
 
 pub async fn handle_onboard_submit(
@@ -140,21 +178,52 @@ pub async fn handle_onboard_submit(
         return error_response(StatusCode::UNAUTHORIZED, &e);
     }
 
+    let devnet = CHAIN_PROVIDER
+        .get()
+        .map(|cp| pr402::seller_provision::cluster_is_devnet(cp.solana.as_ref()))
+        .unwrap_or(false);
+    let resolved = match pr402::seller_provision::resolve_seller_asset(submit.asset.trim(), devnet)
+    {
+        Ok(r) => r,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &e.to_string()),
+    };
+    let (reg_mode, reg_mint_owned) =
+        pr402::seller_provision::resolved_seller_asset_to_settlement_rail(&resolved);
+    let mint_for_allowlist = match &resolved {
+        pr402::seller_provision::ResolvedSellerAsset::NativeSol => {
+            pr402::seller_provision::NATIVE_SOL_ASSET_MINT
+        }
+        pr402::seller_provision::ResolvedSellerAsset::Spl { mint, .. } => *mint,
+    };
+    if let Some(db) = pr402_db() {
+        if let Err(msg) =
+            pr402::parameters::ensure_allowed_payment_mint(Some(db), &mint_for_allowlist).await
+        {
+            return error_response(StatusCode::BAD_REQUEST, &msg);
+        }
+    }
+
     match facilitator.onboard(&submit.wallet).await {
         Ok(response) => {
             if let Some(db) = pr402_db() {
                 if let Some(info) = response.schemes.get("exact") {
-                    if let Err(e) = db
+                    match db
                         .upsert_resource_provider_vaults_verified(
                             &submit.wallet,
-                            "native_sol",
-                            None,
+                            reg_mode,
+                            reg_mint_owned.as_deref(),
                             &info.vault_pda,
                             &info.sol_storage_pda,
                         )
                         .await
                     {
-                        warn!(target: LOG_SERVER_LOG, error = %e, "persist verified onboard vaults skipped");
+                        Ok(_) => {}
+                        Err(DbError::FacilitatorPolicy(msg)) => {
+                            return error_response(StatusCode::BAD_REQUEST, &msg);
+                        }
+                        Err(e) => {
+                            warn!(target: LOG_SERVER_LOG, error = %e, "persist verified onboard vaults skipped");
+                        }
                     }
                 }
             } else {

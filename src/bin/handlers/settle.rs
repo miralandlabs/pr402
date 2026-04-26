@@ -26,6 +26,19 @@ pub async fn handle_settle(
     let payee = payee_wallet_opt.as_deref().or(backup_payee.as_deref());
     let (settlement_mode, spl_mint_owned) = settle_request.resource_provider_settlement();
     let spl_mint_ref = spl_mint_owned.as_deref();
+    let merchant_wallet = settle_request.resource_provider_merchant_wallet();
+    let persist_wallet = merchant_wallet.as_deref().or(payee);
+
+    if let Some(db) = pr402_db() {
+        if let Some(ref m) = merchant_wallet {
+            if let Err(e) = db
+                .assert_merchant_single_rail_policy(m, settlement_mode.as_str(), spl_mint_ref)
+                .await
+            {
+                return error_response(StatusCode::BAD_REQUEST, &e.to_string());
+            }
+        }
+    }
 
     pr402::parameters::refresh_parameters_from_db(pr402_db()).await;
 
@@ -40,7 +53,7 @@ pub async fn handle_settle(
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
             if let (Some(db), Some(cid), Some(wallet)) =
-                (pr402_db(), persist_meta.as_deref(), payee)
+                (pr402_db(), persist_meta.as_deref(), persist_wallet)
             {
                 match db
                     .record_payment_settle(
@@ -89,14 +102,14 @@ pub async fn handle_settle(
                 info!(
                     target: LOG_SERVER_LOG,
                     correlation_id = %cid,
-                    payee = %payee.unwrap_or("(none)"),
+                    payee = %persist_wallet.unwrap_or("(none)"),
                     settlement_signature = sig.as_deref(),
                     "settle ok"
                 );
             } else {
                 info!(
                     target: LOG_SERVER_LOG,
-                    payee = %payee.unwrap_or("(none)"),
+                    payee = %persist_wallet.unwrap_or("(none)"),
                     db_enabled = pr402_db().is_some(),
                     "settle ok (no correlation id; payment still settled on-chain)"
                 );
@@ -114,7 +127,7 @@ pub async fn handle_settle(
         }
         Err(e) => {
             if let (Some(db), Some(cid), Some(wallet)) =
-                (pr402_db(), persist_meta.as_deref(), payee)
+                (pr402_db(), persist_meta.as_deref(), persist_wallet)
             {
                 let msg = format!("{}", e);
                 if let Err(err) = db

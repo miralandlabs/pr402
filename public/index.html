@@ -406,6 +406,25 @@
             margin-top: 1.25rem;
         }
         .seller-provision button.btn { border: none; cursor: pointer; font-family: var(--font-mono); }
+        .seller-provision select,
+        .seller-provision .mint-override {
+            width: 100%;
+            max-width: 420px;
+            margin-top: 0.75rem;
+            padding: 0.65rem 0.85rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+        }
+        .seller-provision .mint-hint {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            margin-top: 0.5rem;
+            max-width: 520px;
+        }
         .seller-provision button.btn:disabled {
             opacity: 0.45;
             cursor: not-allowed;
@@ -637,18 +656,27 @@
 
         <section class="seller-provision" aria-labelledby="seller-provision-title">
             <span class="badge" style="border-color: rgba(16, 185, 129, 0.35); color: var(--accent); background: rgba(16, 185, 129, 0.08);">Sellers · No CLI</span>
-            <h2 id="seller-provision-title">Create your SplitVault in the browser</h2>
+            <h2 id="seller-provision-title">Provision your SplitVault (and payment asset)</h2>
             <p>
-                If a buyer’s first payment failed because your <strong>SplitVault</strong> is not on-chain yet, use this flow.
+                If a buyer’s first payment failed because your <strong>SplitVault</strong> or <strong>vault token account</strong> is not on-chain yet, use this flow.
                 You only need a Solana browser wallet (Phantom, Solflare, Backpack, Trust, or any compatible adapter)
                 and a little <strong>SOL</strong> on the <strong>same network</strong> as this facilitator (see the banner / health strip below).
             </p>
             <p style="font-size: 0.85rem; margin-bottom: 0;">
-                <strong>Steps:</strong> <strong>🔗 Connect wallet</strong> → <strong>Create SplitVault</strong> (approve one transaction). No terminal, no npm, no UniversalSettle CLI.
+                <strong>Steps:</strong> pick an <strong>asset</strong> (default <strong>USDC</strong> for typical agent flows; SOL, …) → <strong>🔗 Connect wallet</strong> → <strong>Provision</strong>. Re-running for the same wallet + asset is a no-op when already on-chain.
             </p>
+            <label for="provision-asset" class="mint-hint" style="display:block;margin-top:1rem;">Payment asset to provision</label>
+            <select id="provision-asset" aria-describedby="provision-asset-desc">
+                <option value="USDC" selected>USDC (default)</option>
+                <option value="SOL">SOL (native — virtual mint 1111…1111)</option>
+                <option value="WSOL">WSOL (wrapped SOL)</option>
+                <option value="USDT">USDT (mainnet; devnet — paste mint below)</option>
+            </select>
+            <p id="provision-asset-desc" class="mint-hint">Optional: paste any SPL mint to override the list (devnet USDT, memecoins, etc.).</p>
+            <input type="text" id="provision-mint-override" class="mint-override" placeholder="Override with base58 mint (optional)" autocomplete="off" spellcheck="false">
             <div class="provision-actions">
                 <button type="button" class="btn btn-secondary" id="btn-wallet-connect">🔗 Connect wallet</button>
-                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Create SplitVault</button>
+                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Provision</button>
             </div>
             <div id="provision-status" role="status" aria-live="polite"></div>
         </section>
@@ -734,9 +762,9 @@
                     <span class="description">preview PDAs &amp; fees (seller)</span>
                 </div>
                 <div class="endpoint">
-                    <span class="method get">GET</span>
-                    <span class="path">/api/v1/facilitator/onboard/build-tx</span>
-                    <span class="description">unsigned create_vault tx (seller)</span>
+                    <span class="method post">POST</span>
+                    <span class="path">/api/v1/facilitator/onboard/provision</span>
+                    <span class="description">unsigned provision tx per wallet + asset (seller)</span>
                 </div>
                 <div class="endpoint">
                     <span class="method get">GET</span>
@@ -941,6 +969,8 @@
             var btnConnect = document.getElementById('btn-wallet-connect');
             var btnProvision = document.getElementById('btn-provision-vault');
             var statusEl = document.getElementById('provision-status');
+            var provisionAsset = document.getElementById('provision-asset');
+            var provisionMintOverride = document.getElementById('provision-mint-override');
 
             function setStatus(text, isError) {
                 if (!statusEl) return;
@@ -1031,10 +1061,22 @@
                         setStatus('Wallet bundle not ready.', true);
                         return;
                     }
-                    setStatus('Fetching unsigned create_vault transaction…');
+                    var asset =
+                        provisionMintOverride && provisionMintOverride.value.trim()
+                            ? provisionMintOverride.value.trim()
+                            : provisionAsset
+                              ? provisionAsset.value
+                              : 'USDC';
+                    setStatus('Requesting provisioning transaction…');
                     try {
-                        var url = '/api/v1/facilitator/onboard/build-tx?wallet=' + encodeURIComponent(connectedB58);
-                        var res = await fetch(url);
+                        var res = await fetch('/api/v1/facilitator/onboard/provision', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                wallet: connectedB58,
+                                asset: asset,
+                            }),
+                        });
                         var txt = await res.text();
                         if (!res.ok) {
                             throw new Error(txt || ('HTTP ' + res.status));
@@ -1042,6 +1084,13 @@
                         var j = JSON.parse(txt);
                         if (j.error) {
                             throw new Error(j.error);
+                        }
+                        if (j.alreadyProvisioned) {
+                            setStatus(
+                                'Already provisioned for this wallet and asset — nothing to sign.\n' +
+                                    (j.notes && j.notes.length ? j.notes.join('\n') : '')
+                            );
+                            return;
                         }
                         var txB64 = j.transaction;
                         if (!txB64) {

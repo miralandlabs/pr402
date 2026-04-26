@@ -109,9 +109,9 @@
       "methods": ["GET", "OPTIONS"]
     },
     {
-      "src": "/api/v1/facilitator/onboard/build-tx",
+      "src": "/api/v1/facilitator/onboard/provision",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "methods": ["POST", "OPTIONS"]
     },
     {
       "src": "/api/v1/facilitator/onboard",

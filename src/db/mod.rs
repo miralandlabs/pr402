@@ -40,6 +40,8 @@ pub struct Pr402Db {
 pub enum DbError {
     Pool(String),
     Query(String),
+    /// Operator / integrator policy (user-facing; no `db query:` prefix).
+    FacilitatorPolicy(String),
     Timeout,
     /// Mirror signer-payer `DatabaseError::TransactionFailed`.
     TransactionFailed,
@@ -50,6 +52,7 @@ impl std::fmt::Display for DbError {
         match self {
             DbError::Pool(s) => write!(f, "db pool: {}", s),
             DbError::Query(s) => write!(f, "db query: {}", s),
+            DbError::FacilitatorPolicy(s) => write!(f, "{}", s),
             DbError::Timeout => write!(f, "db query timed out"),
             DbError::TransactionFailed => write!(f, "database transaction failed"),
         }
@@ -251,6 +254,95 @@ impl Pr402Db {
         res
     }
 
+    /// One **merchant** `wallet_pubkey` may only use a single settlement rail (`settlement_mode` +
+    /// `spl_mint`) while this policy is enabled. Empty DB → OK. Existing row with a different rail →
+    /// [`DbError::Query`]. (Index DDL unchanged for future multi-asset loosening.)
+    pub async fn assert_merchant_single_rail_policy(
+        &self,
+        merchant_wallet_pubkey: &str,
+        settlement_mode: &str,
+        spl_mint: Option<&str>,
+    ) -> Result<(), DbError> {
+        const SQL: &str = r#"
+                SELECT DISTINCT settlement_mode, spl_mint
+                FROM resource_providers
+                WHERE wallet_pubkey = $1 AND inactive = false
+                "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query(SQL, &[&merchant_wallet_pubkey]),
+        )
+        .await
+        {
+            Ok(Ok(rows)) => Ok(rows),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "assert_merchant_single_rail_policy query failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                error!(
+                    target: "server_log",
+                    "Query timed out after {:?}",
+                    Self::QUERY_TIMEOUT
+                );
+                Err(DbError::Timeout)
+            }
+        };
+
+        let rows = match result {
+            Ok(r) => r,
+            Err(e) => {
+                tx.rollback().await.ok();
+                return Err(e);
+            }
+        };
+
+        if rows.is_empty() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+            return Ok(());
+        }
+
+        let mut rails: Vec<(String, Option<String>)> = Vec::new();
+        for row in rows {
+            let mode: String = row.get("settlement_mode");
+            let mint: Option<String> = row.get("spl_mint");
+            rails.push((mode, mint));
+        }
+
+        tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+
+        if rails.len() > 1 {
+            return Err(DbError::FacilitatorPolicy(
+                "resource_providers: inconsistent rails for this wallet — contact support".into(),
+            ));
+        }
+
+        let (ref_mode, ref_mint) = &rails[0];
+        let mode_ok = ref_mode == settlement_mode;
+        let mint_ok = match (ref_mint.as_deref(), spl_mint) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a == b,
+            _ => false,
+        };
+
+        if !mode_ok || !mint_ok {
+            return Err(DbError::FacilitatorPolicy(
+                "This merchant wallet is already registered in resource_providers for a different payment asset. Use that asset in accepts[], call POST /onboard/provision for it first, or use a different seller wallet (one asset per wallet policy).".into(),
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Ensure a row exists for `wallet_pubkey`; return `id`.
     async fn ensure_resource_provider(
         &self,
@@ -258,6 +350,9 @@ impl Pr402Db {
         settlement_mode: &str,
         spl_mint: Option<&str>,
     ) -> Result<i64, DbError> {
+        self.assert_merchant_single_rail_policy(wallet_pubkey, settlement_mode, spl_mint)
+            .await?;
+
         const SQL: &str = r#"
                 INSERT INTO resource_providers (wallet_pubkey, settlement_mode, spl_mint, updated_at)
                 VALUES ($1, $2, $3, NOW())
@@ -322,6 +417,9 @@ impl Pr402Db {
         split_vault_pda: &str,
         vault_sol_storage_pda: &str,
     ) -> Result<i64, DbError> {
+        self.assert_merchant_single_rail_policy(wallet_pubkey, settlement_mode, spl_mint)
+            .await?;
+
         const SQL: &str = r#"
                 INSERT INTO resource_providers (
                     wallet_pubkey, settlement_mode, spl_mint,
@@ -400,6 +498,9 @@ impl Pr402Db {
         split_vault_pda: &str,
         vault_sol_storage_pda: &str,
     ) -> Result<i64, DbError> {
+        self.assert_merchant_single_rail_policy(wallet_pubkey, settlement_mode, spl_mint)
+            .await?;
+
         const SQL: &str = r#"
                 INSERT INTO resource_providers (
                     wallet_pubkey, settlement_mode, spl_mint,

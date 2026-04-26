@@ -3,7 +3,7 @@
   "info": {
     "title": "pr402 Facilitator API",
     "version": "1.0.0",
-    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Who uses this API:**\n- **Seller / resource provider agents** \u2014 onboard UniversalSettle vaults, preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` \u2192 Seller agents).\n- **Buyer / payer agents** \u2014 match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` \u2192 Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)\u2014not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**SLA-Escrow `FundPayment.seller`:** Build and verify require `paymentRequirements.accepted.extra` (**or** mirrored `extra` on the proof) to include **`beneficiary`** or **`merchantWallet`** (base58). That pubkey is the on-chain **seller** encoded in `FundPayment` and must **not** equal the escrow PDA.\n\n**Who pays Solana transaction fees:** The x402 v2 specification centers facilitator-paid **landing** for the standard **`exact`** rail. **SLA-Escrow** is a pr402 extension: **`facilitatorPaysTransactionFees` defaults to `false`**, so the **buyer** pays network fees unless you opt in to facilitator sponsorship (`true`, two-signer flow like `build-exact-payment-tx`). **FundPayment** token principal always comes from the buyer\u2019s funded ATA; only the **SOL fee payer** toggles. **Operator gate:** even when a client sends `facilitatorPaysTransactionFees: true`, the HTTP build is **rejected (400)** unless the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** to `true`/`1`/`yes`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**Examples:** Schema **`X402V2VerifySettleBody`** includes a worked **`example`** (exact rail). **`BuildExactPaymentTxRequest`** includes an **`example`** request for the builder.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md` (includes **Golden path** section for naive integrators).\n\n**Agent manifest (machine-readable):** `/agent-payTo-semantics.json` \u2014 `payTo` resolution rules and `paymentMintAllowlist` metadata; the same path is advertised as `agentManifest.payToSemantics` on `GET /capabilities`.\n",
+    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Who uses this API:**\n- **Seller / resource provider agents** \u2014 onboard UniversalSettle vaults, per-asset provisioning (`POST /onboard/provision`), preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` \u2192 Seller agents).\n- **Buyer / payer agents** \u2014 match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` \u2192 Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)\u2014not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**SLA-Escrow `FundPayment.seller`:** Build and verify require `paymentRequirements.accepted.extra` (**or** mirrored `extra` on the proof) to include **`beneficiary`** or **`merchantWallet`** (base58). That pubkey is the on-chain **seller** encoded in `FundPayment` and must **not** equal the escrow PDA.\n\n**Who pays Solana transaction fees:** The x402 v2 specification centers facilitator-paid **landing** for the standard **`exact`** rail. **SLA-Escrow** is a pr402 extension: **`facilitatorPaysTransactionFees` defaults to `false`**, so the **buyer** pays network fees unless you opt in to facilitator sponsorship (`true`, two-signer flow like `build-exact-payment-tx`). **FundPayment** token principal always comes from the buyer\u2019s funded ATA; only the **SOL fee payer** toggles. **Operator gate:** even when a client sends `facilitatorPaysTransactionFees: true`, the HTTP build is **rejected (400)** unless the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** to `true`/`1`/`yes`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**Examples:** Schema **`X402V2VerifySettleBody`** includes a worked **`example`** (exact rail). **`BuildExactPaymentTxRequest`** includes an **`example`** request for the builder.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nHuman runbook: `/agent-integration.md` (includes **Golden path** section for naive integrators).\n\n**Agent manifest (machine-readable):** `/agent-payTo-semantics.json` \u2014 `payTo` resolution rules and `paymentMintAllowlist` metadata; the same path is advertised as `agentManifest.payToSemantics` on `GET /capabilities`.\n",
     "license": {
       "name": "Apache-2.0"
     }
@@ -423,37 +423,40 @@
         }
       }
     },
-    "/api/v1/facilitator/onboard/build-tx": {
-      "get": {
+    "/api/v1/facilitator/onboard/provision": {
+      "post": {
         "tags": [
           "pr402 Extension: Seller Onboarding"
         ],
-        "summary": "Build agent-native onboarding tx",
-        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) for UniversalSettle SplitVault creation. Sign and send to receive the 95 bps institutional discount (Sovereign status).",
-        "operationId": "facilitatorOnboardBuildTx",
-        "parameters": [
-          {
-            "name": "wallet",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
+        "summary": "Build seller provisioning transaction (per asset)",
+        "description": "Returns an unsigned base64-bincode `VersionedTransaction` to provision the UniversalSettle SplitVault (if needed) and the payment surface for the requested **asset**: native SOL uses the virtual mint `11111111111111111111111111111111`; SPL assets get an idempotent vault ATA create when missing. **Agent-oriented default:** callers often start with **`USDC`** (stablecoin settlements). **Idempotent:** repeat calls for the same `(wallet, asset)` return `alreadyProvisioned: true` and omit `transaction` when no on-chain work remains. **Aliases:** `SOL`, `USDC`, `WSOL`, `USDT` resolve to cluster-appropriate mints (on devnet, `USDT` requires an explicit mint). Mint must pass `PR402_ALLOWED_PAYMENT_MINTS` when configured.",
+        "operationId": "facilitatorOnboardProvision",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardProvisionRequest"
+              }
             }
           }
-        ],
+        },
         "responses": {
           "200": {
-            "description": "Unsigned onboarding tx",
+            "description": "Provisioning instructions / optional unsigned transaction",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BuildPaymentTxResponse"
+                  "$ref": "#/components/schemas/SellerProvisionTxResponse"
                 }
               }
             }
           },
           "400": {
-            "description": "Missing wallet"
+            "description": "Invalid wallet, asset, allowlist, or malformed body"
+          },
+          "429": {
+            "description": "Build endpoint rate limit (see Retry-After)"
           },
           "500": {
             "description": "Error"
@@ -503,7 +506,7 @@
           "pr402 Extension: Seller Onboarding"
         ],
         "summary": "Submit signed onboard proof (DB registration)",
-        "description": "Body: wallet, message, signature (from `/onboard/challenge` flow). Verifies proof-of-control and persists verified resource provider vaults to DB when `DATABASE_URL` is set. This is the full registration step \u2014 unlike `GET /onboard` (preview) or `GET /discovery` (lightweight lookup), this writes to the database.",
+        "description": "Body: wallet, message, signature (from `/onboard/challenge` flow); optional **`asset`** (default **USDC**) selects the single settlement rail stored in `resource_providers` for that wallet. **Policy:** one payment asset per merchant wallet; use a different wallet for another coin. Verifies proof-of-control and persists vault PDAs when `DATABASE_URL` is set. This is the full registration step \u2014 unlike `GET /onboard` (preview) or `GET /discovery` (lightweight lookup), this writes to the database.",
         "operationId": "facilitatorOnboardSubmit",
         "requestBody": {
           "required": true,
@@ -1071,6 +1074,10 @@
           },
           "signature": {
             "type": "string"
+          },
+          "asset": {
+            "type": "string",
+            "description": "Payment asset this seller registers in `resource_providers` (one per wallet). Default **USDC** (`SOL`, `USDC`, mint, … — same resolution as `POST /onboard/provision`)."
           }
         }
       },
@@ -1372,6 +1379,97 @@
             "description": "Preferred seller payout pubkey for `FundPayment.seller` (base58); overrides `merchantWallet` when both present"
           }
         }
+      },
+      "OnboardProvisionRequest": {
+        "type": "object",
+        "required": [
+          "wallet",
+          "asset"
+        ],
+        "properties": {
+          "wallet": {
+            "type": "string",
+            "description": "Seller wallet pubkey (base58)"
+          },
+          "asset": {
+            "type": "string",
+            "description": "Asset to provision: `SOL`, `USDC`, `WSOL`, `USDT`, or a base58 SPL mint (native SOL virtual mint `11111111111111111111111111111111` also accepted). Typical agent flows: **`USDC`** first."
+          }
+        },
+        "additionalProperties": false
+      },
+      "SellerProvisionTxResponse": {
+        "type": "object",
+        "description": "UniversalSettle seller provisioning result; transaction omitted when already provisioned.",
+        "required": [
+          "schemaVersion",
+          "wallet",
+          "asset",
+          "assetMint",
+          "vaultPda",
+          "solStoragePda",
+          "alreadyProvisioned",
+          "feePayer",
+          "payer",
+          "payerSignatureIndex",
+          "notes"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "string"
+          },
+          "wallet": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string",
+            "description": "Friendly asset label after resolution"
+          },
+          "assetMint": {
+            "type": "string",
+            "description": "SPL mint base58; native SOL uses the all-ones virtual mint pubkey"
+          },
+          "vaultPda": {
+            "type": "string"
+          },
+          "solStoragePda": {
+            "type": "string"
+          },
+          "vaultTokenAta": {
+            "type": "string",
+            "description": "Vault-owned ATA for SPL mint when applicable"
+          },
+          "alreadyProvisioned": {
+            "type": "boolean"
+          },
+          "transaction": {
+            "type": "string",
+            "description": "base64(bincode VersionedTransaction), unsigned; absent when `alreadyProvisioned`"
+          },
+          "recentBlockhash": {
+            "type": "string"
+          },
+          "recentBlockhashExpiresAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "feePayer": {
+            "type": "string"
+          },
+          "payer": {
+            "type": "string"
+          },
+          "payerSignatureIndex": {
+            "type": "integer"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
       },
       "BuildPaymentTxResponse": {
         "type": "object",

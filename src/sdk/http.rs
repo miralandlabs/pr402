@@ -12,9 +12,10 @@ use super::{
     BuildExactPaymentTxRequest, BuildPaymentTxResponse, BuildSlaEscrowPaymentTxRequest,
     BUILD_EXACT_PAYMENT_TX_PATH, BUILD_SLA_ESCROW_PAYMENT_TX_PATH,
     FACILITATOR_AGENT_INTEGRATION_PATH, FACILITATOR_CAPABILITIES_PATH, FACILITATOR_HEALTH_PATH,
-    FACILITATOR_OPENAPI_PATH, FACILITATOR_SETTLE_PATH, FACILITATOR_SUPPORTED_PATH,
-    FACILITATOR_VERIFY_PATH,
+    FACILITATOR_ONBOARD_PROVISION_PATH, FACILITATOR_OPENAPI_PATH, FACILITATOR_SETTLE_PATH,
+    FACILITATOR_SUPPORTED_PATH, FACILITATOR_VERIFY_PATH,
 };
+use crate::facilitator::SellerProvisionTxResponse;
 
 fn shared_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -176,6 +177,14 @@ impl FacilitatorHttpClient {
     ) -> Result<BuildPaymentTxResponse, FacilitatorHttpError> {
         build_sla_escrow_payment_tx(&self.base_url, body).await
     }
+
+    pub async fn build_onboard_provision_tx(
+        &self,
+        wallet: &str,
+        asset: &str,
+    ) -> Result<SellerProvisionTxResponse, FacilitatorHttpError> {
+        build_onboard_provision_tx(&self.base_url, wallet, asset).await
+    }
 }
 
 // --- Free functions (parity with `facilitator-build-tx.ts`) ---
@@ -268,6 +277,26 @@ pub async fn build_sla_escrow_payment_tx(
         facilitator_base_url,
         BUILD_SLA_ESCROW_PAYMENT_TX_PATH,
         body,
+        None,
+    )
+    .await
+}
+
+/// `POST .../onboard/provision` — UniversalSettle seller provisioning (per asset).
+pub async fn build_onboard_provision_tx(
+    facilitator_base_url: &str,
+    wallet: &str,
+    asset: &str,
+) -> Result<SellerProvisionTxResponse, FacilitatorHttpError> {
+    #[derive(Serialize)]
+    struct OnboardProvisionBody<'a> {
+        wallet: &'a str,
+        asset: &'a str,
+    }
+    post_json(
+        facilitator_base_url,
+        FACILITATOR_ONBOARD_PROVISION_PATH,
+        &OnboardProvisionBody { wallet, asset },
         None,
     )
     .await

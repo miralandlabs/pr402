@@ -18,6 +18,9 @@ export const FACILITATOR_HEALTH_PATH = "/api/v1/facilitator/health";
 export const FACILITATOR_CAPABILITIES_PATH = "/api/v1/facilitator/capabilities";
 export const FACILITATOR_VERIFY_PATH = "/api/v1/facilitator/verify";
 export const FACILITATOR_SETTLE_PATH = "/api/v1/facilitator/settle";
+/** `POST .../onboard/provision` — seller UniversalSettle provisioning per asset. */
+export const FACILITATOR_ONBOARD_PROVISION_PATH =
+  "/api/v1/facilitator/onboard/provision";
 /** Static OpenAPI 3.1 document (same origin as facilitator). */
 export const FACILITATOR_OPENAPI_PATH = "/openapi.json";
 /** Markdown agent runbook — static `public/agent-integration.md` (same pattern as OpenAPI). */
@@ -54,8 +57,8 @@ export type BuildSlaEscrowPaymentTxRequest = {
   autoWrapSol?: boolean;
 };
 
-/** 
- * `POST .../build-exact-payment-tx`, `POST .../build-sla-escrow-payment-tx`, `GET .../onboard/build-tx`
+/**
+ * `POST .../build-exact-payment-tx`, `POST .../build-sla-escrow-payment-tx`
  * See OpenAPI `BuildPaymentTxResponse`.
  */
 export type BuildPaymentTxResponse = {
@@ -69,6 +72,31 @@ export type BuildPaymentTxResponse = {
   paymentUid?: string | null;
   verifyBodyTemplate: unknown;
   notes?: string[];
+};
+
+/** Body for `POST .../onboard/provision`. See OpenAPI `OnboardProvisionRequest`. */
+export type OnboardProvisionRequest = {
+  wallet: string;
+  asset: string;
+};
+
+/** Response for seller provisioning. See OpenAPI `SellerProvisionTxResponse`. */
+export type SellerProvisionTxResponse = {
+  schemaVersion: string;
+  wallet: string;
+  asset: string;
+  assetMint: string;
+  vaultPda: string;
+  solStoragePda: string;
+  vaultTokenAta?: string | null;
+  alreadyProvisioned: boolean;
+  transaction?: string | null;
+  recentBlockhash?: string | null;
+  recentBlockhashExpiresAt?: number | null;
+  feePayer: string;
+  payer: string;
+  payerSignatureIndex: number;
+  notes: string[];
 };
 
 /** x402 v2 verify/settle POST body (superset; see OpenAPI `X402V2VerifySettleBody`). */
@@ -174,4 +202,16 @@ export function buildSlaEscrowPaymentTx(
   body: BuildSlaEscrowPaymentTxRequest,
 ): Promise<BuildPaymentTxResponse> {
   return postJson(facilitatorBaseUrl, BUILD_SLA_ESCROW_PAYMENT_TX_PATH, body);
+}
+
+/** `POST .../onboard/provision` — idempotent per `(wallet, asset)`. */
+export function buildOnboardProvisionTx(
+  facilitatorBaseUrl: string,
+  body: OnboardProvisionRequest,
+): Promise<SellerProvisionTxResponse> {
+  return postJson(
+    facilitatorBaseUrl,
+    FACILITATOR_ONBOARD_PROVISION_PATH,
+    body,
+  );
 }
