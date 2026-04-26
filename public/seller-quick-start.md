@@ -96,7 +96,6 @@ When the buyer retries with proof, extract the header and POST it to the facilit
 ```
 function handle_paid_request(request):
     proof = request.headers["PAYMENT-SIGNATURE"]
-              ?? request.headers["X-PAYMENT"]       # v1 fallback
 
     if proof is empty:
         return http_402(accepts_json)
@@ -187,7 +186,7 @@ match proof {
 ### Python (Flask / FastAPI)
 
 ```python
-proof = request.headers.get("PAYMENT-SIGNATURE") or request.headers.get("X-PAYMENT")
+proof = request.headers.get("PAYMENT-SIGNATURE")
 if not proof:
     return JSONResponse(status_code=402, content=accepts_body)
 
@@ -206,7 +205,7 @@ return response
 ### JavaScript / TypeScript (Express / Node)
 
 ```javascript
-const proof = req.headers['payment-signature'] || req.headers['x-payment'];
+const proof = req.headers['payment-signature'];
 if (!proof) {
   return res.status(402).json(acceptsBody);
 }
@@ -229,9 +228,6 @@ res.json(premiumContent);
 
 ```go
 proof := r.Header.Get("PAYMENT-SIGNATURE")
-if proof == "" {
-    proof = r.Header.Get("X-PAYMENT")
-}
 if proof == "" {
     w.WriteHeader(http.StatusPaymentRequired)
     json.NewEncoder(w).Encode(acceptsBody)

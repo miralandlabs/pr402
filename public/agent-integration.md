@@ -156,7 +156,7 @@ Walk this in order when a seller returns **402** JSON:
 6. **Sign** all required signer slots (see response **`notes`**; partial sign first when facilitator is fee payer, then facilitator signs at settle if applicable).
 7. **Fill template** — Paste the **signed** tx base64 into **`verifyBodyTemplate`**. Keep **`paymentPayload.accepted`** and **`paymentRequirements`** **byte-for-byte identical** (same JSON object).
 8. **`POST /verify`** then **`POST /settle`** with the **same** body; reuse **`X-Correlation-ID`** / body `correlationId` if the seller or your agent needs audit linkage (facilitator may mint an id on successful verify when DB is enabled).
-9. **Authorized Access (Resource Provider)**: Submit the finalized JSON proof to the resource provider in the **`PAYMENT-SIGNATURE`** header (x402 v2). Legacy `X-PAYMENT` is still accepted by most servers for backward compatibility.
+9. **Authorized Access (Resource Provider)**: Submit the finalized JSON proof to the resource provider in the **`PAYMENT-SIGNATURE`** header (x402 v2).
      - **Optimization**: You can send the raw JSON string directly (preferred) or Base64-encode it. All X402 v2-compliant servers now support both.
      - **`PAYMENT-RESPONSE`**: After settlement, x402 v2 compliant sellers return a `PAYMENT-RESPONSE` header (base64-encoded JSON) containing the settlement result (`success`, `transaction`, `network`, `payer`). Buyer agents can inspect this header to confirm on-chain finality without polling.
 

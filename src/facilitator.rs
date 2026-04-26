@@ -121,17 +121,22 @@ impl FacilitatorLocal {
 
         // Always register exact scheme
         let exact_scheme = V2SolanaExact;
-        scheme_handlers.insert(
-            exact_scheme.scheme().to_string(),
-            Arc::from(exact_scheme.build(chain_provider.clone(), None, db.clone())?),
-        );
+        let exact_handler: Arc<dyn X402SchemeFacilitator> =
+            Arc::from(exact_scheme.build(chain_provider.clone(), None, db.clone())?);
+        scheme_handlers.insert(exact_scheme.scheme().to_string(), exact_handler.clone());
+        scheme_handlers.insert("v2:solana:exact".to_string(), exact_handler);
 
         // Register escrow scheme if configured
         if let Some(escrow_config) = chain_provider.solana.sla_escrow() {
             let escrow_scheme = V2SolanaSLAEscrow;
             match escrow_scheme.build(chain_provider.clone(), None, db.clone()) {
                 Ok(handler) => {
-                    scheme_handlers.insert(escrow_scheme.scheme().to_string(), Arc::from(handler));
+                    let escrow_handler: Arc<dyn X402SchemeFacilitator> = Arc::from(handler);
+                    scheme_handlers.insert(
+                        escrow_scheme.scheme().to_string(),
+                        escrow_handler.clone(),
+                    );
+                    scheme_handlers.insert("v2:solana:sla-escrow".to_string(), escrow_handler);
                     info!(
                         "Registered escrow scheme for program: {}",
                         escrow_config.program_id

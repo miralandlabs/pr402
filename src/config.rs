@@ -118,7 +118,7 @@ impl Config {
             std::env::var("UNIVERSALSETTLE_PROGRAM_ID")
         {
             let program_id = Pubkey::from_str(&program_id_str).map_err(|e| {
-                ConfigError::InvalidChainId("UNIVERSALSETTLE_PROGRAM_ID".to_string(), e.to_string())
+                ConfigError::InvalidPubkey("UNIVERSALSETTLE_PROGRAM_ID".to_string(), e.to_string())
             })?;
             Some(UniversalSettleConfig {
                 program_id,
@@ -134,7 +134,7 @@ impl Config {
         // Optional: SLAEscrow configuration
         let escrow = if let Ok(program_id_str) = std::env::var("ESCROW_PROGRAM_ID") {
             let program_id = Pubkey::from_str(&program_id_str).map_err(|e| {
-                ConfigError::InvalidChainId("ESCROW_PROGRAM_ID".to_string(), e.to_string())
+                ConfigError::InvalidPubkey("ESCROW_PROGRAM_ID".to_string(), e.to_string())
             })?;
 
             // Oracle candidate list (comma-separated pubkeys)
@@ -204,7 +204,7 @@ impl UniversalSettleConfig {
 
         // Read Config account
         let account = rpc_client.get_account(&config_pda).await.map_err(|e| {
-            ConfigError::InvalidChainId(
+            ConfigError::AccountReadFailure(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
                 format!("Failed to read Config account: {}", e),
             )
@@ -213,7 +213,7 @@ impl UniversalSettleConfig {
         // Deserialize Config using bytemuck (skipping 8-byte discriminator)
         let config_size = std::mem::size_of::<USConfig>();
         if account.data.len() < 8 + config_size {
-            return Err(ConfigError::InvalidChainId(
+            return Err(ConfigError::AccountReadFailure(
                 "UNIVERSALSETTLE_CONFIG".to_string(),
                 format!(
                     "Config account data too short (need {} bytes, got {})",
@@ -249,7 +249,7 @@ impl SLAEscrowConfig {
 
         // Read Bank account
         let account = rpc_client.get_account(&bank_pda).await.map_err(|e| {
-            ConfigError::InvalidChainId(
+            ConfigError::AccountReadFailure(
                 "SLAESCROW_BANK".to_string(),
                 format!("Failed to read Bank account: {}", e),
             )
@@ -258,7 +258,7 @@ impl SLAEscrowConfig {
         // Deserialize Bank using bytemuck (skipping 8-byte discriminator)
         let bank_size = std::mem::size_of::<EscrowBank>();
         if account.data.len() < 8 + bank_size {
-            return Err(ConfigError::InvalidChainId(
+            return Err(ConfigError::AccountReadFailure(
                 "SLAESCROW_BANK".to_string(),
                 format!(
                     "Bank account data too short (need {} bytes, got {})",
@@ -285,4 +285,8 @@ pub enum ConfigError {
     InvalidUrl(&'static str, String),
     #[error("Invalid chain ID '{0}': {1}")]
     InvalidChainId(String, String),
+    #[error("Invalid pubkey for {0}: {1}")]
+    InvalidPubkey(String, String),
+    #[error("Account read failure for {0}: {1}")]
+    AccountReadFailure(String, String),
 }

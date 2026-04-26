@@ -11,7 +11,7 @@ The `pr402` platform uses **UniversalSettle** and **SplitVaults** to enforce ins
 > | Header | Direction | Description |
 > |--------|-----------|-------------|
 > | `PAYMENT-REQUIRED` | Server → Client | Base64-encoded `PaymentRequired` JSON (on HTTP 402) |
-> | `PAYMENT-SIGNATURE` | Client → Server | Payment proof (raw JSON or base64) — replaces legacy `X-PAYMENT` |
+> | `PAYMENT-SIGNATURE` | Client → Server | Payment proof (raw JSON or base64) |
 > | `PAYMENT-RESPONSE` | Server → Client | Base64-encoded settlement result (on HTTP 200 or 402 after settle) |
 
 ---
@@ -104,8 +104,6 @@ After emitting the 402, the autonomous agent will:
 1. Contact the Facilitator to build the unsigned transaction.
 2. Cryptographically sign the transaction.
 3. Hit your original API endpoint again, passing the signed proof in the **`PAYMENT-SIGNATURE`** header (x402 v2).
-
-> **Backward compatibility**: Legacy `X-PAYMENT` is still accepted by most servers. New implementations should read `PAYMENT-SIGNATURE` first, falling back to `X-PAYMENT`.
 
 When you extract this header, you do not need to parse or verify the Solana transaction yourself! Security is offloaded to the Facilitator.
 

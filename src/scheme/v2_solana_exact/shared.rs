@@ -275,13 +275,24 @@ pub async fn verify_transaction(
     }
     verify_compute_price_instruction(provider.max_compute_unit_price(), &transaction, 1)?;
 
-    let transfer_instruction = if instructions.len() == 3 {
-        verify_transfer_instruction(provider, &transaction, 2, transfer_requirement, false).await?
-    } else if instructions.len() == 4 {
-        verify_create_ata_instruction(&transaction, 2, transfer_requirement)?;
-        verify_transfer_instruction(provider, &transaction, 3, transfer_requirement, true).await?
-    } else {
-        return Err(SolanaExactError::InvalidTransactionInstructionsCount.into());
+    let transfer_instruction = match instructions.len() {
+        3 => {
+            verify_transfer_instruction(provider, &transaction, 2, transfer_requirement, false).await?
+        }
+        4 => {
+            verify_create_ata_instruction(&transaction, 2, transfer_requirement)?;
+            verify_transfer_instruction(provider, &transaction, 3, transfer_requirement, true).await?
+        }
+        6 => {
+            // indices 2, 3, 4 are auto-wrap (create_ata, transfer SOL, sync_native)
+            verify_transfer_instruction(provider, &transaction, 5, transfer_requirement, false).await?
+        }
+        7 => {
+            // indices 2, 3, 4 are auto-wrap, index 5 is dest create_ata
+            verify_create_ata_instruction(&transaction, 5, transfer_requirement)?;
+            verify_transfer_instruction(provider, &transaction, 6, transfer_requirement, true).await?
+        }
+        _ => return Err(SolanaExactError::InvalidTransactionInstructionsCount.into()),
     };
 
     let pay_to_pk = *transfer_requirement.pay_to.pubkey();
