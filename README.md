@@ -1,6 +1,6 @@
 # pr402: x402 Facilitator for Solana
 
-**A minimal, x402-compliant facilitator for Solana, optimized for Vercel Serverless Functions. It bridges human/agent requests with on-chain settlement engines like `UniversalSettle` and `SLA-Escrow`.**
+**A minimal, x402-compliant facilitator for Solana, optimized for Vercel Serverless Functions. It bridges agent/human requests with on-chain settlement engines like `UniversalSettle` and `SLA-Escrow`.**
 
 > **Launch phase:** pr402 is **experimental**. Use **at your own risk** — behavior, fees, allowlists, and availability may change without notice.
 

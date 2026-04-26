@@ -33,7 +33,7 @@ Confirm **`solanaNetwork`**, **`chainId`**, and feature flags with **`GET /api/v
 
 **Wallet RPC:** Read **`solanaWalletRpcUrl`** from **`GET /health`** when you need the deployment’s wallet-facing RPC. Do not hardcode RPC URLs from documentation.
 
-### Golden path (`exact` scheme) — naive buyer checklist
+### Golden path (`exact` scheme) — standard integration checklist
 
 Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
@@ -63,7 +63,6 @@ If you receive payment for resources and want **Sovereign** status (95 bps fee t
 
 1. **Discover rules**: [Onboarding guide](/onboarding_guide.md) — Sovereign vs facilitated (JIT) paths.
 2. **Protocol onboarding (on-chain provisioning)**:
-   - **CLI**: `universalsettle create-vault --seller <YOUR_PUBKEY>`
    - **API (agent-native)**:
      1. **Build**: `POST /api/v1/facilitator/onboard/provision` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a mint). Repeat per asset; same pair is idempotent (`alreadyProvisioned` + no `transaction` when done).
      2. **Sign**: When `transaction` is present, sign the `VersionedTransaction` (base64 bincode) with your seller key.
