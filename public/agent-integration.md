@@ -22,11 +22,22 @@ Runbook for two kinds of autonomous clients:
 
 **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL.
 
+> **Launch phase:** Facilitator APIs and this runbook are **experimental** — **use at your own risk**.
+
+| | **Production** | **Preview** |
+|--|----------------|-------------|
+| **Base URL** | `https://agent.pay402.me` | `https://preview.agent.pay402.me` |
+| **Typical Solana** | Mainnet | Devnet |
+
+Confirm **`solanaNetwork`**, **`chainId`**, and feature flags with **`GET /api/v1/facilitator/health`** or **`GET /api/v1/facilitator/capabilities`** on the **host you actually call**. Match the origin your seller documents; do not assume preview.
+
+**Wallet RPC:** Read **`solanaWalletRpcUrl`** from **`GET /health`** when you need the deployment’s wallet-facing RPC. Do not hardcode RPC URLs from documentation.
+
 ### Golden path (`exact` scheme) — naive buyer checklist
 
 Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
-1. **Facilitator URL** — Must be the same origin your seller documents (or the one embedded in discovery). Example preview: `https://preview.agent.pay402.me` (substitute your deployment).
+1. **Facilitator URL** — Same origin your seller documents (or embedded in discovery). Official hosts: **Production** `https://agent.pay402.me`, **Preview** `https://preview.agent.pay402.me`. Confirm **`solanaNetwork`** with **`GET /health`** on that host.
 2. **`GET /api/v1/facilitator/supported`** (or **`/capabilities`**) — Confirm `exact` / `v2:solana:exact` is listed.
 3. **Receive HTTP 402** from the seller — Save **`paymentRequirements`** and the chosen **`accepts[]`** line.
 4. **`POST /api/v1/facilitator/build-exact-payment-tx`** — Body: `{ "payer": "<buyer pubkey>", "accepted": <same object as the accepts[] line>, "resource": <from 402> }`. Response is **camelCase** JSON (`transaction`, `verifyBodyTemplate`, `payerSignatureIndex`, …).
@@ -156,7 +167,8 @@ Walk this in order when a seller returns **402** JSON:
 ### 1. Discover
 
 ```bash
-BASE="https://preview.agent.pay402.me"
+# Use the same origin your seller documents: production or preview (see table above).
+BASE="https://agent.pay402.me"   # or: https://preview.agent.pay402.me
 curl -sS "$BASE/api/v1/facilitator/supported" | jq .
 # or
 curl -sS "$BASE/api/v1/facilitator/capabilities" | jq .

@@ -2,7 +2,9 @@
 
 > **You have a Solana wallet and want to charge for API calls. Here's the fastest path.**
 
-Replace `$BASE` with your facilitator URL (e.g. `https://preview.agent.pay402.me`).
+> **Launch phase:** **Experimental** — **use at your own risk**.
+
+Replace **`$BASE`** with your facilitator URL. Official deployments: **Production** `https://agent.pay402.me` (Mainnet) · **Preview** `https://preview.agent.pay402.me` (Devnet). Confirm **`solanaNetwork`** with **`GET /api/v1/facilitator/health`** on that host.
 
 ---
 

@@ -5,6 +5,10 @@
 
 Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Resource Provider (Seller) using the **UniversalSettle** protocol with Institutional Neutrality.
 
+> **Launch phase:** Onboarding and facilitator behavior are **experimental** — **use at your own risk**.
+
+**Official facilitator hosts:** **Production** `https://agent.pay402.me` (Solana Mainnet) · **Preview** `https://preview.agent.pay402.me` (Solana Devnet). Use the deployment that matches your programs and the facilitator URL you give buyers; verify with **`GET /api/v1/facilitator/health`** or **`/capabilities`**.
+
 ### Launch phase: one payment asset per merchant wallet
 
 During the initial launch period we keep the **operator and integrator experience intentionally small**: **each merchant wallet is expected to register and settle on a single payment asset (one coin / one settlement rail)**—for example, USDC *or* native SOL, not both under the same wallet in our off-chain registry. This follows a simple design principle we care about: **favor simplicity first, implemented with care so the result still feels elegant**—minimal surface area for discovery, reconciliation, and automation.

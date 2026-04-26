@@ -4,6 +4,10 @@
 
 **Time to integrate**: ~30 minutes. No blockchain SDK required in your server.
 
+> **Launch phase:** **Experimental** — **use at your own risk**.
+
+Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Official hosts: **Production** `https://agent.pay402.me` (Mainnet) · **Preview** `https://preview.agent.pay402.me` (Devnet). Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.
+
 ---
 
 ## How It Works (30-Second Overview)
@@ -48,7 +52,7 @@ When a request arrives without a valid `PAYMENT-SIGNATURE` header, respond with 
 **What you need first** — look up your vault PDA (one-time):
 
 ```bash
-curl -sS "https://preview.agent.pay402.me/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | jq .
+curl -sS "$BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | jq .
 # → Note the vaultPda value — that becomes your payTo
 ```
 
@@ -102,7 +106,7 @@ function handle_paid_request(request):
     # /settle verifies internally then executes on-chain.
     # Idempotent: already-confirmed transactions return success.
     result = http_post(
-        "https://preview.agent.pay402.me/api/v1/facilitator/settle",
+        "$BASE/api/v1/facilitator/settle",
         headers: { "Content-Type": "application/json" },
         body: payment_body
     )
@@ -136,7 +140,7 @@ function handle_paid_request(request):
 **curl equivalent** (what your server does internally):
 
 ```bash
-curl -sS -X POST "https://preview.agent.pay402.me/api/v1/facilitator/settle" \
+curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
   -H "Content-Type: application/json" \
   -d "$DECODED_PAYMENT_SIGNATURE"
 ```
@@ -255,7 +259,7 @@ Don't want to look up vault PDAs or merge `extra` fields? Post a minimal 402 bod
 
 ```bash
 # Your naive 402 body (bare wallet as payTo):
-curl -X POST "https://preview.agent.pay402.me/api/v1/facilitator/upgrade" \
+curl -X POST "$BASE/api/v1/facilitator/upgrade" \
   -H "Content-Type: application/json" \
   -d '{
     "x402Version": 2,
