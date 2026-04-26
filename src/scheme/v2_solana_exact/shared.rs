@@ -267,6 +267,28 @@ pub async fn verify_transaction(
     reject_versioned_tx_with_address_lookup_tables(&transaction)
         .map_err(SolanaExactError::TransactionDecoding)?;
 
+    let cfg = solana_client::rpc_config::RpcSimulateTransactionConfig {
+        sig_verify: false,
+        replace_recent_blockhash: false,
+        commitment: Some(solana_commitment_config::CommitmentConfig::confirmed()),
+        encoding: None,
+        accounts: None,
+        inner_instructions: false,
+        min_context_slot: None,
+    };
+
+    let sim_result = provider
+        .simulate_transaction_with_config(&transaction, cfg)
+        .await
+        .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
+
+    if let Some(err) = sim_result.value.err {
+        return Err(PaymentVerificationError::TransactionSimulation(format!(
+            "Simulation failed on-chain: {:?}",
+            err
+        )));
+    }
+
     // perform transaction introspection to validate the transaction structure and details
     let instructions = transaction.message.instructions();
     let compute_units = verify_compute_limit_instruction(&transaction, 0)?;
@@ -277,20 +299,24 @@ pub async fn verify_transaction(
 
     let transfer_instruction = match instructions.len() {
         3 => {
-            verify_transfer_instruction(provider, &transaction, 2, transfer_requirement, false).await?
+            verify_transfer_instruction(provider, &transaction, 2, transfer_requirement, false)
+                .await?
         }
         4 => {
             verify_create_ata_instruction(&transaction, 2, transfer_requirement)?;
-            verify_transfer_instruction(provider, &transaction, 3, transfer_requirement, true).await?
+            verify_transfer_instruction(provider, &transaction, 3, transfer_requirement, true)
+                .await?
         }
         6 => {
             // indices 2, 3, 4 are auto-wrap (create_ata, transfer SOL, sync_native)
-            verify_transfer_instruction(provider, &transaction, 5, transfer_requirement, false).await?
+            verify_transfer_instruction(provider, &transaction, 5, transfer_requirement, false)
+                .await?
         }
         7 => {
             // indices 2, 3, 4 are auto-wrap, index 5 is dest create_ata
             verify_create_ata_instruction(&transaction, 5, transfer_requirement)?;
-            verify_transfer_instruction(provider, &transaction, 6, transfer_requirement, true).await?
+            verify_transfer_instruction(provider, &transaction, 6, transfer_requirement, true)
+                .await?
         }
         _ => return Err(SolanaExactError::InvalidTransactionInstructionsCount.into()),
     };

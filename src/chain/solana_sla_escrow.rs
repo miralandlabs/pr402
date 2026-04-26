@@ -6,14 +6,8 @@
 use solana_pubkey::{pubkey, Pubkey};
 use solana_transaction::{AccountMeta, Instruction};
 
-/// SPL Associated Token Account program (`spl_associated_token_account::ID`).
-const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-
 /// System Program ID
 const SYSTEM_PROGRAM_ID: Pubkey = pubkey!("11111111111111111111111111111111");
-
-/// Token Program ID
-const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
 /// SLAEscrow instruction discriminators (matches escrow/api/src/instruction.rs).
 #[repr(u8)]
@@ -107,28 +101,7 @@ pub fn derive_sol_storage_pda(
     )
 }
 
-/// SPL associated token address for `wallet` + `mint` in the given token program domain.
-/// Matches [`sla_escrow_api::sdk::EscrowSdk::associated_token_account_with_program`].
-pub fn associated_token_address_with_program(
-    wallet: &Pubkey,
-    mint: &Pubkey,
-    token_program: &Pubkey,
-) -> Pubkey {
-    Pubkey::find_program_address(
-        &[
-            &wallet.to_bytes(),
-            &token_program.to_bytes(),
-            &mint.to_bytes(),
-        ],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    )
-    .0
-}
-
-/// Legacy Token program ATA (convenience).
-pub fn associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    associated_token_address_with_program(wallet, mint, &TOKEN_PROGRAM_ID)
-}
+use crate::util::tx_builder::associated_token_address as associated_token_address_with_program;
 
 // ----------------------------------------------------------------------------
 // Instruction Builders

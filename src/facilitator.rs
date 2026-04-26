@@ -132,10 +132,8 @@ impl FacilitatorLocal {
             match escrow_scheme.build(chain_provider.clone(), None, db.clone()) {
                 Ok(handler) => {
                     let escrow_handler: Arc<dyn X402SchemeFacilitator> = Arc::from(handler);
-                    scheme_handlers.insert(
-                        escrow_scheme.scheme().to_string(),
-                        escrow_handler.clone(),
-                    );
+                    scheme_handlers
+                        .insert(escrow_scheme.scheme().to_string(), escrow_handler.clone());
                     scheme_handlers.insert("v2:solana:sla-escrow".to_string(), escrow_handler);
                     info!(
                         "Registered escrow scheme for program: {}",
@@ -221,22 +219,41 @@ impl Facilitator for FacilitatorLocal {
             signers: HashMap::new(),
         };
 
-        for handler in self.scheme_handlers.values() {
-            if let Ok(response) = handler.supported().await {
-                supported_response.kinds.extend(response.kinds);
-                supported_response.extensions.extend(response.extensions);
-                // Merge signers
-                for (k, v) in response.signers {
-                    supported_response.signers.entry(k).or_default().extend(v);
-                }
+        // Deduplicate handlers (since we map aliases to the same Arc)
+        let mut unique_handlers: Vec<Arc<dyn X402SchemeFacilitator>> = Vec::new();
+        for h in self.scheme_handlers.values() {
+            if !unique_handlers.iter().any(|ex| Arc::ptr_eq(ex, h)) {
+                unique_handlers.push(h.clone());
             }
         }
 
-        // Deduplicate signers
+        for handler in unique_handlers {
+            let response = handler.supported().await.map_err(|e| {
+                tracing::error!("Handler supported() failed: {:?}", e);
+                FacilitatorLocalError::Discovery(e)
+            })?;
+
+            supported_response.kinds.extend(response.kinds);
+            supported_response.extensions.extend(response.extensions);
+            // Merge signers
+            for (k, v) in response.signers {
+                supported_response.signers.entry(k).or_default().extend(v);
+            }
+        }
+
+        // Deduplicate signers and kinds
         for signers in supported_response.signers.values_mut() {
             signers.sort();
             signers.dedup();
         }
+        supported_response
+            .kinds
+            .sort_by(|a, b| a.scheme.cmp(&b.scheme).then(a.network.cmp(&b.network)));
+        supported_response
+            .kinds
+            .dedup_by(|a, b| a.scheme == b.scheme && a.network == b.network);
+        supported_response.extensions.sort();
+        supported_response.extensions.dedup();
 
         Ok(supported_response)
     }
@@ -249,9 +266,11 @@ impl Facilitator for FacilitatorLocal {
         };
 
         for (name, handler) in &self.scheme_handlers {
-            if let Ok(onboard_info) = handler.onboard(wallet).await {
-                response.schemes.insert(name.clone(), onboard_info);
-            }
+            let onboard_info = handler.onboard(wallet).await.map_err(|e| {
+                tracing::error!("Handler onboard() failed for {}: {:?}", name, e);
+                FacilitatorLocalError::Onboard(e)
+            })?;
+            response.schemes.insert(name.clone(), onboard_info);
         }
 
         Ok(response)
