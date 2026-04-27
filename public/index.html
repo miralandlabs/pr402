@@ -7,7 +7,7 @@
     <meta name="description" content="REST-to-Solana gateway for AI-to-AI resource settlement. Seamless UniversalSettle and SLA-Escrow bridging.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #6366f1;
@@ -19,8 +19,8 @@
             --accent: #10b981;
             --border: rgba(51, 65, 85, 0.4);
             --surface: rgba(2, 6, 23, 0.95);
-            --font-main: 'Space Grotesk', sans-serif;
-            --font-mono: 'Space Mono', monospace;
+            --font-main: 'Inter', sans-serif;
+            --font-heading: 'Outfit', sans-serif;
             --font-code: 'JetBrains Mono', monospace;
         }
 
@@ -101,15 +101,16 @@
         }
 
         .logo-text {
-            font-family: var(--font-mono);
-            font-weight: 400;
+            font-family: var(--font-heading);
+            font-weight: 500;
             font-size: 0.75rem;
-            letter-spacing: 0.15em;
+            letter-spacing: 0.2em;
             color: var(--text-dim);
             text-transform: uppercase;
         }
 
         h1 {
+            font-family: var(--font-heading);
             font-size: clamp(2.5rem, 8vw, 4.5rem);
             font-weight: 700;
             background: linear-gradient(to bottom right, #fff 40%, var(--text-dim));
@@ -123,7 +124,7 @@
 
         p.tagline {
             font-size: 1.25rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             color: var(--text-dim);
             max-width: 600px;
             margin: 0 auto;
@@ -171,6 +172,7 @@
         }
 
         .card h3 {
+            font-family: var(--font-heading);
             font-size: 1.5rem;
             margin-bottom: 1.25rem;
             letter-spacing: -0.03em;
@@ -199,7 +201,7 @@
             text-decoration: none;
             transition: all 0.2s ease;
             font-size: 0.8rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             text-transform: uppercase;
             letter-spacing: 0.1em;
         }
@@ -245,6 +247,7 @@
         }
 
         .discovery-header h2 {
+            font-family: var(--font-heading);
             font-size: 1.75rem;
             letter-spacing: -0.03em;
         }
@@ -298,7 +301,7 @@
             text-align: right;
             color: var(--text-dim);
             font-size: 0.8rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             text-transform: lowercase;
             opacity: 0.7;
         }
@@ -309,7 +312,7 @@
             text-align: center;
             color: var(--text-dim);
             font-size: 0.75rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             letter-spacing: 0.05em;
         }
 
@@ -321,7 +324,7 @@
             border: 1px solid rgba(99, 102, 241, 0.2);
             border-radius: 2px;
             font-size: 0.65rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.1em;
@@ -360,11 +363,11 @@
 
         .terminal-dots { display: flex; gap: 6px; }
         .terminal-dots span { width: 8px; height: 8px; border-radius: 50%; background: #1e293b; }
-        .terminal-title { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
+        .terminal-title { font-family: var(--font-heading); font-size: 0.65rem; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
 
         .terminal-body {
             padding: 1.5rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-code);
             font-size: 0.85rem;
             min-height: 240px;
             max-height: 500px;
@@ -382,7 +385,7 @@
             color: var(--accent);
             outline: none;
             width: 100%;
-            font-family: var(--font-mono);
+            font-family: var(--font-code);
             font-size: 0.85rem;
             padding: 0;
             caret-color: var(--primary);
@@ -419,7 +422,7 @@
             align-items: center;
             margin-top: 1.25rem;
         }
-        .seller-provision button.btn { border: none; cursor: pointer; font-family: var(--font-mono); }
+        .seller-provision button.btn { border: none; cursor: pointer; font-family: var(--font-heading); }
         .seller-provision select,
         .seller-provision .mint-override {
             width: 100%;
@@ -430,7 +433,7 @@
             border: 1px solid var(--border);
             background: var(--surface);
             color: var(--text);
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-size: 0.85rem;
         }
         .seller-provision .mint-hint {
@@ -453,7 +456,7 @@
         }
         #provision-status {
             margin-top: 1.25rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-code);
             font-size: 0.78rem;
             line-height: 1.5;
             color: var(--text-dim);
@@ -476,7 +479,7 @@
             justify-content: center;
             gap: 4rem;
             z-index: 100;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-size: 0.6rem;
             letter-spacing: 0.12em;
             box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
@@ -496,7 +499,7 @@
             color: #000;
             text-align: center;
             padding: 0.35rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-size: 0.65rem;
             font-weight: 800;
             letter-spacing: 0.2em;
@@ -545,7 +548,7 @@
         .card-links a {
             color: var(--primary);
             text-decoration: none;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-size: 0.78rem;
             letter-spacing: 0.02em;
         }
