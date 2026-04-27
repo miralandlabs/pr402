@@ -328,7 +328,17 @@
             margin-bottom: 1rem;
         }
 
-        /* Vault Explorer */
+        /* Vault Explorer & Terminal */
+        .terminal-explorer {
+            margin-top: 1.5rem;
+            background: #0a0a0f;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            border-left: 4px solid var(--primary);
+        }
+
         .vault-explorer {
             margin-top: 4rem;
             background: #0a0a0f;
@@ -673,30 +683,31 @@
             </div>
         </div>
 
+        <section class="quickstart-section" aria-labelledby="quickstart-title">
+            <span class="badge">Agent Quickstart</span>
+            <h2 id="quickstart-title">The One-Curl Proof</h2>
+            <p class="section-lead">Test this facilitator's capabilities instantly. No SDK required.</p>
+            <div class="terminal-explorer" style="margin-top: 1.5rem;">
+                <div class="terminal-header">
+                    <div class="terminal-title">AGENT_PROBE.SH</div>
+                    <button class="copy-btn" onclick="copyCurl()" style="background:transparent; border:none; color:var(--primary); font-family:var(--font-mono); font-size:0.6rem; cursor:pointer;">[COPY COMMAND]</button>
+                </div>
+                <div class="terminal-body" style="min-height: auto; padding: 1.25rem;">
+                    <code id="curl-command" style="color: var(--accent); font-size: 0.8rem;">curl -sS "https://agent.pay402.me/api/v1/facilitator/capabilities" | jq .</code>
+                </div>
+            </div>
+        </section>
+
         <section class="seller-provision" aria-labelledby="seller-provision-title">
             <span class="badge" style="border-color: rgba(16, 185, 129, 0.35); color: var(--accent); background: rgba(16, 185, 129, 0.08);">Sellers · No CLI</span>
-            <h2 id="seller-provision-title">Provision your SplitVault (and payment asset)</h2>
+            <h2 id="seller-provision-title">Agentic Provisioning</h2>
             <p>
-                If a buyer’s first payment failed because your <strong>SplitVault</strong> or <strong>vault token account</strong> is not on-chain yet, use this flow.
-                You only need a Solana browser wallet (Phantom, Solflare, Backpack, Trust, or any compatible adapter)
-                and a little <strong>SOL</strong> on the <strong>same network</strong> as this facilitator (see the banner / health strip below).
+                Establish your <strong>SplitVault</strong> and payment surface in one transaction. 
+                Sovereign provisioning earns an immediate <strong>5 bps fee discount</strong>.
             </p>
-            <p style="font-size: 0.85rem; margin-bottom: 0;">
-                <strong>Steps:</strong> pick an <strong>asset</strong> (default <strong>USDC</strong> for typical agent flows; SOL, …) → <strong>🔗 Connect wallet</strong> → <strong>Provision</strong>. Re-running for the same wallet + asset is a no-op when already on-chain.
-                Presets like <strong>USDC</strong> are <strong>cluster-aware</strong>: this facilitator resolves them to the correct SPL mint for <strong>its</strong> Solana cluster (e.g. Circle devnet vs mainnet USDC are different addresses—the server picks the right one; you do not paste a mint for normal USDC).
-            </p>
-            <label for="provision-asset" class="mint-hint" style="display:block;margin-top:1rem;">Payment asset to provision</label>
-            <select id="provision-asset" aria-describedby="provision-asset-desc">
-                <option value="USDC" selected>USDC (default — mint resolved for this deployment’s cluster)</option>
-                <option value="SOL">SOL (native — virtual mint 1111…1111)</option>
-                <option value="WSOL">WSOL (wrapped SOL — same well-known mint across clusters)</option>
-                <option value="USDT">USDT (mainnet mint built-in; devnet — paste mint below)</option>
-            </select>
-            <p id="provision-asset-desc" class="mint-hint">Optional: paste any SPL mint to override the list (required for <strong>USDT on devnet</strong>, custom test mints, memecoins, etc.).</p>
-            <input type="text" id="provision-mint-override" class="mint-override" placeholder="Override with base58 mint (optional)" autocomplete="off" spellcheck="false">
             <div class="provision-actions">
                 <button type="button" class="btn btn-secondary" id="btn-wallet-connect">🔗 Connect wallet</button>
-                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Provision</button>
+                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Provision Vault</button>
             </div>
             <div id="provision-status" role="status" aria-live="polite"></div>
         </section>
@@ -835,6 +846,15 @@
     <div id="miracle-wallet-adapter" aria-hidden="true"></div>
 
     <script>
+        window.copyCurl = function() {
+            const code = document.getElementById('curl-command').innerText;
+            navigator.clipboard.writeText(code);
+            const btn = document.querySelector('.copy-btn');
+            const old = btn.innerText;
+            btn.innerText = '[COPIED!]';
+            setTimeout(() => btn.innerText = old, 2000);
+        };
+
         function applyHealthToGlobals(data) {
             const net = String(data.solanaNetwork || '').toLowerCase();
             window.__PR402_SOLANA_NETWORK__ = net;
@@ -919,10 +939,11 @@
                     
                     for (const [name, info] of Object.entries(data.schemes || {})) {
                         const roleStyle = info.role.includes("Seller") ? "color:#f59e0b;" : "color:#a78bfa;";
+                        const sovBadge = info.is_sovereign ? '<span style="background:var(--accent); color:black; padding: 2px 6px; border-radius: 2px; font-size: 10px; font-weight: 800; margin-right: 8px;">🏆 SOVEREIGN (DISCOUNTED)</span>' : '';
                         html += `
                             <div style="margin-top: 1.5rem; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 1rem;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
-                                    <span style="color: var(--primary); font-weight: 700; font-size: 0.75rem;">PROTOCOL: ${name.toUpperCase()}</span>
+                                    <span style="color: var(--primary); font-weight: 700; font-size: 0.75rem;">${sovBadge}PROTOCOL: ${name.toUpperCase()}</span>
                                     <span style="${roleStyle} font-size: 0.65rem; font-family: var(--font-mono); text-transform: uppercase;">[ROLE: ${info.role}]</span>
                                 </div>
                                 <div><span class="output-label">${info.label}</span><span class="output-val">${info.vaultPda}</span></div>
