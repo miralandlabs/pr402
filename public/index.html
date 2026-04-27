@@ -611,13 +611,12 @@
             </div>
             <h1>The Liquidity Layer for<br>Autonomous Agents</h1>
             <p class="tagline">Providing the missing economic bridge for the agentic web. One REST API to settle the entire Solana economic stack.</p>
-            <p class="tagline" style="margin-top: 1.5rem; font-size: 0.95rem; max-width: 40rem; margin-left: auto; margin-right: auto; color: var(--text-dim);">
-                <strong style="color: var(--text);">Experimental</strong> — use at your own risk. You are viewing <strong>this</strong> deployment.
-                <strong style="color: var(--text);">Production</strong> (Mainnet):
-                <a href="https://agent.pay402.me/" style="color: var(--primary);">agent.pay402.me</a>
-                · <strong style="color: var(--text);">Preview</strong> (Devnet):
-                <a href="https://preview.agent.pay402.me/" style="color: var(--primary);">preview.agent.pay402.me</a>.
-                Confirm <span class="inline-code">solanaNetwork</span>: <a href="/api/v1/facilitator/health" style="color: var(--primary);">GET /health</a>.
+            <p class="tagline" style="margin-top: 1.5rem; font-size: 0.95rem; max-width: 45rem; margin-left: auto; margin-right: auto; color: var(--text-dim); background: rgba(99, 102, 241, 0.05); padding: 1.25rem; border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                <strong style="color: var(--primary);">INITIAL LAUNCH PHASE:</strong> Currently, only the <strong><span class="inline-code">exact</span> scheme (UniversalSettle)</strong> is fully supported for production settlement. We are actively onboarding Oracle Partners before activating the <span class="inline-code">sla-escrow</span> scheme.
+                <br><br>
+                <strong style="color: var(--text);">Production</strong> (Mainnet): <a href="https://agent.pay402.me/" style="color: var(--primary);">agent.pay402.me</a>
+                · <strong style="color: var(--text);">Preview</strong> (Devnet): <a href="https://preview.agent.pay402.me/" style="color: var(--primary);">preview.agent.pay402.me</a>.
+                Confirm capabilities via <a href="/api/v1/facilitator/health" style="color: var(--primary);">GET /health</a>.
             </p>
         </header>
 
@@ -713,6 +712,31 @@
                 <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Provision Vault</button>
             </div>
             <div id="provision-status" role="status" aria-live="polite"></div>
+        </section>
+
+        <!-- Oracle Partner Recruitment Poster -->
+        <section class="oracle-partner" style="margin-top: 3rem; padding: 3rem 2.5rem; background: linear-gradient(145deg, rgba(16, 185, 129, 0.05) 0%, rgba(2, 6, 23, 0.8) 100%); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; text-align: center; position: relative; overflow: hidden;">
+            <div style="position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 50%); pointer-events: none;"></div>
+            <span class="badge" style="background: rgba(16, 185, 129, 0.1); color: var(--accent); border-color: rgba(16, 185, 129, 0.2);">Call for Partners</span>
+            <h2 style="font-family: var(--font-heading); font-size: 2rem; margin: 1rem 0; color: white;">Become an Oracle Node</h2>
+            <p style="color: var(--text-dim); font-size: 1.05rem; max-width: 650px; margin: 0 auto 2.5rem; line-height: 1.6;">
+                We are building the trust layer for the Agentic Economy. The <strong>SLA-Escrow</strong> scheme requires specialized Oracle Partners to adjudicate AI-to-AI disputes, verify inference quality, and guarantee zero-trust settlement.
+            </p>
+            <div style="display: flex; justify-content: center; gap: 3rem; flex-wrap: wrap; margin-bottom: 3rem;">
+                <div style="text-align: left; max-width: 200px;">
+                    <strong style="color: var(--text); display: block; margin-bottom: 0.5rem; font-family: var(--font-heading);">💰 Earn Protocol Fees</strong>
+                    <span style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.4; display: block;">Capture sustainable yield for adjudicating SLA disputes.</span>
+                </div>
+                <div style="text-align: left; max-width: 200px;">
+                    <strong style="color: var(--text); display: block; margin-bottom: 0.5rem; font-family: var(--font-heading);">⚖️ Shape AI Standards</strong>
+                    <span style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.4; display: block;">Set the benchmark for inference quality and uptime.</span>
+                </div>
+                <div style="text-align: left; max-width: 200px;">
+                    <strong style="color: var(--text); display: block; margin-bottom: 0.5rem; font-family: var(--font-heading);">🚀 Early Access</strong>
+                    <span style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.4; display: block;">Join the Genesis Cohort of the autonomous economy.</span>
+                </div>
+            </div>
+            <a href="mailto:partners@miraland.io" class="btn btn-primary" style="background: var(--accent); color: #000; font-weight: 700; padding: 1rem 2.5rem; letter-spacing: 0.15em;">APPLY TO BE AN ORACLE</a>
         </section>
 
         <!-- New: Vault Explorer -->
