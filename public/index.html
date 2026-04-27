@@ -1082,7 +1082,17 @@
                         }
                         return;
                     }
+
+                    // Check for common Solana providers
+                    var hasProvider = !!(window.solana || window.phantom || window.solflare || window.backpack);
+                    
                     if (window.ShowWalletModal) {
+                        if (!hasProvider) {
+                            setStatus(
+                                'No Solana wallet detected. Please install a browser extension like Phantom, Solflare, or Backpack to provision your vault.',
+                                true
+                            );
+                        }
                         window.ShowWalletModal();
                     } else {
                         setStatus(
