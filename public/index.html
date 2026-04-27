@@ -736,7 +736,7 @@
                     <span style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.4; display: block;">Join the Genesis Cohort of the autonomous economy.</span>
                 </div>
             </div>
-            <a href="mailto:partners@miraland.io" class="btn btn-primary" style="background: var(--accent); color: #000; font-weight: 700; padding: 1rem 2.5rem; letter-spacing: 0.15em;">APPLY TO BE AN ORACLE</a>
+            <button onclick="navigator.clipboard.writeText('partners@miraland.io'); const old = this.innerText; this.innerText = 'EMAIL COPIED!'; setTimeout(() => this.innerText = old, 2000);" class="btn btn-primary" style="background: var(--accent); color: #000; font-weight: 700; padding: 1rem 2.5rem; letter-spacing: 0.15em; border: none; cursor: pointer;">partners@miraland.io</button>
         </section>
 
         <!-- New: Vault Explorer -->
