@@ -210,6 +210,7 @@ struct CapabilitiesHttpEndpoints {
     settle: HttpEndpointInfo,
     build_exact_payment_tx: HttpEndpointInfo,
     build_sla_escrow_payment_tx: HttpEndpointInfo,
+    build_oracle_confirm_tx: HttpEndpointInfo,
     sweep: HttpEndpointInfo,
     sweep_cron: HttpEndpointInfo,
     onboard: HttpEndpointInfo,
@@ -561,6 +562,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         limited
                     } else {
                         handle_build_exact_payment_tx(body).await
+                    }
+                }
+                ("POST", "/api/v1/facilitator/oracle/build-confirm") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handlers::build::handle_build_oracle_confirm_tx(body).await
                     }
                 }
                 ("POST", "/api/v1/facilitator/build-sla-escrow-payment-tx") => {

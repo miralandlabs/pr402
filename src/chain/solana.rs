@@ -454,7 +454,7 @@ impl SolanaChainProvider {
         let program_id = *last_ix.program_id(account_keys);
 
         if program_id == TOKEN_PROGRAM_ID || program_id == TOKEN_2022_PROGRAM_ID {
-            if data.len() < 9 {
+            if data.len() < 9 || data[0] != 12 {
                 return Err(SolanaChainProviderError::AccountNotFound);
             }
             let amount = u64::from_le_bytes(data[1..9].try_into().unwrap());

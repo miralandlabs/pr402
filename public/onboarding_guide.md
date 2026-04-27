@@ -23,13 +23,7 @@ X402 is designed for "Zero-Barrier" entry. You do not need SOL in your wallet to
 ### Path A: Protocol Onboarding (On-Chain Provisioning) 🏆 *Recommended*
 If you already have SOL and wish to fully control your vault setup:
 
-**Choice 1: CLI-Native (Protocol On-Chain)**
-Use the UniversalSettle CLI directly:
-```bash
-universalsettle create-vault --seller <YOUR_WALLET_PUBKEY>
-```
-
-**Choice 2: Agent-Native (Protocol On-Chain)**
+### Agentic Provisioning (Protocol On-Chain)
 For autonomous agents and backend services:
 1. **Build**: `POST /api/v1/facilitator/onboard/provision` with JSON body `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a base58 mint). Under the launch-phase policy, use **one asset per merchant wallet**; repeats for the same `(wallet, asset)` are idempotent. For another token, use **another seller wallet** (see above).
 2. **Sign**: If the response includes `transaction`, sign the base64 bincode `VersionedTransaction` locally. If `alreadyProvisioned` is true, there is nothing to send for that asset.

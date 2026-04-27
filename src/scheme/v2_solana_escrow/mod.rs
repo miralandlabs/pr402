@@ -699,10 +699,17 @@ pub async fn verify_transfer(
         inner_instructions: false,
         min_context_slot: None,
     };
-    provider
+    let sim_result = provider
         .simulate_transaction_with_config(&signed_tx.inner, cfg)
         .await
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
+
+    if let Some(err) = sim_result.value.err {
+        return Err(PaymentVerificationError::TransactionSimulation(format!(
+            "Simulation failed on-chain: {:?}",
+            err
+        )));
+    }
 
     let payer = Address::new(buyer_pubkey);
     let identity = extra.merchant_wallet.unwrap_or(requirements.pay_to);

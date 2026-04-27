@@ -6,14 +6,8 @@
 use solana_pubkey::{pubkey, Pubkey};
 use solana_transaction::{AccountMeta, Instruction};
 
-/// SPL Associated Token Account program (`spl_associated_token_account::ID`).
-const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-
 /// System Program ID
 const SYSTEM_PROGRAM_ID: Pubkey = pubkey!("11111111111111111111111111111111");
-
-/// Token Program ID
-const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
 /// SLAEscrow instruction discriminators (matches escrow/api/src/instruction.rs).
 #[repr(u8)]
@@ -107,28 +101,7 @@ pub fn derive_sol_storage_pda(
     )
 }
 
-/// SPL associated token address for `wallet` + `mint` in the given token program domain.
-/// Matches [`sla_escrow_api::sdk::EscrowSdk::associated_token_account_with_program`].
-pub fn associated_token_address_with_program(
-    wallet: &Pubkey,
-    mint: &Pubkey,
-    token_program: &Pubkey,
-) -> Pubkey {
-    Pubkey::find_program_address(
-        &[
-            &wallet.to_bytes(),
-            &token_program.to_bytes(),
-            &mint.to_bytes(),
-        ],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    )
-    .0
-}
-
-/// Legacy Token program ATA (convenience).
-pub fn associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    associated_token_address_with_program(wallet, mint, &TOKEN_PROGRAM_ID)
-}
+use crate::util::tx_builder::associated_token_address as associated_token_address_with_program;
 
 // ----------------------------------------------------------------------------
 // Instruction Builders
@@ -195,6 +168,72 @@ pub fn build_fund_payment_instruction(
         accounts.push(AccountMeta::new_readonly(token_program, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
     }
+
+    Instruction {
+        program_id,
+        accounts,
+        data: instruction_data,
+    }
+}
+
+/// SLAEscrow ConfirmOracle instruction data structure
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct ConfirmOracleData {
+    pub delivery_hash: [u8; 32],
+    pub resolution_hash: [u8; 32],
+    pub resolution_reason: [u8; 2],
+    pub resolution_state: u8,
+    pub _padding: [u8; 5],
+}
+
+impl ConfirmOracleData {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(72);
+        bytes.extend_from_slice(&self.delivery_hash);
+        bytes.extend_from_slice(&self.resolution_hash);
+        bytes.extend_from_slice(&self.resolution_reason);
+        bytes.push(self.resolution_state);
+        bytes.extend_from_slice(&self._padding);
+        bytes
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_confirm_oracle_instruction(
+    program_id: Pubkey,
+    oracle_authority: Pubkey,
+    mint: Pubkey,
+    payment_uid: &str,
+    delivery_hash: [u8; 32],
+    resolution_hash: [u8; 32],
+    resolution_state: u8,
+    resolution_reason: u16,
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda(&program_id, &bank_pda, payment_uid);
+
+    let data = ConfirmOracleData {
+        delivery_hash,
+        resolution_hash,
+        resolution_reason: resolution_reason.to_le_bytes(),
+        resolution_state,
+        _padding: [0; 5],
+    };
+
+    let mut instruction_data = Vec::with_capacity(73);
+    instruction_data.push(SLAEscrowInstruction::ConfirmOracle as u8);
+    instruction_data.extend_from_slice(&data.to_bytes());
+
+    let accounts = vec![
+        AccountMeta::new(oracle_authority, true),
+        AccountMeta::new_readonly(bank_pda, false),
+        AccountMeta::new_readonly(config_pda, false),
+        AccountMeta::new_readonly(escrow_pda, false),
+        AccountMeta::new(payment_pda, false),
+    ];
 
     Instruction {
         program_id,

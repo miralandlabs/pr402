@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>pr402 Facilitator | Semantic Payment Infrastructure</title>
-    <meta name="description" content="REST-to-Solana gateway for AI-to-AI resource settlement. Seamless UniversalSettle and SLA-Escrow bridging.">
+    <title>pr402 | The Liquidity Layer for the Autonomous Web</title>
+    <meta name="description" content="The API for the Agentic Economy. Kill the subscription, enable the inference. Seamless REST-to-Solana settlement for autonomous agents.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #6366f1;
@@ -19,8 +19,8 @@
             --accent: #10b981;
             --border: rgba(51, 65, 85, 0.4);
             --surface: rgba(2, 6, 23, 0.95);
-            --font-main: 'Space Grotesk', sans-serif;
-            --font-mono: 'Space Mono', monospace;
+            --font-main: 'Inter', sans-serif;
+            --font-heading: 'Outfit', sans-serif;
             --font-code: 'JetBrains Mono', monospace;
         }
 
@@ -101,15 +101,16 @@
         }
 
         .logo-text {
-            font-family: var(--font-mono);
-            font-weight: 400;
+            font-family: var(--font-heading);
+            font-weight: 500;
             font-size: 0.75rem;
-            letter-spacing: 0.15em;
+            letter-spacing: 0.2em;
             color: var(--text-dim);
             text-transform: uppercase;
         }
 
         h1 {
+            font-family: var(--font-heading);
             font-size: clamp(2.5rem, 8vw, 4.5rem);
             font-weight: 700;
             background: linear-gradient(to bottom right, #fff 40%, var(--text-dim));
@@ -123,7 +124,7 @@
 
         p.tagline {
             font-size: 1.25rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             color: var(--text-dim);
             max-width: 600px;
             margin: 0 auto;
@@ -171,6 +172,7 @@
         }
 
         .card h3 {
+            font-family: var(--font-heading);
             font-size: 1.5rem;
             margin-bottom: 1.25rem;
             letter-spacing: -0.03em;
@@ -199,7 +201,7 @@
             text-decoration: none;
             transition: all 0.2s ease;
             font-size: 0.8rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             text-transform: uppercase;
             letter-spacing: 0.1em;
         }
@@ -245,6 +247,7 @@
         }
 
         .discovery-header h2 {
+            font-family: var(--font-heading);
             font-size: 1.75rem;
             letter-spacing: -0.03em;
         }
@@ -298,7 +301,7 @@
             text-align: right;
             color: var(--text-dim);
             font-size: 0.8rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             text-transform: lowercase;
             opacity: 0.7;
         }
@@ -309,7 +312,7 @@
             text-align: center;
             color: var(--text-dim);
             font-size: 0.75rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             letter-spacing: 0.05em;
         }
 
@@ -321,14 +324,24 @@
             border: 1px solid rgba(99, 102, 241, 0.2);
             border-radius: 2px;
             font-size: 0.65rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.1em;
             margin-bottom: 1rem;
         }
 
-        /* Vault Explorer */
+        /* Vault Explorer & Terminal */
+        .terminal-explorer {
+            margin-top: 1.5rem;
+            background: #0a0a0f;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            border-left: 4px solid var(--primary);
+        }
+
         .vault-explorer {
             margin-top: 4rem;
             background: #0a0a0f;
@@ -350,11 +363,11 @@
 
         .terminal-dots { display: flex; gap: 6px; }
         .terminal-dots span { width: 8px; height: 8px; border-radius: 50%; background: #1e293b; }
-        .terminal-title { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
+        .terminal-title { font-family: var(--font-heading); font-size: 0.65rem; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
 
         .terminal-body {
             padding: 1.5rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-code);
             font-size: 0.85rem;
             min-height: 240px;
             max-height: 500px;
@@ -372,7 +385,7 @@
             color: var(--accent);
             outline: none;
             width: 100%;
-            font-family: var(--font-mono);
+            font-family: var(--font-code);
             font-size: 0.85rem;
             padding: 0;
             caret-color: var(--primary);
@@ -409,7 +422,7 @@
             align-items: center;
             margin-top: 1.25rem;
         }
-        .seller-provision button.btn { border: none; cursor: pointer; font-family: var(--font-mono); }
+        .seller-provision button.btn { border: none; cursor: pointer; font-family: var(--font-heading); }
         .seller-provision select,
         .seller-provision .mint-override {
             width: 100%;
@@ -420,7 +433,7 @@
             border: 1px solid var(--border);
             background: var(--surface);
             color: var(--text);
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-size: 0.85rem;
         }
         .seller-provision .mint-hint {
@@ -443,7 +456,7 @@
         }
         #provision-status {
             margin-top: 1.25rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-code);
             font-size: 0.78rem;
             line-height: 1.5;
             color: var(--text-dim);
@@ -466,7 +479,7 @@
             justify-content: center;
             gap: 4rem;
             z-index: 100;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-size: 0.6rem;
             letter-spacing: 0.12em;
             box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
@@ -486,7 +499,7 @@
             color: #000;
             text-align: center;
             padding: 0.35rem;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-size: 0.65rem;
             font-weight: 800;
             letter-spacing: 0.2em;
@@ -535,7 +548,7 @@
         .card-links a {
             color: var(--primary);
             text-decoration: none;
-            font-family: var(--font-mono);
+            font-family: var(--font-heading);
             font-size: 0.78rem;
             letter-spacing: 0.02em;
         }
@@ -596,15 +609,14 @@
                 <div class="logo-dot"></div>
                 <span class="logo-text">ACTIVE FACILITATOR</span>
             </div>
-            <h1>The Bridge to<br>Agentic Liquidity</h1>
-            <p class="tagline">Providing an effortless REST gateway to the Solana economic stack. One API for all agentic payments.</p>
-            <p class="tagline" style="margin-top: 1.5rem; font-size: 0.95rem; max-width: 40rem; margin-left: auto; margin-right: auto; color: var(--text-dim);">
-                <strong style="color: var(--text);">Experimental</strong> — use at your own risk. You are viewing <strong>this</strong> deployment.
-                <strong style="color: var(--text);">Production</strong> (Mainnet):
-                <a href="https://agent.pay402.me/" style="color: var(--primary);">agent.pay402.me</a>
-                · <strong style="color: var(--text);">Preview</strong> (Devnet):
-                <a href="https://preview.agent.pay402.me/" style="color: var(--primary);">preview.agent.pay402.me</a>.
-                Confirm <span class="inline-code">solanaNetwork</span>: <a href="/api/v1/facilitator/health" style="color: var(--primary);">GET /health</a>.
+            <h1>The Liquidity Layer for<br>Autonomous Agents</h1>
+            <p class="tagline">Providing the missing economic bridge for the agentic web. One REST API to settle the entire Solana economic stack.</p>
+            <p class="tagline" style="margin-top: 1.5rem; font-size: 0.95rem; max-width: 45rem; margin-left: auto; margin-right: auto; color: var(--text-dim); background: rgba(99, 102, 241, 0.05); padding: 1.25rem; border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                <strong style="color: var(--primary);">INITIAL LAUNCH PHASE:</strong> Currently, only the <strong><span class="inline-code">exact</span> scheme (UniversalSettle)</strong> is fully supported for production settlement. We are actively onboarding Oracle Partners before activating the <span class="inline-code">sla-escrow</span> scheme.
+                <br><br>
+                <strong style="color: var(--text);">Production</strong> (Mainnet): <a href="https://agent.pay402.me/" style="color: var(--primary);">agent.pay402.me</a>
+                · <strong style="color: var(--text);">Preview</strong> (Devnet): <a href="https://preview.agent.pay402.me/" style="color: var(--primary);">preview.agent.pay402.me</a>.
+                Confirm capabilities via <a href="/api/v1/facilitator/health" style="color: var(--primary);">GET /health</a>.
             </p>
         </header>
 
@@ -673,32 +685,58 @@
             </div>
         </div>
 
+        <section class="quickstart-section" aria-labelledby="quickstart-title">
+            <span class="badge">Agent Quickstart</span>
+            <h2 id="quickstart-title">The One-Curl Proof</h2>
+            <p class="section-lead">Test this facilitator's capabilities instantly. No SDK required.</p>
+            <div class="terminal-explorer" style="margin-top: 1.5rem;">
+                <div class="terminal-header">
+                    <div class="terminal-title">AGENT_PROBE.SH</div>
+                    <button class="copy-btn" onclick="copyCurl()" style="background:transparent; border:none; color:var(--primary); font-family:var(--font-mono); font-size:0.6rem; cursor:pointer;">[COPY COMMAND]</button>
+                </div>
+                <div class="terminal-body" style="min-height: auto; padding: 1.25rem;">
+                    <code id="curl-command" style="color: var(--accent); font-size: 0.8rem;">curl -sS "https://agent.pay402.me/api/v1/facilitator/capabilities" | jq .</code>
+                </div>
+            </div>
+        </section>
+
         <section class="seller-provision" aria-labelledby="seller-provision-title">
             <span class="badge" style="border-color: rgba(16, 185, 129, 0.35); color: var(--accent); background: rgba(16, 185, 129, 0.08);">Sellers · No CLI</span>
-            <h2 id="seller-provision-title">Provision your SplitVault (and payment asset)</h2>
+            <h2 id="seller-provision-title">Agentic Provisioning</h2>
             <p>
-                If a buyer’s first payment failed because your <strong>SplitVault</strong> or <strong>vault token account</strong> is not on-chain yet, use this flow.
-                You only need a Solana browser wallet (Phantom, Solflare, Backpack, Trust, or any compatible adapter)
-                and a little <strong>SOL</strong> on the <strong>same network</strong> as this facilitator (see the banner / health strip below).
+                Establish your <strong>SplitVault</strong> and payment surface in one transaction. 
+                Sovereign provisioning earns an immediate <strong>5 bps fee discount</strong>.
             </p>
-            <p style="font-size: 0.85rem; margin-bottom: 0;">
-                <strong>Steps:</strong> pick an <strong>asset</strong> (default <strong>USDC</strong> for typical agent flows; SOL, …) → <strong>🔗 Connect wallet</strong> → <strong>Provision</strong>. Re-running for the same wallet + asset is a no-op when already on-chain.
-                Presets like <strong>USDC</strong> are <strong>cluster-aware</strong>: this facilitator resolves them to the correct SPL mint for <strong>its</strong> Solana cluster (e.g. Circle devnet vs mainnet USDC are different addresses—the server picks the right one; you do not paste a mint for normal USDC).
-            </p>
-            <label for="provision-asset" class="mint-hint" style="display:block;margin-top:1rem;">Payment asset to provision</label>
-            <select id="provision-asset" aria-describedby="provision-asset-desc">
-                <option value="USDC" selected>USDC (default — mint resolved for this deployment’s cluster)</option>
-                <option value="SOL">SOL (native — virtual mint 1111…1111)</option>
-                <option value="WSOL">WSOL (wrapped SOL — same well-known mint across clusters)</option>
-                <option value="USDT">USDT (mainnet mint built-in; devnet — paste mint below)</option>
-            </select>
-            <p id="provision-asset-desc" class="mint-hint">Optional: paste any SPL mint to override the list (required for <strong>USDT on devnet</strong>, custom test mints, memecoins, etc.).</p>
-            <input type="text" id="provision-mint-override" class="mint-override" placeholder="Override with base58 mint (optional)" autocomplete="off" spellcheck="false">
             <div class="provision-actions">
                 <button type="button" class="btn btn-secondary" id="btn-wallet-connect">🔗 Connect wallet</button>
-                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Provision</button>
+                <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Provision Vault</button>
             </div>
             <div id="provision-status" role="status" aria-live="polite"></div>
+        </section>
+
+        <!-- Oracle Partner Recruitment Poster -->
+        <section class="oracle-partner" style="margin-top: 3rem; padding: 3rem 2.5rem; background: linear-gradient(145deg, rgba(16, 185, 129, 0.05) 0%, rgba(2, 6, 23, 0.8) 100%); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; text-align: center; position: relative; overflow: hidden;">
+            <div style="position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 50%); pointer-events: none;"></div>
+            <span class="badge" style="background: rgba(16, 185, 129, 0.1); color: var(--accent); border-color: rgba(16, 185, 129, 0.2);">Call for Partners</span>
+            <h2 style="font-family: var(--font-heading); font-size: 2rem; margin: 1rem 0; color: white;">Become an Oracle Node</h2>
+            <p style="color: var(--text-dim); font-size: 1.05rem; max-width: 650px; margin: 0 auto 2.5rem; line-height: 1.6;">
+                We are building the trust layer for the Agentic Economy. The <strong>SLA-Escrow</strong> scheme requires specialized Oracle Partners to adjudicate AI-to-AI disputes, verify inference quality, and guarantee zero-trust settlement.
+            </p>
+            <div style="display: flex; justify-content: center; gap: 3rem; flex-wrap: wrap; margin-bottom: 3rem;">
+                <div style="text-align: left; max-width: 200px;">
+                    <strong style="color: var(--text); display: block; margin-bottom: 0.5rem; font-family: var(--font-heading);">💰 Earn Protocol Fees</strong>
+                    <span style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.4; display: block;">Capture sustainable yield for adjudicating SLA disputes.</span>
+                </div>
+                <div style="text-align: left; max-width: 200px;">
+                    <strong style="color: var(--text); display: block; margin-bottom: 0.5rem; font-family: var(--font-heading);">⚖️ Shape AI Standards</strong>
+                    <span style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.4; display: block;">Set the benchmark for inference quality and uptime.</span>
+                </div>
+                <div style="text-align: left; max-width: 200px;">
+                    <strong style="color: var(--text); display: block; margin-bottom: 0.5rem; font-family: var(--font-heading);">🚀 Early Access</strong>
+                    <span style="color: var(--text-dim); font-size: 0.85rem; line-height: 1.4; display: block;">Join the Genesis Cohort of the autonomous economy.</span>
+                </div>
+            </div>
+            <button onclick="navigator.clipboard.writeText('partners@miraland.io'); const old = this.innerText; this.innerText = 'EMAIL COPIED!'; setTimeout(() => this.innerText = old, 2000);" class="btn btn-primary" style="background: var(--accent); color: #000; font-weight: 700; padding: 1rem 2.5rem; letter-spacing: 0.15em; border: none; cursor: pointer;">partners@miraland.io</button>
         </section>
 
         <!-- New: Vault Explorer -->
@@ -835,6 +873,15 @@
     <div id="miracle-wallet-adapter" aria-hidden="true"></div>
 
     <script>
+        window.copyCurl = function() {
+            const code = document.getElementById('curl-command').innerText;
+            navigator.clipboard.writeText(code);
+            const btn = document.querySelector('.copy-btn');
+            const old = btn.innerText;
+            btn.innerText = '[COPIED!]';
+            setTimeout(() => btn.innerText = old, 2000);
+        };
+
         function applyHealthToGlobals(data) {
             const net = String(data.solanaNetwork || '').toLowerCase();
             window.__PR402_SOLANA_NETWORK__ = net;
@@ -919,10 +966,11 @@
                     
                     for (const [name, info] of Object.entries(data.schemes || {})) {
                         const roleStyle = info.role.includes("Seller") ? "color:#f59e0b;" : "color:#a78bfa;";
+                        const sovBadge = info.is_sovereign ? '<span style="background:var(--accent); color:black; padding: 2px 6px; border-radius: 2px; font-size: 10px; font-weight: 800; margin-right: 8px;">🏆 SOVEREIGN (DISCOUNTED)</span>' : '';
                         html += `
                             <div style="margin-top: 1.5rem; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 1rem;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.75rem;">
-                                    <span style="color: var(--primary); font-weight: 700; font-size: 0.75rem;">PROTOCOL: ${name.toUpperCase()}</span>
+                                    <span style="color: var(--primary); font-weight: 700; font-size: 0.75rem;">${sovBadge}PROTOCOL: ${name.toUpperCase()}</span>
                                     <span style="${roleStyle} font-size: 0.65rem; font-family: var(--font-mono); text-transform: uppercase;">[ROLE: ${info.role}]</span>
                                 </div>
                                 <div><span class="output-label">${info.label}</span><span class="output-val">${info.vaultPda}</span></div>
@@ -1058,7 +1106,17 @@
                         }
                         return;
                     }
+
+                    // Check for common Solana providers
+                    var hasProvider = !!(window.solana || window.phantom || window.solflare || window.backpack);
+                    
                     if (window.ShowWalletModal) {
+                        if (!hasProvider) {
+                            setStatus(
+                                'No Solana wallet detected. Please install a browser extension like Phantom, Solflare, or Backpack to provision your vault.',
+                                true
+                            );
+                        }
                         window.ShowWalletModal();
                     } else {
                         setStatus(

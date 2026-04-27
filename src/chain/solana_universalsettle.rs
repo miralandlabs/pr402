@@ -3,31 +3,19 @@
 //! This module manually builds UniversalSettle instructions compatible with the
 //! steel framework's discriminator format, without depending on Solana 2.x SDKs.
 
-use solana_pubkey::{pubkey, Pubkey};
+use solana_pubkey::Pubkey;
 use solana_transaction::{AccountMeta, Instruction};
 
 use super::solana::SYSTEM_PROGRAM_ID;
 
-/// SPL Associated Token Account program (`spl_associated_token_account::ID`).
-const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-
 pub const VAULT: &[u8] = b"vault";
+
 pub const SOL_STORAGE: &[u8] = b"sol_storage";
 pub const CONFIG: &[u8] = b"config";
 pub const FEE_SHARD: &[u8] = b"fee_shard";
 pub const FEE_SHARD_SOL: &[u8] = b"fee_shard_sol";
 
-fn associated_token_address(wallet: &Pubkey, mint: &Pubkey, token_program: &Pubkey) -> Pubkey {
-    Pubkey::find_program_address(
-        &[
-            &wallet.to_bytes(),
-            &token_program.to_bytes(),
-            &mint.to_bytes(),
-        ],
-        &ASSOCIATED_TOKEN_PROGRAM_ID,
-    )
-    .0
-}
+use crate::util::tx_builder::associated_token_address;
 
 /// UniversalSettle instruction discriminators (matches universalsettle/api/src/instruction.rs).
 #[repr(u8)]
