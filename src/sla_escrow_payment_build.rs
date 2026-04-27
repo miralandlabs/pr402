@@ -495,3 +495,90 @@ pub async fn build_sla_escrow_fund_payment_tx(
         notes,
     })
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildOracleConfirmTxRequest {
+    pub oracle_authority: String,
+    pub mint: String,
+    pub payment_uid: String,
+    pub delivery_hash: String,
+    #[serde(default)]
+    pub resolution_hash: Option<String>,
+    pub resolution_state: u8,
+    pub resolution_reason: u16,
+    /// If `true`, the transaction will require the oracle to pay the gas fee. Default `false` for now, meaning it just builds a shell. Usually oracles pay for confirm.
+    #[serde(default)]
+    pub fee_payer: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildOracleConfirmTxResponse {
+    pub transaction: String,
+    pub program_id: String,
+    pub payment_pda: String,
+}
+
+pub async fn build_oracle_confirm_tx(
+    provider: &SolanaChainProvider,
+    req: BuildOracleConfirmTxRequest,
+) -> Result<BuildOracleConfirmTxResponse, SlaEscrowPaymentBuildError> {
+    let escrow_cfg = provider
+        .sla_escrow()
+        .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?;
+    let program_id = escrow_cfg.program_id;
+
+    let oracle_pk = Pubkey::from_str(&req.oracle_authority).map_err(|e| {
+        SlaEscrowPaymentBuildError::InvalidRequest(format!("oracleAuthority: {}", e))
+    })?;
+    let mint_pk = Pubkey::from_str(&req.mint)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("mint: {}", e)))?;
+
+    let delivery_hash = parse_sla_hash_hex(&req.delivery_hash)?;
+    let resolution_hash = match &req.resolution_hash {
+        Some(s) if !s.is_empty() => parse_sla_hash_hex(s)?,
+        _ => [0u8; 32],
+    };
+
+    let ix = crate::chain::solana_sla_escrow::build_confirm_oracle_instruction(
+        program_id,
+        oracle_pk,
+        mint_pk,
+        &req.payment_uid,
+        delivery_hash,
+        resolution_hash,
+        req.resolution_state,
+        req.resolution_reason,
+    );
+
+    let fee_payer = req.fee_payer.as_deref().unwrap_or(&req.oracle_authority);
+    let fee_payer_pk = Pubkey::from_str(fee_payer)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("feePayer: {}", e)))?;
+
+    let recent_blockhash = provider
+        .rpc_client()
+        .get_latest_blockhash()
+        .await
+        .map_err(|e| SlaEscrowPaymentBuildError::Rpc(e.to_string()))?;
+
+    let ixs = vec![ix];
+
+    let message = Message::new_with_blockhash(&ixs, Some(&fee_payer_pk), &recent_blockhash);
+    let tx = VersionedTransaction::from(solana_transaction::Transaction::new_unsigned(message));
+
+    let tx_b64 = base64::engine::general_purpose::STANDARD.encode(bincode::serialize(&tx).unwrap());
+
+    let (bank_pda, _) = crate::chain::solana_sla_escrow::derive_bank_pda(&program_id);
+    let (payment_pda, _) = crate::chain::solana_sla_escrow::derive_payment_pda(
+        &program_id,
+        &bank_pda,
+        &req.payment_uid,
+    );
+
+    Ok(BuildOracleConfirmTxResponse {
+        transaction: tx_b64,
+        program_id: program_id.to_string(),
+        payment_pda: payment_pda.to_string(),
+    })
+}

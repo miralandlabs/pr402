@@ -175,3 +175,69 @@ pub fn build_fund_payment_instruction(
         data: instruction_data,
     }
 }
+
+/// SLAEscrow ConfirmOracle instruction data structure
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct ConfirmOracleData {
+    pub delivery_hash: [u8; 32],
+    pub resolution_hash: [u8; 32],
+    pub resolution_reason: [u8; 2],
+    pub resolution_state: u8,
+    pub _padding: [u8; 5],
+}
+
+impl ConfirmOracleData {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(72);
+        bytes.extend_from_slice(&self.delivery_hash);
+        bytes.extend_from_slice(&self.resolution_hash);
+        bytes.extend_from_slice(&self.resolution_reason);
+        bytes.push(self.resolution_state);
+        bytes.extend_from_slice(&self._padding);
+        bytes
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_confirm_oracle_instruction(
+    program_id: Pubkey,
+    oracle_authority: Pubkey,
+    mint: Pubkey,
+    payment_uid: &str,
+    delivery_hash: [u8; 32],
+    resolution_hash: [u8; 32],
+    resolution_state: u8,
+    resolution_reason: u16,
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda(&program_id, &bank_pda, payment_uid);
+
+    let data = ConfirmOracleData {
+        delivery_hash,
+        resolution_hash,
+        resolution_reason: resolution_reason.to_le_bytes(),
+        resolution_state,
+        _padding: [0; 5],
+    };
+
+    let mut instruction_data = Vec::with_capacity(73);
+    instruction_data.push(SLAEscrowInstruction::ConfirmOracle as u8);
+    instruction_data.extend_from_slice(&data.to_bytes());
+
+    let accounts = vec![
+        AccountMeta::new(oracle_authority, true),
+        AccountMeta::new_readonly(bank_pda, false),
+        AccountMeta::new_readonly(config_pda, false),
+        AccountMeta::new_readonly(escrow_pda, false),
+        AccountMeta::new(payment_pda, false),
+    ];
+
+    Instruction {
+        program_id,
+        accounts,
+        data: instruction_data,
+    }
+}

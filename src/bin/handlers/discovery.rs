@@ -70,6 +70,11 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/build-sla-escrow-payment-tx",
                 auth: None,
             },
+            build_oracle_confirm_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/oracle/build-confirm",
+                auth: None,
+            },
             sweep: HttpEndpointInfo {
                 method: "POST",
                 path: "/api/v1/facilitator/sweep",
