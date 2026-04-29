@@ -341,8 +341,10 @@ impl SolanaChainProvider {
                         recent_blockhash,
                     ),
                 );
-                self.send_and_confirm(&tx, CommitmentConfig::confirmed())
+                let sig = self
+                    .send_and_confirm(&tx, CommitmentConfig::confirmed())
                     .await?;
+                tracing::info!(vault = %vault_pda, signature = %sig, "UniversalSettle JIT provision successful");
             }
         }
 
