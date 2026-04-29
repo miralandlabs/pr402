@@ -48,7 +48,7 @@ curl -sS -X POST "$BASE/api/v1/facilitator/build-sla-escrow-payment-tx" \
   }'
 ```
 
-**Response** gives you `transaction` (base64 unsigned tx) and `verifyBodyTemplate` (pre-filled verify/settle body).
+**Response** gives you `transaction` (base64 unsigned tx) and `verifyBodyTemplate` (pre-filled verify/settle body). If your 402 line uses **`v2:solana:exact`** or **`v2:solana:sla-escrow`**, the template’s **`scheme`** fields are normalized to wire **`exact`** / **`sla-escrow`** — use them as returned.
 
 ## Step 4 — Sign the transaction
 

@@ -455,6 +455,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
         "payTo".to_string(),
         serde_json::json!(escrow_pda.to_string()),
     );
+    crate::util::normalize_scheme_field_in_map(&mut accepted_norm);
 
     let verify_body_template = serde_json::json!({
         "x402Version": 2,

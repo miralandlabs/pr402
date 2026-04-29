@@ -3,7 +3,7 @@
   "info": {
     "title": "pr402 Facilitator API",
     "version": "1.0.0",
-    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Launch phase:** This service and its documentation are provided on an **experimental** basis — **use at your own risk**. Protocol, fees, allowlists, and availability may change.\n\n**Official deployments:** **Production** (Solana Mainnet) — `https://agent.pay402.me`. **Preview** (Solana Devnet) — `https://preview.agent.pay402.me`. Select the matching entry under **`servers`** below. Always confirm **`solanaNetwork`** and **`chainId`** via **`GET /api/v1/facilitator/health`** or **`GET /api/v1/facilitator/capabilities`** on the host you call.\n\n**RPC URLs:** Integrators needing the deployment\u2019s wallet RPC should read **`solanaWalletRpcUrl`** from **`GET /health`** at runtime. **Do not** copy RPC URLs or API keys from static markdown into your app; they are environment-specific and may rotate.\n\n**Who uses this API:**\n- **Seller / resource provider agents** \u2014 onboard UniversalSettle vaults, per-asset provisioning (`POST /onboard/provision`), preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` \u2192 Seller agents).\n- **Buyer / payer agents** \u2014 match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` \u2192 Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)\u2014not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**SLA-Escrow `FundPayment.seller`:** Build and verify require `paymentRequirements.accepted.extra` (**or** mirrored `extra` on the proof) to include **`beneficiary`** or **`merchantWallet`** (base58). That pubkey is the on-chain **seller** encoded in `FundPayment` and must **not** equal the escrow PDA.\n\n**Who pays Solana transaction fees:** The x402 v2 specification centers facilitator-paid **landing** for the standard **`exact`** rail. **SLA-Escrow** is a pr402 extension: **`facilitatorPaysTransactionFees` defaults to `false`**, so the **buyer** pays network fees unless you opt in to facilitator sponsorship (`true`, two-signer flow like `build-exact-payment-tx`). **FundPayment** token principal always comes from the buyer\u2019s funded ATA; only the **SOL fee payer** toggles. **Operator gate:** even when a client sends `facilitatorPaysTransactionFees: true`, the HTTP build is **rejected (400)** unless the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** to `true`/`1`/`yes`.\n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**Examples:** Schema **`X402V2VerifySettleBody`** includes a worked **`example`** (exact rail). **`BuildExactPaymentTxRequest`** includes an **`example`** request for the builder.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nIntegration guide: `/agent-integration.md` (includes **Golden path** section for standard integration).\n\n**Agent manifest (machine-readable):** `/agent-payTo-semantics.json` \u2014 `payTo` resolution rules and `paymentMintAllowlist` metadata; the same path is advertised as `agentManifest.payToSemantics` on `GET /capabilities`.\n",
+    "description": "x402 v2 facilitator for Solana: discovery, optional unsigned tx build, verify, and settle.\n\n**Launch phase:** This service and its documentation are provided on an **experimental** basis \u2014 **use at your own risk**. Protocol, fees, allowlists, and availability may change.\n\n**Official deployments:** **Production** (Solana Mainnet) \u2014 `https://agent.pay402.me`. **Preview** (Solana Devnet) \u2014 `https://preview.agent.pay402.me`. Select the matching entry under **`servers`** below. Always confirm **`solanaNetwork`** and **`chainId`** via **`GET /api/v1/facilitator/health`** or **`GET /api/v1/facilitator/capabilities`** on the host you call.\n\n**RPC URLs:** Integrators needing the deployment\u2019s wallet RPC should read **`solanaWalletRpcUrl`** from **`GET /health`** at runtime. **Do not** copy RPC URLs or API keys from static markdown into your app; they are environment-specific and may rotate.\n\n**Who uses this API:**\n- **Seller / resource provider agents** \u2014 onboard UniversalSettle vaults, per-asset provisioning (`POST /onboard/provision`), preview PDAs, optional signed registry (`/onboard/challenge` + `POST /onboard`), publish correct **`payTo`** in 402 (`agent-integration.md` \u2192 Seller agents).\n- **Buyer / payer agents** \u2014 match `accepts[]`, build unsigned proofs, sign, `POST /verify` + `POST /settle` (`agent-integration.md` \u2192 Buyer agents).\n\n**`payTo` (pr402):** Settlement goes through **UniversalSettle** (exact) and/or **SLA-Escrow**. `payTo` must be the **on-chain PDA** for that scheme (vault rail / escrow account)\u2014not a bare seller wallet for proofs. The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** carries the canonical Escrow PDA in `payTo`.\n\n**SLA-Escrow `FundPayment.seller`:** Build and verify require `paymentRequirements.accepted.extra` (**or** mirrored `extra` on the proof) to include **`beneficiary`** or **`merchantWallet`** (base58). That pubkey is the on-chain **seller** encoded in `FundPayment` and must **not** equal the escrow PDA.\n\n**Who pays Solana transaction fees:** The x402 v2 specification centers facilitator-paid **landing** for the standard **`exact`** rail. **SLA-Escrow** is a pr402 extension: **`facilitatorPaysTransactionFees` defaults to `false`**, so the **buyer** pays network fees unless you opt in to facilitator sponsorship (`true`, two-signer flow like `build-exact-payment-tx`). **FundPayment** token principal always comes from the buyer\u2019s funded ATA; only the **SOL fee payer** toggles. **Operator gate:** even when a client sends `facilitatorPaysTransactionFees: true`, the HTTP build is **rejected (400)** unless the deployment sets **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** to `true`/`1`/`yes`.\n\n**Scheme strings (agents):** HTTP `402 accepts[]` and builder **requests** may use the short wire form (`exact`, `sla-escrow`) or namespaced aliases (`v2:solana:exact`, `v2:solana:sla-escrow`). **`verifyBodyTemplate`** from **`build-*-payment-tx`** always uses the **wire** scheme in `paymentPayload.accepted` and `paymentRequirements`. **`POST /verify`** and **`POST /settle`** accept either form for `x402Version: 2` and normalize aliases before verification. \n\n**Typical buyer flow:** (1) `GET /supported` or `GET /capabilities`. (2) `POST /build-exact-payment-tx` or `POST /build-sla-escrow-payment-tx`. (3) Sign locally; facilitator may fill fee-payer at settle when applicable. (4) Swap signed tx into `verifyBodyTemplate`; optional `correlationId`. (5) `POST /verify` then `POST /settle` with the **same** body.\n\n**Examples:** Schema **`X402V2VerifySettleBody`** includes a worked **`example`** (exact rail). **`BuildExactPaymentTxRequest`** includes an **`example`** request for the builder.\n\n**CORS:** `OPTIONS` on `/api/v1/facilitator/*` returns 204; JSON uses `Access-Control-Allow-Origin: *`.\n\nIntegration guide: `/agent-integration.md` (includes **Golden path** section for standard integration).\n\n**Agent manifest (machine-readable):** `/agent-payTo-semantics.json` \u2014 `payTo` resolution rules and `paymentMintAllowlist` metadata; the same path is advertised as `agentManifest.payToSemantics` on `GET /capabilities`.\n",
     "license": {
       "name": "Apache-2.0"
     }
@@ -146,7 +146,7 @@
           "x402 Core"
         ],
         "summary": "Verify payment payload",
-        "description": "Validates the x402 v2 proof against `paymentRequirements`. Optional `X-Correlation-ID` or body `correlationId` for DB audit linking.",
+        "description": "Validates the x402 v2 proof against `paymentRequirements`. Optional `X-Correlation-ID` or body `correlationId` for DB audit linking. For **`x402Version: 2`**, `paymentPayload.accepted.scheme` and `paymentRequirements.scheme` may use the wire values **`exact`** / **`sla-escrow`** or the handler aliases **`v2:solana:exact`** / **`v2:solana:sla-escrow`**; the facilitator normalizes aliases to wire form before typed verification.",
         "operationId": "facilitatorVerify",
         "parameters": [
           {
@@ -198,7 +198,7 @@
           "x402 Core"
         ],
         "summary": "Settle payment",
-        "description": "Same JSON shape as `/verify`. Submits or confirms on-chain settlement (scheme-specific). Reuse the **same** body and correlation id as verify. Idempotent: if the transaction is already on-chain, returns success. Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blockhash expires.",
+        "description": "Same JSON shape as `/verify`. Submits or confirms on-chain settlement (scheme-specific). Reuse the **same** body and correlation id as verify. For v2 bodies, handler scheme aliases (`v2:solana:exact`, `v2:solana:sla-escrow`) are normalized to wire `exact` / `sla-escrow` like `/verify`. Idempotent: if the transaction is already on-chain, returns success. Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blockhash expires.",
         "operationId": "facilitatorSettle",
         "parameters": [
           {
@@ -270,7 +270,7 @@
           "pr402 Extension: Tx Build"
         ],
         "summary": "Build unsigned exact (UniversalSettle) payment tx",
-        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) and `verifyBodyTemplate`. Payer signs token authority; facilitator is fee payer at `/settle` when `feePayer` in extra matches deployment. Scheme: `exact` (canonical) or `v2:solana:exact` (accepted alias).",
+        "description": "Returns base64 bincode `VersionedTransaction` (unsigned) and `verifyBodyTemplate`. Payer signs token authority; facilitator is fee payer at `/settle` when `feePayer` in extra matches deployment. **Request** `accepted.scheme` may be `exact` or `v2:solana:exact`. **`verifyBodyTemplate`** always uses wire **`exact`** in both `paymentPayload.accepted.scheme` and `paymentRequirements.scheme` (aliases are normalized).",
         "operationId": "buildExactPaymentTx",
         "requestBody": {
           "required": true,
@@ -332,7 +332,7 @@
           "pr402 Extension: Tx Build"
         ],
         "summary": "Build unsigned SLA-Escrow FundPayment tx",
-        "description": "**Default `facilitatorPaysTransactionFees: false`:** buyer pays Solana network fees (single-signer shell). This extension does not assume the facilitator subsidizes gas on every payment (unlike the x402-documented **`exact`** rail). **`facilitatorPaysTransactionFees: true`** requires the operator to set **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** on the deployment; otherwise the request returns **400**. When allowed, that mode uses facilitator fee payer + partial buyer sign (two-signer pattern as `build-exact-payment-tx`). **`accepted.extra`** must include **`beneficiary`** or **`merchantWallet`**. Response `verifyBodyTemplate` sets **`payTo`** to the canonical **Escrow PDA**. SPL: legacy Token and Token-2022 **plain** mints only (82-byte mint). Scheme: `sla-escrow` or `v2:solana:sla-escrow`.",
+        "description": "**Default `facilitatorPaysTransactionFees: false`:** buyer pays Solana network fees (single-signer shell). This extension does not assume the facilitator subsidizes gas on every payment (unlike the x402-documented **`exact`** rail). **`facilitatorPaysTransactionFees: true`** requires the operator to set **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** on the deployment; otherwise the request returns **400**. When allowed, that mode uses facilitator fee payer + partial buyer sign (two-signer pattern as `build-exact-payment-tx`). **`accepted.extra`** must include **`beneficiary`** or **`merchantWallet`**. Response `verifyBodyTemplate` sets **`payTo`** to the canonical **Escrow PDA**. SPL: legacy Token and Token-2022 **plain** mints only (82-byte mint). **Request** `accepted.scheme` may be `sla-escrow` or `v2:solana:sla-escrow`. **`verifyBodyTemplate`** always uses wire **`sla-escrow`** in both `paymentPayload.accepted.scheme` and `paymentRequirements.scheme`.",
         "operationId": "buildSlaEscrowPaymentTx",
         "requestBody": {
           "required": true,
@@ -871,6 +871,7 @@
       },
       "X402V2VerifySettleBody": {
         "type": "object",
+        "description": "x402 v2 JSON for `POST /verify` and `POST /settle`. `paymentPayload.accepted` and `paymentRequirements` must agree; each carries a `scheme` string. Use wire `exact` / `sla-escrow`, or `v2:solana:*` aliases (normalized server-side for v2). Objects returned by `verifyBodyTemplate` from build endpoints use wire schemes only.",
         "required": [
           "x402Version",
           "paymentPayload",
@@ -1081,7 +1082,7 @@
           },
           "asset": {
             "type": "string",
-            "description": "Payment asset this seller registers in `resource_providers` (one per wallet). Default **USDC** (`SOL`, `USDC`, mint, … — same resolution as `POST /onboard/provision`)."
+            "description": "Payment asset this seller registers in `resource_providers` (one per wallet). Default **USDC** (`SOL`, `USDC`, mint, \u2026 \u2014 same resolution as `POST /onboard/provision`)."
           }
         }
       },
@@ -1477,7 +1478,7 @@
       },
       "BuildPaymentTxResponse": {
         "type": "object",
-        "description": "Unified response for transaction builders.",
+        "description": "Unified response for transaction builders. `verifyBodyTemplate` is ready to POST to `/verify` and `/settle` after the buyer replaces `paymentPayload.payload.transaction` with the signed base64 tx; scheme fields inside the template are normalized to wire `exact` or `sla-escrow`.",
         "required": [
           "x402Version",
           "transaction",
@@ -1517,7 +1518,8 @@
             "type": "string"
           },
           "verifyBodyTemplate": {
-            "type": "object"
+            "type": "object",
+            "description": "Filled verify/settle body shape (`x402Version`, `paymentPayload`, `paymentRequirements`) with `scheme` set wire form (`exact` or `sla-escrow`); unsigned tx placeholder until the client signs."
           },
           "notes": {
             "type": "array",

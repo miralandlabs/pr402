@@ -63,6 +63,19 @@ impl VerifyRequest {
         serde_json::to_value(self).unwrap_or_default()
     }
 
+    /// Rewrite `v2:solana:exact` / `v2:solana:sla-escrow` to wire `exact` / `sla-escrow` in
+    /// `paymentRequirements` and `paymentPayload.accepted` so `/verify`, `/settle`, and
+    /// [`Self::v2_metadata`] (e.g. SLA escrow audit gates) behave consistently.
+    pub fn normalize_scheme_slugs_for_wire(&mut self) {
+        if self.x402_version != 2 {
+            return;
+        }
+        crate::util::normalize_scheme_field_in_map(&mut self.payment_requirements);
+        if let Some(accepted) = self.payment_payload.get_mut("accepted") {
+            crate::util::normalize_scheme_field_in_map(accepted);
+        }
+    }
+
     /// Prefer `` / `X-Correlation-ID` from the HTTP request, else optional body field `correlationId`.
     ///
     /// When absent and Postgres is enabled (`DATABASE_URL`), the serverless facilitator may mint an id on

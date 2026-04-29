@@ -386,16 +386,20 @@ pub async fn build_exact_spl_payment_tx(
         .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("bincode serialize: {}", e)))?;
     let tx_b64 = STANDARD.encode(wire);
 
+    let mut accepted_for_verify = serde_json::to_value(&req.accepted)
+        .map_err(|e| ExactPaymentBuildError::InvalidRequest(format!("accepted json: {}", e)))?;
+    crate::util::normalize_scheme_field_in_map(&mut accepted_for_verify);
+
     let verify_body_template = json!({
         "x402Version": 2,
         "paymentPayload": {
             "x402Version": 2,
-            "accepted": req.accepted,
+            "accepted": accepted_for_verify.clone(),
             "payload": { "transaction": tx_b64 },
             "resource": req.resource,
             "extensions": {}
         },
-        "paymentRequirements": req.accepted,
+        "paymentRequirements": accepted_for_verify,
     });
 
     let notes = vec![
