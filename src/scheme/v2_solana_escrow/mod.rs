@@ -508,13 +508,9 @@ pub async fn verify_transfer(
         .map_err(PaymentVerificationError::InvalidFormat)?;
 
     let instructions = transaction.message.instructions();
-    let compute_units = verify_compute_limit_instruction(&transaction, 0)?;
-    if compute_units > provider.max_compute_unit_limit() {
-        return Err(PaymentVerificationError::TransactionSimulation(
-            "MaxComputeUnitLimitExceeded".into(),
-        ));
-    }
-    verify_compute_price_instruction(provider.max_compute_unit_price(), &transaction, 1)?;
+    let budget = crate::chain::TxBudget::FundPayment;
+    let _compute_units = verify_compute_limit_instruction(budget.cu_limit(), &transaction, 0)?;
+    verify_compute_price_instruction(budget.cu_price(), &transaction, 1)?;
 
     let is_spl_token = requirements.asset.pubkey() != &Pubkey::default();
 

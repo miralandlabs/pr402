@@ -19,6 +19,8 @@ pub async fn handle_settle(
             return error_response(StatusCode::BAD_REQUEST, &format!("Invalid request: {}", e));
         }
     };
+    let mut settle_request = settle_request;
+    settle_request.normalize_scheme_slugs_for_wire();
 
     let persist_meta = settle_request.correlation_id_for_persistence(correlation_http);
     let (payee_wallet_opt, scheme_opt, amount_opt, asset_opt) = settle_request.v2_metadata();

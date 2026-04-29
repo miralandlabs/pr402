@@ -25,6 +25,7 @@ use solana_transaction::{
 
 use crate::chain::solana::{SolanaChainProvider, SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID};
 use crate::chain::solana_sla_escrow::build_fund_payment_instruction;
+use crate::chain::TxBudget;
 use crate::scheme::v2_solana_escrow::types::SLAEscrowScheme;
 use crate::util::tx_builder::{
     associated_token_address, compute_budget_ix_set_limit, compute_budget_ix_set_price,
@@ -323,8 +324,9 @@ pub async fn build_sla_escrow_fund_payment_tx(
 
     let source_ata = associated_token_address(&payer_pk, &mint, &token_program);
 
-    let cu_limit = compute_budget_ix_set_limit(provider.max_compute_unit_limit());
-    let cu_price = compute_budget_ix_set_price(provider.max_compute_unit_price());
+    let budget = TxBudget::FundPayment;
+    let cu_limit = compute_budget_ix_set_limit(budget.cu_limit());
+    let cu_price = compute_budget_ix_set_price(budget.cu_price());
 
     let auto_wrap = req.auto_wrap_sol.unwrap_or(false);
     const WSOL_MINT: Pubkey = solana_pubkey::pubkey!("So11111111111111111111111111111111111111112");
@@ -453,6 +455,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
         "payTo".to_string(),
         serde_json::json!(escrow_pda.to_string()),
     );
+    crate::util::normalize_scheme_field_in_map(&mut accepted_norm);
 
     let verify_body_template = serde_json::json!({
         "x402Version": 2,
@@ -562,7 +565,10 @@ pub async fn build_oracle_confirm_tx(
         .await
         .map_err(|e| SlaEscrowPaymentBuildError::Rpc(e.to_string()))?;
 
-    let ixs = vec![ix];
+    let budget = TxBudget::OracleConfirm;
+    let cu_limit_ix = compute_budget_ix_set_limit(budget.cu_limit());
+    let cu_price_ix = compute_budget_ix_set_price(budget.cu_price());
+    let ixs = vec![cu_limit_ix, cu_price_ix, ix];
 
     let message = Message::new_with_blockhash(&ixs, Some(&fee_payer_pk), &recent_blockhash);
     let tx = VersionedTransaction::from(solana_transaction::Transaction::new_unsigned(message));

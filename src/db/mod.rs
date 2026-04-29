@@ -306,11 +306,6 @@ impl Pr402Db {
             }
         };
 
-        if rows.is_empty() {
-            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
-            return Ok(());
-        }
-
         let mut rails: Vec<(String, Option<String>)> = Vec::new();
         for row in rows {
             let mode: String = row.get("settlement_mode");
@@ -320,24 +315,32 @@ impl Pr402Db {
 
         tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
 
-        if rails.len() > 1 {
-            return Err(DbError::FacilitatorPolicy(
-                "resource_providers: inconsistent rails for this wallet — contact support".into(),
-            ));
+        if rails.is_empty() {
+            return Ok(());
         }
 
-        let (ref_mode, ref_mint) = &rails[0];
-        let mode_ok = ref_mode == settlement_mode;
-        let mint_ok = match (ref_mint.as_deref(), spl_mint) {
-            (None, None) => true,
-            (Some(a), Some(b)) => a == b,
-            _ => false,
-        };
+        // Policy: One Native SOL rail (None) AND at most one SPL rail (Some).
+        // Conflict only if adding a different SPL rail when one already exists,
+        // or if the settlement_mode is inconsistent.
+        let existing_spl = rails.iter().find_map(|(_, m)| m.as_ref());
+        let adding_spl = spl_mint;
 
-        if !mode_ok || !mint_ok {
-            return Err(DbError::FacilitatorPolicy(
-                "This merchant wallet is already registered in resource_providers for a different payment asset. Use that asset in accepts[], call POST /onboard/provision for it first, or use a different seller wallet (one asset per wallet policy).".into(),
-            ));
+        if let (Some(existing), Some(adding)) = (existing_spl, adding_spl) {
+            if existing != adding {
+                return Err(DbError::FacilitatorPolicy(
+                    format!("This merchant wallet is already registered with SPL token {}. Use that asset in accepts[], or use a different seller wallet (one SPL asset per wallet policy).", existing)
+                ));
+            }
+        }
+
+        // Also check settlement_mode consistency (usually v2:solana:exact)
+        for (mode, _) in &rails {
+            if mode != settlement_mode {
+                return Err(DbError::FacilitatorPolicy(format!(
+                    "Inconsistent settlement mode: existing={}, requested={}",
+                    mode, settlement_mode
+                )));
+            }
         }
 
         Ok(())

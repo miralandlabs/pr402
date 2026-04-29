@@ -19,6 +19,8 @@ pub async fn handle_verify(
             return error_response(StatusCode::BAD_REQUEST, &format!("Invalid request: {}", e));
         }
     };
+    let mut verify_request = verify_request;
+    verify_request.normalize_scheme_slugs_for_wire();
 
     let persist_meta = verify_request.correlation_id_for_persistence(correlation_http);
     let (payee_wallet_opt, scheme_opt, amount_opt, asset_opt) = verify_request.v2_metadata();

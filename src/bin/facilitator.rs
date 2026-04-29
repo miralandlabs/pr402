@@ -350,45 +350,48 @@ fn init_pr402_db_from_env() -> Option<Pr402Db> {
 /// **Stdout + [`LineWriter`]:** Vercel’s log sink is line-oriented; unbuffered/newline-flushed stdout
 /// improves capture vs default stderr buffering on `provided.al2023`.
 fn init_tracing() {
-    if let Err(e) = LogTracer::init() {
-        eprintln!(
-            "Failed to initialize LogTracer: {}. Continuing without log bridging.",
-            e
-        );
-    }
+    static START: std::sync::Once = std::sync::Once::new();
+    START.call_once(|| {
+        if let Err(e) = LogTracer::init() {
+            eprintln!(
+                "Failed to initialize LogTracer: {}. Continuing without log bridging.",
+                e
+            );
+        }
 
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_ansi(false)
-        .with_target(true)
-        .with_level(true)
-        .with_span_events(FmtSpan::NONE)
-        .compact()
-        .with_writer(|| LineWriter::new(std::io::stdout()));
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .with_ansi(false)
+            .with_target(true)
+            .with_level(true)
+            .with_span_events(FmtSpan::NONE)
+            .compact()
+            .with_writer(|| LineWriter::new(std::io::stdout()));
 
-    let rust_log = std::env::var("RUST_LOG").unwrap_or_default();
-    let env_filter = if rust_log.trim().is_empty() {
-        tracing_subscriber::EnvFilter::new("server_log=info")
-    } else {
-        tracing_subscriber::EnvFilter::from_str(rust_log.trim()).unwrap_or_else(|e| {
-            eprintln!("Invalid RUST_LOG (using server_log=info): {e}");
+        let rust_log = std::env::var("RUST_LOG").unwrap_or_default();
+        let env_filter = if rust_log.trim().is_empty() {
             tracing_subscriber::EnvFilter::new("server_log=info")
-        })
-    };
-    let server_log_directive = "server_log=info"
-        .parse()
-        .expect("static EnvFilter directive");
-    let env_filter = env_filter.add_directive(server_log_directive);
+        } else {
+            tracing_subscriber::EnvFilter::from_str(rust_log.trim()).unwrap_or_else(|e| {
+                eprintln!("Invalid RUST_LOG (using server_log=info): {e}");
+                tracing_subscriber::EnvFilter::new("server_log=info")
+            })
+        };
+        let server_log_directive = "server_log=info"
+            .parse()
+            .expect("static EnvFilter directive");
+        let env_filter = env_filter.add_directive(server_log_directive);
 
-    if let Err(e) = tracing_subscriber::registry()
-        .with(fmt_layer)
-        .with(env_filter)
-        .try_init()
-    {
-        eprintln!(
-            "Failed to initialize tracing subscriber: {}. Logs may be limited.",
-            e
-        );
-    }
+        if let Err(e) = tracing_subscriber::registry()
+            .with(fmt_layer)
+            .with(env_filter)
+            .try_init()
+        {
+            eprintln!(
+                "Failed to initialize tracing subscriber: {}. Logs may be limited.",
+                e
+            );
+        }
+    });
 }
 
 #[tokio::main]

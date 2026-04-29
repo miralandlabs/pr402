@@ -69,8 +69,6 @@ pub struct SolanaChainProvider {
     pub(crate) rpc_url: String,
     pub(crate) universalsettle: Option<crate::config::UniversalSettleConfig>,
     pub(crate) escrow: Option<crate::config::SLAEscrowConfig>,
-    pub(crate) max_compute_unit_limit: u32,
-    pub(crate) max_compute_unit_price: u64,
 }
 
 impl SolanaChainProvider {
@@ -80,8 +78,6 @@ impl SolanaChainProvider {
         chain_id: crate::chain::ChainId,
         universalsettle: Option<crate::config::UniversalSettleConfig>,
         escrow: Option<crate::config::SLAEscrowConfig>,
-        max_compute_unit_limit: u32,
-        max_compute_unit_price: u64,
     ) -> Self {
         Self {
             rpc_client: RpcClient::new_with_commitment(
@@ -93,8 +89,6 @@ impl SolanaChainProvider {
             rpc_url: rpc_url.to_string(),
             universalsettle,
             escrow,
-            max_compute_unit_limit,
-            max_compute_unit_price,
         }
     }
 
@@ -122,14 +116,6 @@ impl SolanaChainProvider {
 
     pub fn chain_id(&self) -> crate::chain::ChainId {
         self.chain_id.clone()
-    }
-
-    pub fn max_compute_unit_limit(&self) -> u32 {
-        self.max_compute_unit_limit
-    }
-
-    pub fn max_compute_unit_price(&self) -> u64 {
-        self.max_compute_unit_price
     }
 
     pub fn pubkey(&self) -> Pubkey {
@@ -257,43 +243,9 @@ impl SolanaChainProvider {
     ) -> Result<Pubkey, SolanaChainProviderError> {
         let (vault_pda, _bump) = self.get_vault_pda(seller);
 
-        // 1. Ensure SplitVault State PDA exists
-        let account = self.rpc_client.get_account(&vault_pda).await;
-        if account.is_err() {
-            tracing::info!(vault = %vault_pda, "Creating SplitVault PDA");
-            if let Some(us_config) = self.universalsettle() {
-                let program_id = us_config.program_id;
-                let mut data = vec![1]; // CreateVault discriminator is 1
-                data.extend_from_slice(seller.as_ref());
+        let vault_exists = self.rpc_client.get_account(&vault_pda).await.is_ok();
+        let mut ata_to_create: Option<(Pubkey, Pubkey, Pubkey)> = None;
 
-                let (vault_sol_storage, _) = self.get_sol_storage_pda(vault_pda);
-
-                let ix = solana_transaction::Instruction {
-                    program_id,
-                    accounts: vec![
-                        solana_transaction::AccountMeta::new(self.pubkey(), true),
-                        solana_transaction::AccountMeta::new(vault_pda, false),
-                        solana_transaction::AccountMeta::new(vault_sol_storage, false),
-                        solana_transaction::AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-                    ],
-                    data,
-                };
-
-                let recent_blockhash = self.rpc_client().get_latest_blockhash().await?;
-                let tx = VersionedTransaction::from(
-                    solana_transaction::Transaction::new_signed_with_payer(
-                        &[ix],
-                        Some(&self.pubkey()),
-                        &[self.keypair()],
-                        recent_blockhash,
-                    ),
-                );
-                self.send_and_confirm(&tx, CommitmentConfig::confirmed())
-                    .await?;
-            }
-        }
-
-        // 2. Ensure ATA for Vault exists if payment is in SPL tokens (legacy Token or plain Token-2022 mint).
         if let Some(mint_key) = mint {
             if mint_key != Pubkey::default() {
                 let mint_acc = self
@@ -321,35 +273,78 @@ impl SolanaChainProvider {
                     &ASSOCIATED_TOKEN_PROGRAM_ID,
                 );
 
-                let ata_account = self.rpc_client.get_account(&ata).await;
-                if ata_account.is_err() {
-                    tracing::info!(vault = %vault_pda, ata = %ata, "Creating Vault ATA for SPL tokens");
+                if self.rpc_client.get_account(&ata).await.is_err() {
+                    ata_to_create = Some((ata, token_program, mint_key));
+                }
+            }
+        }
 
-                    let ata_ix = solana_transaction::Instruction {
-                        program_id: ASSOCIATED_TOKEN_PROGRAM_ID,
+        if !vault_exists || ata_to_create.is_some() {
+            let mut ixs = Vec::new();
+            let mut budget = crate::chain::TxBudget::VaultAtaCreate;
+
+            if !vault_exists {
+                tracing::info!(vault = %vault_pda, "Creating SplitVault PDA (JIT)");
+                if let Some(us_config) = self.universalsettle() {
+                    let program_id = us_config.program_id;
+                    let mut data = vec![1]; // CreateVault discriminator is 1
+                    data.extend_from_slice(seller.as_ref());
+                    let (vault_sol_storage, _) = self.get_sol_storage_pda(vault_pda);
+
+                    ixs.push(solana_transaction::Instruction {
+                        program_id,
                         accounts: vec![
                             solana_transaction::AccountMeta::new(self.pubkey(), true),
-                            solana_transaction::AccountMeta::new(ata, false),
-                            solana_transaction::AccountMeta::new_readonly(vault_pda, false),
-                            solana_transaction::AccountMeta::new_readonly(mint_key, false),
+                            solana_transaction::AccountMeta::new(vault_pda, false),
+                            solana_transaction::AccountMeta::new(vault_sol_storage, false),
                             solana_transaction::AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
-                            solana_transaction::AccountMeta::new_readonly(token_program, false),
                         ],
-                        data: vec![1], // CreateIdempotent
-                    };
-
-                    let recent_blockhash = self.rpc_client().get_latest_blockhash().await?;
-                    let tx = VersionedTransaction::from(
-                        solana_transaction::Transaction::new_signed_with_payer(
-                            &[ata_ix],
-                            Some(&self.pubkey()),
-                            &[self.keypair()],
-                            recent_blockhash,
-                        ),
-                    );
-                    self.send_and_confirm(&tx, CommitmentConfig::confirmed())
-                        .await?;
+                        data,
+                    });
+                    budget = crate::chain::TxBudget::VaultCreate;
                 }
+            }
+
+            if let Some((ata, token_program, mint_key)) = ata_to_create {
+                tracing::info!(vault = %vault_pda, ata = %ata, "Creating Vault ATA (JIT)");
+                ixs.push(solana_transaction::Instruction {
+                    program_id: ASSOCIATED_TOKEN_PROGRAM_ID,
+                    accounts: vec![
+                        solana_transaction::AccountMeta::new(self.pubkey(), true),
+                        solana_transaction::AccountMeta::new(ata, false),
+                        solana_transaction::AccountMeta::new_readonly(vault_pda, false),
+                        solana_transaction::AccountMeta::new_readonly(mint_key, false),
+                        solana_transaction::AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+                        solana_transaction::AccountMeta::new_readonly(token_program, false),
+                    ],
+                    data: vec![1], // CreateIdempotent
+                });
+                if !vault_exists {
+                    budget = crate::chain::TxBudget::VaultCreateWithAta;
+                }
+            }
+
+            if !ixs.is_empty() {
+                let cu_limit =
+                    crate::util::tx_builder::compute_budget_ix_set_limit(budget.cu_limit());
+                let cu_price =
+                    crate::util::tx_builder::compute_budget_ix_set_price(budget.cu_price());
+                let mut final_ixs = vec![cu_limit, cu_price];
+                final_ixs.extend(ixs);
+
+                let recent_blockhash = self.rpc_client().get_latest_blockhash().await?;
+                let tx = VersionedTransaction::from(
+                    solana_transaction::Transaction::new_signed_with_payer(
+                        &final_ixs,
+                        Some(&self.pubkey()),
+                        &[self.keypair()],
+                        recent_blockhash,
+                    ),
+                );
+                let sig = self
+                    .send_and_confirm(&tx, CommitmentConfig::confirmed())
+                    .await?;
+                tracing::info!(target: "server_log", vault = %vault_pda, signature = %sig, "UniversalSettle JIT provision successful");
             }
         }
 
