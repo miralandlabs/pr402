@@ -313,9 +313,16 @@ async fn execute_sweep(req: SweepRequest, authorization_header: Option<&str>) ->
                 )
                 .await
                 .map_err(|e| e.to_string())?;
+            let budget = if is_sol {
+                pr402::chain::TxBudget::SweepSol
+            } else {
+                pr402::chain::TxBudget::SweepSpl
+            };
+            let cu_limit = pr402::util::tx_builder::compute_budget_ix_set_limit(budget.cu_limit());
+            let cu_price = pr402::util::tx_builder::compute_budget_ix_set_price(budget.cu_price());
             let sweep_tx = solana_transaction::versioned::VersionedTransaction::from(
                 solana_transaction::Transaction::new_signed_with_payer(
-                    &[ix],
+                    &[cu_limit, cu_price, ix],
                     Some(&cp.solana.pubkey()),
                     &[cp.solana.keypair()],
                     recent_blockhash,

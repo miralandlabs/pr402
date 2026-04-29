@@ -22,6 +22,7 @@ use solana_transaction::{
 };
 
 use crate::chain::solana::{SolanaChainProvider, TOKEN_2022_PROGRAM_ID};
+use crate::chain::TxBudget;
 use crate::util::tx_builder::{
     associated_token_address, compute_budget_ix_set_limit, compute_budget_ix_set_price,
     create_associated_token_account_idempotent_ix, estimate_blockhash_expiry_unix,
@@ -223,8 +224,13 @@ pub async fn build_exact_spl_payment_tx(
         .map_err(|e| ExactPaymentBuildError::Rpc(e.to_string()))?;
 
     // ── Build instructions ──────────────────────────────────────────
-    let cu_limit = compute_budget_ix_set_limit(provider.max_compute_unit_limit());
-    let cu_price = compute_budget_ix_set_price(provider.max_compute_unit_price());
+    let budget = if is_native_sol {
+        TxBudget::ExactSolTransfer
+    } else {
+        TxBudget::ExactSplTransfer
+    };
+    let cu_limit = compute_budget_ix_set_limit(budget.cu_limit());
+    let cu_price = compute_budget_ix_set_price(budget.cu_price());
     let mut ixs: Vec<Instruction> = vec![cu_limit, cu_price];
 
     if is_native_sol {

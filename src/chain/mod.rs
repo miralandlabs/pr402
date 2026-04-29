@@ -4,8 +4,10 @@ mod chain_id;
 pub mod solana;
 pub mod solana_sla_escrow;
 pub mod solana_universalsettle;
+pub mod tx_budget;
 
 pub use chain_id::*;
+pub use tx_budget::TxBudget;
 
 use crate::config::Config;
 use std::str::FromStr;
@@ -65,8 +67,6 @@ impl ChainProvider {
             chain_id.clone(),
             universalsettle,
             escrow,
-            config.max_compute_unit_limit,
-            config.max_compute_unit_price,
         );
 
         Ok(ChainProvider {

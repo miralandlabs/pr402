@@ -162,6 +162,7 @@ pub struct TransferCheckedInstruction {
 }
 
 pub fn verify_compute_limit_instruction(
+    limit_ceiling: u32,
     transaction: &VersionedTransaction,
     instruction_index: usize,
 ) -> Result<u32, SolanaExactError> {
@@ -185,11 +186,14 @@ pub fn verify_compute_limit_instruction(
     buf.copy_from_slice(&data[1..5]);
     let compute_units = u32::from_le_bytes(buf);
 
+    if compute_units > limit_ceiling {
+        return Err(SolanaExactError::MaxComputeUnitLimitExceeded);
+    }
     Ok(compute_units)
 }
 
 pub fn verify_compute_price_instruction(
-    max_compute_unit_price: u64,
+    price_ceiling: u64,
     transaction: &VersionedTransaction,
     instruction_index: usize,
 ) -> Result<(), SolanaExactError> {
@@ -207,7 +211,7 @@ pub fn verify_compute_price_instruction(
     let mut buf = [0u8; 8];
     buf.copy_from_slice(&data[1..]);
     let microlamports = u64::from_le_bytes(buf);
-    if microlamports > max_compute_unit_price {
+    if microlamports > price_ceiling {
         return Err(SolanaExactError::MaxComputeUnitPriceExceeded);
     }
     Ok(())
@@ -291,11 +295,9 @@ pub async fn verify_transaction(
 
     // perform transaction introspection to validate the transaction structure and details
     let instructions = transaction.message.instructions();
-    let compute_units = verify_compute_limit_instruction(&transaction, 0)?;
-    if compute_units > provider.max_compute_unit_limit() {
-        return Err(SolanaExactError::MaxComputeUnitLimitExceeded.into());
-    }
-    verify_compute_price_instruction(provider.max_compute_unit_price(), &transaction, 1)?;
+    let budget = crate::chain::TxBudget::ExactSplTransfer;
+    let _compute_units = verify_compute_limit_instruction(budget.cu_limit(), &transaction, 0)?;
+    verify_compute_price_instruction(budget.cu_price(), &transaction, 1)?;
 
     let transfer_instruction = match instructions.len() {
         3 => {
@@ -667,50 +669,73 @@ pub async fn settle_transaction(
                         let mut instructions = Vec::new();
 
                         // SE-CRIT-11: JIT Onboarding logic.
-                        // If the merchant vault doesn't exist, the facilitator creates it (paying rent)
-                        // as long as the daily onboarding quota isn't exceeded.
+                        let mut vault_missing = false;
                         match provider.account_exists(&vault_pda).await {
-                            Ok(exists) => {
-                                if !exists {
-                                    let max_provisions = crate::parameters::resolve_u64_sync(
-                                        crate::parameters::PR402_MAX_DAILY_PROVISION_COUNT,
-                                        crate::parameters::PR402_MAX_DAILY_PROVISION_COUNT,
-                                        crate::parameters::DEFAULT_MAX_DAILY_PROVISION_COUNT,
-                                    );
-                                    let count = match db {
-                                        Some(pool) => {
-                                            pool.count_daily_vault_creations().await.unwrap_or(0)
-                                        }
-                                        None => 0,
-                                    };
-
-                                    if count < max_provisions {
-                                        tracing::info!(
-                                            seller = %merchant_identity,
-                                            vault = %vault_pda,
-                                            "provisioning new SplitVault (JIT)"
-                                        );
-                                        instructions.push(crate::chain::solana_universalsettle::build_create_vault_instruction(
-                                            us_config.program_id,
-                                            provider.pubkey(),
-                                            merchant_identity,
-                                        ));
-                                    } else {
-                                        tracing::warn!(
-                                            seller = %merchant_identity,
-                                            "skip UniversalSettle shadow provision: daily quota reached"
-                                        );
-                                        // We skip the sweep because the vault doesn't exist and we can't create it.
-                                        skip_sweep = true;
-                                    }
-                                }
-                            }
+                            Ok(exists) => vault_missing = !exists,
                             Err(e) => {
                                 tracing::warn!(error = %e, "vault existence check failed during settlement");
                             }
                         }
 
+                        if vault_missing {
+                            let max_provisions = crate::parameters::resolve_u64_sync(
+                                crate::parameters::PR402_MAX_DAILY_PROVISION_COUNT,
+                                crate::parameters::PR402_MAX_DAILY_PROVISION_COUNT,
+                                crate::parameters::DEFAULT_MAX_DAILY_PROVISION_COUNT,
+                            );
+                            let count = match db {
+                                Some(pool) => pool.count_daily_vault_creations().await.unwrap_or(0),
+                                None => 0,
+                            };
+
+                            if count < max_provisions {
+                                tracing::info!(
+                                    seller = %merchant_identity,
+                                    vault = %vault_pda,
+                                    "provisioning new SplitVault (JIT shadow provision)"
+                                );
+                                instructions.push(crate::chain::solana_universalsettle::build_create_vault_instruction(
+                                    us_config.program_id,
+                                    provider.pubkey(),
+                                    merchant_identity,
+                                ));
+                            } else {
+                                tracing::warn!(
+                                    seller = %merchant_identity,
+                                    "skip UniversalSettle shadow provision: daily quota reached"
+                                );
+                                skip_sweep = true;
+                            }
+                        }
+
                         if !skip_sweep {
+                            // SPL case: Ensure Vault ATA exists (JIT ATA shadow provision)
+                            if let Some(token_program) = details.token_program {
+                                let (ata, _) = Pubkey::find_program_address(
+                                    &[
+                                        vault_pda.as_ref(),
+                                        token_program.as_ref(),
+                                        token_mint.as_ref(),
+                                    ],
+                                    &crate::chain::solana::ASSOCIATED_TOKEN_PROGRAM_ID,
+                                );
+                                match provider.account_exists(&ata).await {
+                                    Ok(exists) if !exists => {
+                                        tracing::info!(vault = %vault_pda, mint = %token_mint, "creating vault ATA (JIT shadow provision)");
+                                        instructions.push(crate::util::tx_builder::create_associated_token_account_idempotent_ix(
+                                            &provider.pubkey(),
+                                            &vault_pda,
+                                            &token_mint,
+                                            &token_program,
+                                        ));
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(error = %e, "vault ATA existence check failed during settlement");
+                                    }
+                                    _ => {}
+                                }
+                            }
+
                             let (fee_sol_recv, fee_token_owner) = match provider
                                 .rpc_client()
                                 .get_account(&provider.get_config_pda(&us_config.program_id).0)
@@ -737,14 +762,12 @@ pub async fn settle_transaction(
                                 }
                                 Ok(_) | Err(_) => {
                                     tracing::warn!(
-                                        "UniversalSettle sweep: could not load config PDA; defaulting fee leg to configured fee_destination (fee sharding may fail if enabled on-chain)"
+                                        "UniversalSettle sweep: could not load config PDA; defaulting fee leg to configured fee_destination"
                                     );
                                     (fee_dest, fee_dest)
                                 }
                             };
 
-                            // On-chain Sweep: `amount == 0` sweeps all spendable vault balance (same as
-                            // batch/cron sweep). Do not pass `details.amount` (single payment size).
                             instructions.push(
                                 crate::chain::solana_universalsettle::build_sweep_instruction(
                                     us_config.program_id,
@@ -760,13 +783,38 @@ pub async fn settle_transaction(
                                 ),
                             );
 
+                            // Determine Budget Profile
+                            // We have at least Sweep. Maybe CreateVault, maybe ATA.
+                            let budget = if instructions.iter().any(|ix| {
+                                ix.data.first() == Some(&1) && ix.program_id == us_config.program_id
+                            }) {
+                                // Has CreateVault (discriminator 1)
+                                crate::chain::TxBudget::VaultShadowProvision
+                            } else if instructions.len() > 1 {
+                                // Has ATA + Sweep
+                                crate::chain::TxBudget::VaultCreateWithAta // Close enough for ATA+Sweep
+                            } else if is_sol_sweep {
+                                crate::chain::TxBudget::SweepSol
+                            } else {
+                                crate::chain::TxBudget::SweepSpl
+                            };
+
+                            let cu_limit = crate::util::tx_builder::compute_budget_ix_set_limit(
+                                budget.cu_limit(),
+                            );
+                            let cu_price = crate::util::tx_builder::compute_budget_ix_set_price(
+                                budget.cu_price(),
+                            );
+                            let mut final_ixs = vec![cu_limit, cu_price];
+                            final_ixs.extend(instructions);
+
                             let (recent_blockhash, _) = provider
                                 .rpc_client()
                                 .get_latest_blockhash_with_commitment(CommitmentConfig::confirmed())
                                 .await?;
                             let sweep_tx = VersionedTransaction::from(
                                 solana_transaction::Transaction::new_signed_with_payer(
-                                    &instructions,
+                                    &final_ixs,
                                     Some(&provider.pubkey()),
                                     &[provider.keypair()],
                                     recent_blockhash,

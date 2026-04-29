@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 use crate::chain::solana::{SolanaChainProvider, TOKEN_2022_PROGRAM_ID};
 use crate::chain::solana_universalsettle::build_create_vault_instruction;
+use crate::chain::TxBudget;
 use crate::db::Pr402Db;
 use crate::util::tx_builder::{
     associated_token_address, compute_budget_ix_set_limit, compute_budget_ix_set_price,
@@ -265,8 +266,18 @@ pub async fn build_universalsettle_seller_provision(
         });
     }
 
-    let cu_limit = compute_budget_ix_set_limit(provider.max_compute_unit_limit());
-    let cu_price = compute_budget_ix_set_price(provider.max_compute_unit_price());
+    // Pick budget based on the actual instruction set being submitted.
+    // setup_ixs can be 1 or 2 instructions at this point (0 was early-returned above).
+    //   2 → CreateVault + ATA (first-time SPL provisioning, e.g. USDC)
+    //   1 + !vault_exists → CreateVault only (first-time SOL provisioning)
+    //   1 + vault_exists  → ATA only (adding a new SPL mint to an existing vault)
+    let budget = match setup_ixs.len() {
+        2 => TxBudget::VaultCreateWithAta,
+        _ if !vault_exists => TxBudget::VaultCreate,
+        _ => TxBudget::VaultAtaCreate,
+    };
+    let cu_limit = compute_budget_ix_set_limit(budget.cu_limit());
+    let cu_price = compute_budget_ix_set_price(budget.cu_price());
     let mut ixs = vec![cu_limit, cu_price];
     ixs.extend(setup_ixs);
 

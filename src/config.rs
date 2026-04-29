@@ -21,10 +21,6 @@ pub struct Config {
     pub chain_id: ChainId,
     /// Fee payer private key (base58 encoded, 64 bytes)
     pub fee_payer_private_key: String,
-    /// Maximum compute unit limit for transactions
-    pub max_compute_unit_limit: u32,
-    /// Maximum compute unit price for transactions
-    pub max_compute_unit_price: u64,
     /// UniversalSettle configuration (optional)
     pub universalsettle: Option<UniversalSettleConfig>,
     /// SLAEscrow configuration (optional)
@@ -79,8 +75,6 @@ impl Config {
     /// - `PR402_ONBOARD_CHALLENGE_TTL_SEC`: Challenge lifetime (default 600).
     /// - `PR402_PARAMETERS_CACHE_TTL_SEC`: Per-process cache TTL for Postgres `parameters` reads (default 60); **env only**, not read from the `parameters` row.
     /// - `SOLANA_PUBSUB_URL`: WebSocket URL for pubsub (default: None)
-    /// - `MAX_COMPUTE_UNIT_LIMIT`: Max compute units (default: 400000)
-    /// - `MAX_COMPUTE_UNIT_PRICE`: Max compute unit price (default: 1000000)
     /// - `UNIVERSALSETTLE_PROGRAM_ID`: Enables `v2:solana:exact` with UniversalSettle (vault, fees, sweep). Omit only if you do not serve that scheme.
     /// - `ESCROW_PROGRAM_ID`: Registers `v2:solana:sla-escrow`. Omit if you do not serve escrow. At least one settlement program should match what RPs advertise.
     /// - `PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`: If `1`/`true`/`yes`, clients may request facilitator-paid Solana fees on SLA-Escrow build (`facilitatorPaysTransactionFees: true`). Default: disabled (such requests return 400).
@@ -103,16 +97,6 @@ impl Config {
 
         let fee_payer_private_key = std::env::var("FEE_PAYER_PRIVATE_KEY")
             .map_err(|_| ConfigError::MissingEnvVar("FEE_PAYER_PRIVATE_KEY"))?;
-
-        let max_compute_unit_limit = std::env::var("MAX_COMPUTE_UNIT_LIMIT")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(400_000);
-
-        let max_compute_unit_price = std::env::var("MAX_COMPUTE_UNIT_PRICE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1_000_000);
 
         let universalsettle = if let Ok(program_id_str) =
             std::env::var("UNIVERSALSETTLE_PROGRAM_ID")
@@ -175,8 +159,6 @@ impl Config {
             solana_pubsub_url,
             chain_id,
             fee_payer_private_key,
-            max_compute_unit_limit,
-            max_compute_unit_price,
             universalsettle,
             escrow,
             sla_escrow_allow_facilitator_fee_sponsorship,
