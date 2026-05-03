@@ -13,3 +13,4 @@ sdk/ts/package-lock.json
 wallet-adapter/node_modules/
 test-wallets/
 
+.DS_Store
