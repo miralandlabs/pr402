@@ -1554,9 +1554,10 @@
       },
       "SettleResponse": {
         "type": "object",
-        "description": "Settle success response",
+        "description": "Settle success or structured outcome (x402 v2 §5.3). **`transaction`** is always a JSON **string**: base58 signature on Solana, or **`\"\"`** when omitted/unknown/error paths. Extension keys (e.g. `correlationId`) are allowed.",
         "required": [
-          "success"
+          "success",
+          "transaction"
         ],
         "properties": {
           "success": {
@@ -1569,10 +1570,12 @@
             "type": "string"
           },
           "transaction": {
-            "type": "string"
+            "type": "string",
+            "description": "On-chain settlement signature when present; empty string when not applicable (per x402 §5.3)"
           },
           "network": {
-            "type": "string"
+            "type": "string",
+            "description": "CAIP-2 network id when applicable"
           },
           "correlationId": {
             "type": "string"

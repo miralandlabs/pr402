@@ -4,12 +4,20 @@ pub mod util;
 pub mod v2;
 
 use crate::chain::ChainId;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
 
 pub type SettleRequest = VerifyRequest;
+
+fn deserialize_transaction_string<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -240,7 +248,8 @@ impl VerifyResponse {
     }
 }
 
-/// Response from settlement execution.
+/// Response from settlement execution (x402 v2 §5.3: `transaction` is always serialized as a string;
+/// use empty when no on-chain signature applies).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettleResponse {
@@ -249,8 +258,8 @@ pub struct SettleResponse {
     pub error_reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payer: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub transaction: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_transaction_string")]
+    pub transaction: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub network: Option<String>,
 }
@@ -261,7 +270,7 @@ impl SettleResponse {
             success: true,
             error_reason: None,
             payer: Some(payer),
-            transaction: Some(transaction),
+            transaction,
             network: Some(network),
         }
     }
@@ -271,7 +280,7 @@ impl SettleResponse {
             success: false,
             error_reason: Some(reason),
             payer: None,
-            transaction: None,
+            transaction: String::new(),
             network: Some(network),
         }
     }
