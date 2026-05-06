@@ -7,7 +7,7 @@ Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Res
 
 > **Launch phase:** Onboarding and facilitator behavior are **experimental** — **use at your own risk**.
 
-**Official facilitator hosts:** **Production** `https://agent.pay402.me` (Solana Mainnet) · **Preview** `https://preview.agent.pay402.me` (Solana Devnet). Use the deployment that matches your programs and the facilitator URL you give buyers; verify with **`GET /api/v1/facilitator/health`** or **`/capabilities`**.
+**Official facilitator hosts:** **Recommended:** **Production** `https://ipay.sh` (Solana Mainnet) · **Preview** `https://preview.ipay.sh` (Solana Devnet). **Also available** (same service; not deprecated): **`https://agent.pay402.me`**, **`https://preview.agent.pay402.me`**. Use the deployment that matches your programs and the facilitator URL you give buyers; verify with **`GET /api/v1/facilitator/health`** or **`/capabilities`**.
 
 ### Launch phase: one payment asset per merchant wallet
 

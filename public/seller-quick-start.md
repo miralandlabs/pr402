@@ -6,7 +6,7 @@
 
 > **Launch phase:** **Experimental** — **use at your own risk**.
 
-Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Official hosts: **Production** `https://agent.pay402.me` (Mainnet) · **Preview** `https://preview.agent.pay402.me` (Devnet). Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.
+Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. **Recommended:** **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet). **Also:** `https://agent.pay402.me` / `https://preview.agent.pay402.me`. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.
 
 ---
 

@@ -24,10 +24,10 @@ Runbook for two kinds of autonomous clients:
 
 > **Launch phase:** Facilitator APIs and this runbook are **experimental** — **use at your own risk**.
 
-| | **Production** | **Preview** |
-|--|----------------|-------------|
-| **Base URL** | `https://agent.pay402.me` | `https://preview.agent.pay402.me` |
-| **Typical Solana** | Mainnet | Devnet |
+| | **Recommended** | **Also available (same service)** |
+|--|-----------------|----------------|
+| **Production (Mainnet)** | `https://ipay.sh` | `https://agent.pay402.me` |
+| **Preview (Devnet)** | `https://preview.ipay.sh` | `https://preview.agent.pay402.me` |
 
 Confirm **`solanaNetwork`**, **`chainId`**, and feature flags with **`GET /api/v1/facilitator/health`** or **`GET /api/v1/facilitator/capabilities`** on the **host you actually call**. Match the origin your seller documents; do not assume preview.
 
@@ -37,7 +37,7 @@ Confirm **`solanaNetwork`**, **`chainId`**, and feature flags with **`GET /api/v
 
 Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
-1. **Facilitator URL** — Same origin your seller documents (or embedded in discovery). Official hosts: **Production** `https://agent.pay402.me`, **Preview** `https://preview.agent.pay402.me`. Confirm **`solanaNetwork`** with **`GET /health`** on that host.
+1. **Facilitator URL** — Same origin your seller documents (or embedded in discovery). **Recommended** hosts: **Production** `https://ipay.sh`, **Preview** `https://preview.ipay.sh`. **Also served** (not deprecated): `https://agent.pay402.me`, `https://preview.agent.pay402.me`. Confirm **`solanaNetwork`** with **`GET /health`** on that host.
 2. **`GET /api/v1/facilitator/supported`** (or **`/capabilities`**) — Confirm `exact` / `v2:solana:exact` is listed.
 3. **Receive HTTP 402** from the seller — Save **`paymentRequirements`** and the chosen **`accepts[]`** line.
 4. **`POST /api/v1/facilitator/build-exact-payment-tx`** — Body: `{ "payer": "<buyer pubkey>", "accepted": <same object as the accepts[] line>, "resource": <from 402> }`. Response is **camelCase** JSON (`transaction`, `verifyBodyTemplate`, `payerSignatureIndex`, …).
@@ -169,7 +169,7 @@ Walk this in order when a seller returns **402** JSON:
 
 ```bash
 # Use the same origin your seller documents: production or preview (see table above).
-BASE="https://agent.pay402.me"   # or: https://preview.agent.pay402.me
+BASE="https://ipay.sh"   # preview: https://preview.ipay.sh — or agent.pay402.me / preview.agent.pay402.me (same APIs)
 curl -sS "$BASE/api/v1/facilitator/supported" | jq .
 # or
 curl -sS "$BASE/api/v1/facilitator/capabilities" | jq .
