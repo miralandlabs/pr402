@@ -117,8 +117,8 @@ pub struct FacilitatorHttpClient {
 }
 
 impl FacilitatorHttpClient {
-    /// `base_url`: facilitator origin without a path, e.g. `https://agent.pay402.me` (production) or
-    /// `https://preview.agent.pay402.me` (preview). Trailing slash OK; must match the seller-documented host.
+    /// `base_url`: facilitator origin without a path, e.g. `https://ipay.sh` (production, recommended) or
+    /// `https://preview.ipay.sh` (preview), or the same stack at `https://agent.pay402.me` / `https://preview.agent.pay402.me`. Trailing slash OK; must match the seller-documented host.
     pub fn new(base_url: impl AsRef<str>) -> Result<Self, FacilitatorHttpError> {
         Ok(Self {
             base_url: normalize_base_url(base_url.as_ref())?,

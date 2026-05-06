@@ -6,20 +6,26 @@
 
 ## Official deployments
 
-| Environment | Base URL | Solana |
-|-------------|----------|--------|
-| **Production** | `https://agent.pay402.me` | Mainnet |
-| **Preview** | `https://preview.agent.pay402.me` | Devnet |
+**Recommended** facilitator origins (concise hostnames): **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet).
+
+**Also available** — **same** API surface; **not** deprecated: **`https://agent.pay402.me`** (Production) · **`https://preview.agent.pay402.me`** (Preview).
+
+| Environment | Recommended base URL | Also available (same service) |
+|-------------|----------------------|------------------------------|
+| **Production** | `https://ipay.sh` | `https://agent.pay402.me` |
+| **Preview** | `https://preview.ipay.sh` | `https://preview.agent.pay402.me` |
 
 Call **`GET /api/v1/facilitator/health`** or **`GET /api/v1/facilitator/capabilities`** on the **same host** you use for `verify` / `settle` to confirm **`solanaNetwork`**, **`chainId`**, and feature flags. Integrations must use the origin the **seller documents** for that resource (do not silently swap preview vs production).
 
 **Wallet RPC:** If your client needs the deployment’s wallet-facing HTTP RPC, read **`solanaWalletRpcUrl`** from **`GET /health`** at runtime. Do not copy RPC URLs from static markdown into apps — they are environment-specific and may rotate or carry credentials.
 
-| Served doc | Production | Preview |
-|------------|------------|---------|
-| OpenAPI 3.1 | [`/openapi.json`](https://agent.pay402.me/openapi.json) | [`/openapi.json`](https://preview.agent.pay402.me/openapi.json) |
-| Buyer runbook | [`/agent-integration.md`](https://agent.pay402.me/agent-integration.md) | [`/agent-integration.md`](https://preview.agent.pay402.me/agent-integration.md) |
-| Seller onboarding | [`/onboarding_guide.md`](https://agent.pay402.me/onboarding_guide.md) | [`/onboarding_guide.md`](https://preview.agent.pay402.me/onboarding_guide.md) |
+| Served doc | Production (recommended) | Preview (recommended) |
+|------------|--------------------------|-------------------------|
+| OpenAPI 3.1 | [`/openapi.json`](https://ipay.sh/openapi.json) | [`/openapi.json`](https://preview.ipay.sh/openapi.json) |
+| Buyer runbook | [`/agent-integration.md`](https://ipay.sh/agent-integration.md) | [`/agent-integration.md`](https://preview.ipay.sh/agent-integration.md) |
+| Seller onboarding | [`/onboarding_guide.md`](https://ipay.sh/onboarding_guide.md) | [`/onboarding_guide.md`](https://preview.ipay.sh/onboarding_guide.md) |
+
+The same paths work on **`https://agent.pay402.me`** and **`https://preview.agent.pay402.me`**.
 
 In-repo copies: [`public/openapi.json`](public/openapi.json), [`public/agent-integration.md`](public/agent-integration.md), [`public/onboarding_guide.md`](public/onboarding_guide.md).
 

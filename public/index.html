@@ -614,8 +614,11 @@
             <p class="tagline" style="margin-top: 1.5rem; font-size: 0.95rem; max-width: 45rem; margin-left: auto; margin-right: auto; color: var(--text-dim); background: rgba(99, 102, 241, 0.05); padding: 1.25rem; border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.2);">
                 <strong style="color: var(--primary);">INITIAL LAUNCH PHASE:</strong> Currently, only the <strong><span class="inline-code">exact</span> scheme (UniversalSettle)</strong> is fully supported for production settlement. We are actively onboarding Oracle Partners before activating the <span class="inline-code">sla-escrow</span> scheme.
                 <br><br>
-                <strong style="color: var(--text);">Production</strong> (Mainnet): <a href="https://agent.pay402.me/" style="color: var(--primary);">agent.pay402.me</a>
-                · <strong style="color: var(--text);">Preview</strong> (Devnet): <a href="https://preview.agent.pay402.me/" style="color: var(--primary);">preview.agent.pay402.me</a>.
+                <strong style="color: var(--text);">Recommended</strong> — <strong>Production</strong> (Mainnet): <a href="https://ipay.sh/" style="color: var(--primary);">ipay.sh</a>
+                · <strong>Preview</strong> (Devnet): <a href="https://preview.ipay.sh/" style="color: var(--primary);">preview.ipay.sh</a>.
+                <strong style="color: var(--text-dim);">Also (same service, not deprecated):</strong>
+                <a href="https://agent.pay402.me/" style="color: var(--text-dim);">agent.pay402.me</a>
+                · <a href="https://preview.agent.pay402.me/" style="color: var(--text-dim);">preview.agent.pay402.me</a>.
                 Confirm capabilities via <a href="/api/v1/facilitator/health" style="color: var(--primary);">GET /health</a>.
             </p>
         </header>
@@ -695,7 +698,7 @@
                     <button class="copy-btn" onclick="copyCurl()" style="background:transparent; border:none; color:var(--primary); font-family:var(--font-mono); font-size:0.6rem; cursor:pointer;">[COPY COMMAND]</button>
                 </div>
                 <div class="terminal-body" style="min-height: auto; padding: 1.25rem;">
-                    <code id="curl-command" style="color: var(--accent); font-size: 0.8rem;">curl -sS "https://agent.pay402.me/api/v1/facilitator/capabilities" | jq .</code>
+                    <code id="curl-command" style="color: var(--accent); font-size: 0.8rem;">curl -sS "https://ipay.sh/api/v1/facilitator/capabilities" | jq .</code>
                 </div>
             </div>
         </section>
@@ -886,6 +889,16 @@
             btn.innerText = '[COPIED!]';
             setTimeout(() => btn.innerText = old, 2000);
         };
+
+        (function syncCurlProbeToCurrentHost() {
+            var el = document.getElementById('curl-command');
+            if (!el || !window.location || !window.location.origin) return;
+            if (window.location.protocol === 'file:') return;
+            el.textContent =
+                'curl -sS "' +
+                window.location.origin +
+                '/api/v1/facilitator/capabilities" | jq .';
+        })();
 
         function applyHealthToGlobals(data) {
             const net = String(data.solanaNetwork || '').toLowerCase();

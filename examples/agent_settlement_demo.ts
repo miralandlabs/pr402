@@ -18,7 +18,8 @@ import bs58 from 'bs58';
  */
 
 // CONFIGURATION
-const FACILITATOR_URL = 'https://agent.pay402.me';
+/** Recommended production host; same APIs at https://agent.pay402.me (not deprecated). Preview: https://preview.ipay.sh */
+const FACILITATOR_URL = 'https://ipay.sh';
 const RPC_URL = 'https://api.mainnet-beta.solana.com';
 const PAYER_SK = process.env.PAYER_PRIVATE_KEY; // Base58
 
