@@ -520,38 +520,80 @@
             margin-bottom: 0.5rem;
             max-width: 800px;
         }
+        .seller-provision > p.mint-hint {
+            font-size: 0.92rem;
+            line-height: 1.55;
+            margin-bottom: 0;
+        }
         .seller-provision .provision-actions {
             display: flex;
             flex-wrap: wrap;
             gap: 1.25rem;
             align-items: center;
-            margin-top: 2rem;
+            margin-top: 1.75rem;
         }
         .seller-provision button.btn { border: none; cursor: pointer; font-family: var(--font-heading); }
-        .seller-provision select,
-        .seller-provision .mint-override {
+
+        .seller-provision .provision-asset-panel {
+            position: relative;
+            z-index: 1;
+            margin-top: 1.75rem;
+            max-width: 560px;
+            padding: 1.35rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            background: rgba(0, 0, 0, 0.28);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 16px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .seller-provision .provision-field-label {
+            font-family: var(--font-heading);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            color: #cbd5e1;
+            margin: 0;
+            padding-top: 0.15rem;
+        }
+
+        .seller-provision .provision-field-meta {
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: none;
+            color: var(--text-dim);
+        }
+
+        .seller-provision .provision-asset-panel select,
+        .seller-provision .provision-asset-panel .mint-override {
             width: 100%;
-            max-width: 450px;
-            margin-top: 1rem;
-            padding: 0.85rem 1rem;
-            border-radius: 8px;
+            margin: 0;
+            padding: 0.8rem 1rem;
+            border-radius: 10px;
             border: 1px solid var(--border);
-            background: rgba(0,0,0,0.3);
+            background: rgba(3, 0, 20, 0.65);
             color: var(--text);
             font-family: var(--font-code);
-            font-size: 0.9rem;
-            transition: border-color 0.3s;
+            font-size: 0.88rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
-        .seller-provision select:focus,
-        .seller-provision .mint-override:focus {
+
+        .seller-provision .provision-asset-panel select:focus,
+        .seller-provision .provision-asset-panel .mint-override:focus {
             outline: none;
-            border-color: var(--accent);
+            border-color: rgba(14, 165, 233, 0.55);
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
         }
-        .seller-provision .mint-hint {
-            font-size: 0.85rem;
+
+        .seller-provision .provision-asset-panel .mint-hint {
+            font-size: 0.82rem;
             color: var(--text-dim);
-            margin-top: 0.75rem;
-            max-width: 550px;
+            margin: 0;
+            line-height: 1.55;
+            max-width: none;
         }
         .seller-provision button.btn:disabled {
             opacity: 0.4;
@@ -844,6 +886,23 @@
                 Establish your <strong>SplitVault</strong> and payment surface in one transaction. 
                 Sovereign provisioning earns an immediate <strong>5 bps fee discount</strong>.
             </p>
+            <p class="mint-hint" style="margin-top: 0.85rem; max-width: 560px;">
+                Choose the <strong>asset</strong> this vault should accept (default <strong>USDC</strong>), then connect and sign. Re-running for the same wallet and asset is a no-op when already on-chain.
+            </p>
+            <div class="provision-asset-panel">
+                <label for="provision-asset" class="provision-field-label">Payment asset</label>
+                <select id="provision-asset">
+                    <option value="USDC" selected>USDC (typical for agents)</option>
+                    <option value="SOL">SOL (native · virtual mint 1111…1111)</option>
+                    <option value="WSOL">WSOL (wrapped SOL)</option>
+                    <option value="USDT">USDT (mainnet; on devnet use custom mint below)</option>
+                </select>
+                <p id="provision-asset-desc" class="mint-hint">
+                    To provision a different SPL token (e.g. devnet USDT), paste its base58 <strong>mint</strong> below — this overrides the list.
+                </p>
+                <label for="provision-mint-override" class="provision-field-label">Custom mint <span class="provision-field-meta">(optional)</span></label>
+                <input type="text" id="provision-mint-override" class="mint-override" placeholder="Base58 mint address" autocomplete="off" spellcheck="false" inputmode="text" aria-describedby="provision-asset-desc">
+            </div>
             <div class="provision-actions">
                 <button type="button" class="btn btn-secondary" id="btn-wallet-connect">🔗 Connect wallet</button>
                 <button type="button" class="btn btn-primary" id="btn-provision-vault" disabled>Provision Vault</button>
