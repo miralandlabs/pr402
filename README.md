@@ -29,6 +29,23 @@ The same paths work on **`https://agent.pay402.me`** and **`https://preview.agen
 
 In-repo copies: [`public/openapi.json`](public/openapi.json), [`public/agent-integration.md`](public/agent-integration.md), [`public/onboarding_guide.md`](public/onboarding_guide.md).
 
+## Start here
+
+| Persona | Fastest path | Success signal |
+|---------|--------------|----------------|
+| **Seller / resource provider** | [`GET /quickstart-seller.md`](public/quickstart-seller.md) or [`x402-seller-starter`](https://github.com/miraland-labs/x402-seller-starter) | Your API returns a valid `402` and accepts a settled `PAYMENT-SIGNATURE`. |
+| **Buyer / agent developer** | [`GET /quickstart-buyer.md`](public/quickstart-buyer.md) or [`x402-buyer-starter`](https://github.com/miraland-labs/x402-buyer-starter) | Your agent builds, signs, verifies, settles, and retries with payment proof. |
+| **API / SDK integrator** | `GET /openapi.json` on the exact facilitator host you call | Generated clients match the deployed schema and feature flags. |
+
+For production integrations, pick one facilitator origin per environment and keep it consistent across seller docs, buyer build requests, `/verify`, and `/settle`. Use `https://ipay.sh` for Mainnet and `https://preview.ipay.sh` for Devnet unless a seller explicitly documents another origin.
+
+## Product readiness signals
+
+- **Machine-readable contract:** `GET /openapi.json` is the canonical schema; `GET /api/v1/facilitator/capabilities` returns feature flags and endpoint paths.
+- **Installable helpers:** TypeScript users can vendor or pin [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts); Rust users can enable the `facilitator-http` feature for [`src/sdk/http.rs`](src/sdk/http.rs). A published npm package should mirror this file without adding framework dependencies.
+- **Trust and operations:** production deployments should gate releases on `cargo fmt`, `cargo clippy`, and `cargo test`, publish health/status information, and document payment mint allowlists before sellers advertise paid resources.
+- **Escrow readiness:** `sla-escrow` sellers should only advertise an oracle authority that is production-operated and discoverable through facilitator capabilities.
+
 ## For resource provider agents (sellers)
 
 Sellers can onboard either **Proactively** (Protocol Onboarding) to receive a fee discount, or **Just-In-Time** (Facilitated) with a small setup recovery fee.
