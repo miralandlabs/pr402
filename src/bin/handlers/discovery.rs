@@ -36,6 +36,23 @@ pub async fn handle_capabilities(
         );
     };
 
+    let sla_escrow_oracle_qa = if sla_escrow {
+        Some(SlaEscrowOracleQaInfo {
+            profile_id: "x402/oracle-qa/api-quality/v1",
+            normative_spec_url: std::env::var("PR402_ORACLE_QA_SPEC_URL").unwrap_or_else(|_| {
+                "https://github.com/miraland-labs/oracle-qa/blob/main/spec/api-quality-v1/NORMATIVE.md"
+                    .to_string()
+            }),
+            // Paths relative to https://github.com/miraland-labs/oracle-qa (standalone repo; not the x402 hub tree).
+            repository_path: "",
+            signed_delivery_v2_draft_path: "spec/signed-delivery-v2/DRAFT.md",
+            default_operator_pubkey: extract_optional_env("PR402_DEFAULT_SLA_ORACLE_PUBKEY"),
+            evidence_registry_note: extract_optional_env("PR402_ORACLE_EVIDENCE_REGISTRY_NOTE"),
+        })
+    } else {
+        None
+    };
+
     let body = CapabilitiesResponse {
         schema_version: SCHEMA_VERSION,
         x402_version: 2,
@@ -130,6 +147,7 @@ pub async fn handle_capabilities(
             buyer_quick_start: "/quickstart-buyer.md",
             x402_spec: "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md",
         },
+        sla_escrow_oracle_qa,
     };
 
     facilitator_response!()
@@ -302,4 +320,11 @@ pub async fn handle_upgrade(
             .unwrap(),
         Err(e) => error_response(StatusCode::BAD_REQUEST, &format!("Upgrade failed: {}", e)),
     }
+}
+
+fn extract_optional_env(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
 }

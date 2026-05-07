@@ -6,6 +6,8 @@
 
 Replace **`$BASE`** with your facilitator URL. **Recommended:** **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet). **Also:** `https://agent.pay402.me` / `https://preview.agent.pay402.me` (same service). Confirm **`solanaNetwork`** with **`GET /api/v1/facilitator/health`** on that host.
 
+Use the same `$BASE` in your public docs, 402 bodies, buyer instructions, `/verify`, and `/settle`. Most integration failures come from mixing preview/mainnet origins or publishing a bare wallet where this facilitator expects a PDA.
+
 ---
 
 ## Step 1 — Build a naive 402 body with your wallet
@@ -92,3 +94,10 @@ Content-Type: application/json
 The `/upgrade` endpoint handles all institutional routing for you. For sovereign status (lower fees), see the full [onboarding guide](/onboarding_guide.md).
 
 **Full reference:** `GET /seller-quick-start.md` and `GET /openapi.json` on the facilitator.
+
+## Launch checklist
+
+- Publish one facilitator base URL per environment.
+- Cache the upgraded `402` body and refresh it when facilitator capabilities or asset allowlists change.
+- Run a preview transaction before Mainnet launch.
+- For `sla-escrow`, publish the oracle authority, profile id, evidence registry policy, and maximum supported payment size.

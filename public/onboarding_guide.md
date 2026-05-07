@@ -9,6 +9,10 @@ Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Res
 
 **Official facilitator hosts:** **Recommended:** **Production** `https://ipay.sh` (Solana Mainnet) · **Preview** `https://preview.ipay.sh` (Solana Devnet). **Also available** (same service; not deprecated): **`https://agent.pay402.me`**, **`https://preview.agent.pay402.me`**. Use the deployment that matches your programs and the facilitator URL you give buyers; verify with **`GET /api/v1/facilitator/health`** or **`/capabilities`**.
 
+### SLA-Escrow: oracle profile and default operator hints
+
+For **`sla-escrow`**, the on-chain payment includes an **`oracle_authority`** that resolves delivery via **`ConfirmOracle`**. The **`oracle-qa`** reference implements profile **`x402/oracle-qa/api-quality/v1`**: **hash-bound** SLA and delivery JSON fetched from an HTTP evidence registry (see the normative spec linked from **`GET /api/v1/facilitator/capabilities`** under **`slaEscrowOracleQa`**). Set **`oracle_authority`** to your chosen operator’s pubkey (the keypair that runs `oracle-qa`). Deployments may advertise an optional default operator via facilitator env (`PR402_DEFAULT_SLA_ORACLE_PUBKEY`, etc.); integrators should still confirm the pubkey matches their trust model.
+
 ### Launch phase: one payment asset per merchant wallet
 
 During the initial launch period we keep the **operator and integrator experience intentionally small**: **each merchant wallet is expected to register and settle on a single payment asset (one coin / one settlement rail)**—for example, USDC *or* native SOL, not both under the same wallet in our off-chain registry. This follows a simple design principle we care about: **favor simplicity first, implemented with care so the result still feels elegant**—minimal surface area for discovery, reconciliation, and automation.

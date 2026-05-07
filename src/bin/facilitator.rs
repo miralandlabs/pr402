@@ -183,6 +183,23 @@ struct CapabilitiesResponse {
     features: CapabilitiesFeatures,
     http_endpoints: CapabilitiesHttpEndpoints,
     agent_manifest: AgentManifest,
+    /// Reference metadata for the default `oracle-qa` API-quality profile (SLA-Escrow).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sla_escrow_oracle_qa: Option<SlaEscrowOracleQaInfo>,
+}
+
+/// Published pointers for the hash-bound `api-quality/v1` oracle profile (`oracle-qa` crate).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SlaEscrowOracleQaInfo {
+    profile_id: &'static str,
+    normative_spec_url: String,
+    repository_path: &'static str,
+    signed_delivery_v2_draft_path: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_operator_pubkey: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    evidence_registry_note: Option<String>,
 }
 
 #[derive(serde::Serialize)]

@@ -6,6 +6,8 @@
 
 Replace **`$BASE`** with the facilitator URL the seller documents. **Recommended** defaults: **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet). **Same APIs** on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). Run **`curl -sS "$BASE/api/v1/facilitator/health" | jq .solanaNetwork`** to confirm the cluster.
 
+Do not silently substitute a different facilitator origin than the seller documented. `payTo`, program ids, asset allowlists, and oracle authorities are deployment-specific.
+
 ---
 
 ## Step 1 — Confirm the facilitator supports your scheme
@@ -89,3 +91,10 @@ The seller forwards it to `/settle` and serves you the resource.
 **If anything fails with blockhash errors, go back to Step 3** — Solana blockhashes expire in ~60 seconds.
 
 **Full reference:** `GET /openapi.json` and `GET /agent-integration.md` on the facilitator.
+
+## Buyer launch checklist
+
+- Cache `GET /capabilities` per facilitator host and invalidate it on failed build/verify responses.
+- Treat `verifyBodyTemplate` as authoritative; only replace the transaction payload after signing.
+- Record `correlationId` from `/verify` and reuse it on `/settle` when present.
+- For `sla-escrow`, verify the oracle authority and profile id before funding.
