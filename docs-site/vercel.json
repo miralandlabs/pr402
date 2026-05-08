@@ -1,0 +1,16 @@
+{
+  "buildCommand": "npm run docs:build",
+  "outputDirectory": ".vitepress/dist",
+  "trailingSlash": false,
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}

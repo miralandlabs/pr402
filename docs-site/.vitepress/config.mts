@@ -3,6 +3,9 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "pr402 Docs",
   description: "The Liquidity Layer for the Autonomous Web",
+  // Explicit .html URLs: avoids hosts mishandling extensionless cleanUrls (nginx-style try_files).
+  cleanUrls: false,
+  trailingSlash: false,
   
   // Theme related configurations
   themeConfig: {
