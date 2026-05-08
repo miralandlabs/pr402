@@ -1,2 +1,4 @@
-[build]
-rustflags = ["-C", "target-cpu=native"]
+# [build]
+# rustflags = ["-C", "target-cpu=native"]
+# Disabled because target-cpu=native causes SIGILL (Illegal Instruction) 
+# crashes in procedural macros (like thiserror) on GitHub Actions CI runners.
