@@ -3,8 +3,8 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "pr402 Docs",
   description: "The Liquidity Layer for the Autonomous Web",
-  cleanUrls: true,
-  // Align with Vercel defaults so client-side routes match served URLs (see vercel.json trailingSlash).
+  // Explicit .html URLs: avoids hosts mishandling extensionless cleanUrls (nginx-style try_files).
+  cleanUrls: false,
   trailingSlash: false,
   
   // Theme related configurations
