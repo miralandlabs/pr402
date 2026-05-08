@@ -37,10 +37,10 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets
 
-      # Used only on THIS runner. Plain `vercel deploy` still builds on Vercel's servers with their CLI
-      # (53.2.x as of 2026-05-06 npm), which breaks vercel-rust — see Deploy API step (build + --prebuilt).
+      # vercel-rust is unmaintained vs. current CLI build API. v53.x breaks `vercel build` too (`reading 'target'`).
+      # Pin CLI 52.x for builds; API deploy uses build + --prebuilt so Vercel cloud doesn't re-run rust builder.
       - name: Install Vercel CLI
-        run: npm install --global vercel@53.1.0
+        run: npm install --global vercel@52.2.1
 
       - name: Link to Existing Vercel Project
         run: |
