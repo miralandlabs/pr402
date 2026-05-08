@@ -5,6 +5,9 @@ hero:
   name: "pr402 Docs"
   text: "The Liquidity Layer for Autonomous Agents"
   tagline: "Human-readable guides and machine-readable OpenAPI — one facilitator deployment for x402 v2 discovery, settlement, and seller onboarding on Solana."
+  image:
+    src: /pr402.png
+    alt: pr402
   actions:
     - theme: brand
       text: Seller Quickstart

@@ -1,0 +1,13 @@
+/* Home hero artwork — pr402.png is high-resolution */
+.VPHomeHero .image .image-src {
+  max-width: min(100%, 28rem);
+  width: 100%;
+  height: auto;
+  border-radius: 1rem;
+}
+
+@media (max-width: 960px) {
+  .VPHomeHero .image {
+    margin-top: 2rem;
+  }
+}
