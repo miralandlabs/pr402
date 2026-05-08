@@ -90,7 +90,7 @@ The seller forwards it to `/settle` and serves you the resource.
 
 **If anything fails with blockhash errors, go back to Step 3** — Solana blockhashes expire in ~60 seconds.
 
-**Full reference:** `GET /openapi.json` and `GET /agent-integration.md` on the facilitator.
+**Full reference:** [API overview](/api-reference) · `{FACILITATOR}/openapi.json` · [Agent integration](/agent-integration) (or `GET /agent-integration.md` on the facilitator).
 
 ## Buyer launch checklist
 

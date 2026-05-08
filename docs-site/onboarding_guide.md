@@ -1,6 +1,6 @@
 # X402 Resource Provider Onboarding Guide
 
-> **Buyer / payer agent?** Use the [Agent integration runbook](./agent-integration.md#buyer-agents-payers) (discover → build → sign → verify → settle).  
+> **Buyer / payer agent?** Use the [Agent integration runbook](/agent-integration#buyer-agents-payers) (discover → build → sign → verify → settle).  
 > **Seller / resource provider?** You are in the right place.
 
 Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Resource Provider (Seller) using the **UniversalSettle** protocol with Institutional Neutrality.
@@ -84,9 +84,16 @@ universalsettle vault-status --seller <YOUR_WALLET_PUBKEY>
 
 ---
 
-## 4. Technical Details
-- **Program ID**: `u4KywhcSonWTzeDrb5HNSHAeHqD2a3Fdn1xEHqmK8QC` (Devnet)
-- **PDA Seeds**: `["vault", seller_pubkey]`
-- **SOL Storage**: `["sol_storage", vault_pda]`
+## 4. Technical details
 
-For deep integration, refer to the [X402 SDK Documentation](https://sdk.miraland.dev) or the Facilitator `/openapi.json`.
+**Program IDs, vault PDAs, and `extra` fields are deployment-specific** (Mainnet vs Devnet, program upgrades, facilitator config). Do **not** copy static addresses from documentation into production.
+
+Authoritative sources on the facilitator host you call:
+
+- **`GET /api/v1/facilitator/supported`** — copy **`programId`**, **`configAddress`**, and other **`extra`** keys from the `kinds[]` entry that matches your scheme (`v2:solana:exact`, `v2:solana:sla-escrow`).
+- **`GET /api/v1/facilitator/discovery?wallet=…&scheme=exact`** — canonical **`payTo`** / rail PDAs for your seller wallet.
+- **`POST /api/v1/facilitator/upgrade`** — injects the same institutional **`payTo`** / **`extra`** into a naive 402 body.
+
+**Conceptually**, UniversalSettle-style deployments derive vault-related PDAs from the seller identity on-chain; the exact seeds and program IDs must match what **`supported`** advertises for that cluster.
+
+For deep integration, refer to the [X402 SDK Documentation](https://sdk.miraland.dev), **`GET /openapi.json`** on your facilitator, and [API reference](/api-reference) in this site.
