@@ -30,7 +30,7 @@
   "builds": [
     {
       "src": "src/bin/facilitator.rs",
-      "use": "vercel-rust@4.0.8",
+      "use": "vercel-rust@4.0.11",
       "config": {
         "env": {
           "CARGO_HOME": "/tmp/cargo",
@@ -47,7 +47,10 @@
     {
       "src": "/",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/openapi.json",
@@ -76,72 +79,116 @@
     {
       "src": "/api/v1/facilitator/verify",
       "dest": "/src/bin/facilitator",
-      "methods": ["POST", "OPTIONS"]
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/settle",
       "dest": "/src/bin/facilitator",
-      "methods": ["POST", "OPTIONS"]
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/upgrade",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "POST", "OPTIONS"]
+      "methods": [
+        "GET",
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/supported",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/health",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/capabilities",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/onboard/challenge",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/onboard/provision",
       "dest": "/src/bin/facilitator",
-      "methods": ["POST", "OPTIONS"]
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/onboard",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "POST", "OPTIONS"]
+      "methods": [
+        "GET",
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/vault-snapshot",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/discovery",
       "dest": "/src/bin/facilitator",
-      "methods": ["GET", "OPTIONS"]
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/build-exact-payment-tx",
       "dest": "/src/bin/facilitator",
-      "methods": ["POST", "OPTIONS"]
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/build-sla-escrow-payment-tx",
       "dest": "/src/bin/facilitator",
-      "methods": ["POST", "OPTIONS"]
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "src": "/api/v1/facilitator/oracle/build-confirm",
       "dest": "/src/bin/facilitator",
-      "methods": ["POST", "OPTIONS"]
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
     }
   ]
 }
