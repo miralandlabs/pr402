@@ -16,10 +16,11 @@ Thumbs.db
 .git/
 .gitignore
 
-# Documentation
+# Documentation — blanket *.md breaks docs-site VitePress (sources never uploaded; HTML 404s).
 README.md
 *.md
-!public/*.md
+!public/**/*.md
+!docs-site/**/*.md
 
 # Test files
 tests/
