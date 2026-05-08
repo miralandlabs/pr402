@@ -4,6 +4,8 @@ export default defineConfig({
   title: "pr402 Docs",
   description: "The Liquidity Layer for the Autonomous Web",
   cleanUrls: true,
+  // Align with Vercel defaults so client-side routes match served URLs (see vercel.json trailingSlash).
+  trailingSlash: false,
   
   // Theme related configurations
   themeConfig: {
