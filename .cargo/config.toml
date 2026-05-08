@@ -1,6 +1,12 @@
 # `-C target-cpu=native` must not be set globally under `[build]`: it caused SIGILL in
 # procedural macros on GitHub Actions Linux runners. Scoped below so only macOS host
 # builds get native tuning; CI (`x86_64-unknown-linux-gnu`) never matches these tables.
+#
+# vercel-rust@4.0.8 requires a `[build]` table whenever this file exists — it reads
+# `build.target` without optional chaining; omitting `[build]` causes
+# "Cannot read properties of undefined (reading 'target')" on `vercel build`.
+
+[build]
 
 [target.x86_64-apple-darwin]
 rustflags = ["-C", "target-cpu=native"]
