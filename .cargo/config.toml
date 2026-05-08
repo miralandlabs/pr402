@@ -1,4 +1,9 @@
-# [build]
-# rustflags = ["-C", "target-cpu=native"]
-# Disabled because target-cpu=native causes SIGILL (Illegal Instruction) 
-# crashes in procedural macros (like thiserror) on GitHub Actions CI runners.
+# `-C target-cpu=native` must not be set globally under `[build]`: it caused SIGILL in
+# procedural macros on GitHub Actions Linux runners. Scoped below so only macOS host
+# builds get native tuning; CI (`x86_64-unknown-linux-gnu`) never matches these tables.
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "target-cpu=native"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-cpu=native"]
