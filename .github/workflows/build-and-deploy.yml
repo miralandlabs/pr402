@@ -86,9 +86,10 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
           VERCEL_ENV: ${{ env.VERCEL_ENV }}
 
+      # Docs project has Root Directory = docs-site in Vercel; running from repo root.
+      # A prior `cd docs-site` doubled the path (docs-site/docs-site) and failed.
       - name: Deploy Docs to Vercel
         run: |
-          cd docs-site
           DOCS_OUTPUT=$(vercel ${{ env.DEPLOY_ARGS }} --yes --token=${{ secrets.VERCEL_TOKEN }})
 
           DOCS_URL=$(echo "$DOCS_OUTPUT" | grep -o 'https://.*\.vercel\.app' | head -1)
