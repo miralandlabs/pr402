@@ -14,3 +14,8 @@ wallet-adapter/node_modules/
 test-wallets/
 
 .DS_Store
+
+# VitePress Docs
+docs-site/node_modules/
+docs-site/.vitepress/dist/
+docs-site/.vitepress/cache/
