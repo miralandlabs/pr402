@@ -10,7 +10,11 @@ Use the same `$BASE` in your public docs, 402 bodies, buyer instructions, `/veri
 
 ---
 
-## Step 1 — Build a naive 402 body with your wallet
+## Step 1 — Draft a minimal 402 body (for `/upgrade` only)
+
+**This is not a buyer-facing Payment Required body.** In the abstract x402 spec, some examples show `payTo` as a seller’s wallet address. **pr402’s `exact` (UniversalSettle) rail does not settle to that model:** the facilitator and on-chain program expect buyers to pay into **your SplitVault rail PDAs**. The **`payTo`** you eventually publish must be the **vault PDA** returned from **`GET /api/v1/facilitator/discovery`** or from **`POST /api/v1/facilitator/upgrade`** — see the [full seller guide](/seller-quick-start.html) (`payTo`: **`<YOUR_VAULT_PDA>`**, with **`extra.merchantWallet`** for your real wallet).
+
+The JSON below is only a **convenience input** to **`/upgrade`**: you may start with your **normal Solana wallet pubkey** in `payTo` so the facilitator can **replace** it with the correct vault PDA and inject `extra`. **Never return this draft to buyers without running Step 2.**
 
 ```json
 {
@@ -20,7 +24,7 @@ Use the same `$BASE` in your public docs, 402 bodies, buyer instructions, `/veri
     {
       "scheme": "exact",
       "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-      "payTo": "<YOUR_WALLET_PUBKEY>",
+      "payTo": "<YOUR_WALLET_PUBKEY_ONLY_FOR_UPGRADE_INPUT>",
       "asset": "<USDC_MINT_PUBKEY>",
       "amount": "50000",
       "maxTimeoutSeconds": 300
@@ -28,6 +32,8 @@ Use the same `$BASE` in your public docs, 402 bodies, buyer instructions, `/veri
   ]
 }
 ```
+
+> **Why the placeholder isn’t `<YOUR_VAULT_PDA>` here:** `POST /upgrade` is what derives/injects the institutional line. Passing your **wallet pubkey** in this draft is how you ask the facilitator to substitute the **canonical vault `payTo`** plus `extra` (`feePayer`, `programId`, `configAddress`, `merchantWallet`, …). What you **serve in HTTP 402** afterward must match **`upgrade`’s output** (vault PDA in `payTo`).
 
 ## Step 2 — Upgrade it to institutional format (one POST)
 
