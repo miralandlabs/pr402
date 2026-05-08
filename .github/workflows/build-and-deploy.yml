@@ -37,8 +37,9 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets
 
+      # Pin: vercel 53.2+ is incompatible with vercel-rust (undefined `target` in builder payload).
       - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+        run: npm install --global vercel@53.1.0
 
       - name: Link to Existing Vercel Project
         run: |
