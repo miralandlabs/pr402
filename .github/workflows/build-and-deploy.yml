@@ -60,14 +60,14 @@ jobs:
             echo "DEPLOY_ARGS=" >> $GITHUB_ENV
           fi
 
-      - name: Deploy to Vercel
+      - name: Deploy API to Vercel
         run: |
           DEPLOY_OUTPUT=$(vercel ${{ env.DEPLOY_ARGS }} --token=${{ secrets.VERCEL_TOKEN }})
 
           DEPLOYMENT_URL=$(echo "$DEPLOY_OUTPUT" | grep -o 'https://.*\.vercel\.app' | head -1)
           echo "DEPLOYMENT_URL=$DEPLOYMENT_URL" >> $GITHUB_ENV
 
-          echo "✅ Deployment successful!"
+          echo "✅ API Deployment successful!"
           echo "Environment: ${{ env.VERCEL_ENV }}"
           echo "Deployment URL: $DEPLOYMENT_URL"
         env:
@@ -75,14 +75,32 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.PROJECT_ID }}
           VERCEL_ENV: ${{ env.VERCEL_ENV }}
 
+      - name: Deploy Docs to Vercel
+        run: |
+          cd docs-site
+          DOCS_OUTPUT=$(vercel ${{ env.DEPLOY_ARGS }} --yes --token=${{ secrets.VERCEL_TOKEN }})
+
+          DOCS_URL=$(echo "$DOCS_OUTPUT" | grep -o 'https://.*\.vercel\.app' | head -1)
+          echo "DOCS_URL=$DOCS_URL" >> $GITHUB_ENV
+
+          echo "✅ Docs Deployment successful!"
+          echo "Environment: ${{ env.VERCEL_ENV }}"
+          echo "Deployment URL: $DOCS_URL"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.DOCS_PROJECT_ID }}
+          VERCEL_ENV: ${{ env.VERCEL_ENV }}
+
       - name: Print Final URLs
         run: |
-          echo "🎉 Deployment completed!"
+          echo "🎉 Deployments completed!"
           echo "Environment: ${{ env.VERCEL_ENV }}"
-          echo "Deployment URL: ${{ env.DEPLOYMENT_URL }}"
+          echo "API URL: ${{ env.DEPLOYMENT_URL }}"
+          echo "Docs URL: ${{ env.DOCS_URL }}"
 
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "Production: Configure your production domain in Vercel dashboard"
+            echo "Production: Configure your production domains in Vercel dashboard"
           else
-            echo "Preview: ${{ env.DEPLOYMENT_URL }} (use this URL for testing)"
+            echo "Preview (API): ${{ env.DEPLOYMENT_URL }}"
+            echo "Preview (Docs): ${{ env.DOCS_URL }}"
           fi

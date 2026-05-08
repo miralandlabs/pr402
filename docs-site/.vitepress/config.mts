@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "pr402 Docs",
   description: "The Liquidity Layer for the Autonomous Web",
+  cleanUrls: true,
   
   // Theme related configurations
   themeConfig: {
