@@ -91,9 +91,11 @@ Content-Type: application/json
 
 **No PDA derivation. No on-chain setup. No Solana SDK.**
 
-The `/upgrade` endpoint handles all institutional routing for you. For sovereign status (lower fees), see the full [onboarding guide](/onboarding_guide.md).
+The `/upgrade` endpoint handles all institutional routing for you. For sovereign status (lower fees), see the full [onboarding guide](/onboarding_guide).
 
-**Full reference:** `GET /seller-quick-start.md` and `GET /openapi.json` on the facilitator.
+**Human-readable docs:** [Seller Quick Start](/seller-quick-start) · [API overview](/api-reference).
+
+**Machine-readable:** `{FACILITATOR}/openapi.json` — substitute your facilitator `$BASE` (for example `https://ipay.sh` or `https://preview.ipay.sh`).
 
 ## Launch checklist
 

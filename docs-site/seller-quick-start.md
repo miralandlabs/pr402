@@ -37,7 +37,7 @@ Buyer Agent              Your API Server              pr402 Facilitator
 
 **Key insight**: Your server never touches Solana directly. You return a 402, extract the payment proof header, and forward it to the facilitator. That's it.
 
-> **pr402 settlement model (Solana-specific)**: The standard x402 flow is: `/verify` → deliver resource → `/settle`. On Solana, signed transactions contain a blockhash that expires in ~60 seconds. If resource delivery takes any real time between verify and settle, the blockhash expires and settlement fails. In pr402, `**/settle` already performs verification internally** before executing on-chain — so calling `/settle` alone is sufficient and safe. It is also idempotent: if the transaction is already confirmed on-chain, it returns success.
+> **pr402 settlement model (Solana-specific)**: The standard x402 flow is: `/verify` → deliver resource → `/settle`. On Solana, signed transactions contain a blockhash that expires in ~60 seconds. If resource delivery takes any real time between verify and settle, the blockhash expires and settlement fails. In pr402, **`POST /api/v1/facilitator/settle`** already performs verification internally before executing on-chain — so calling `/settle` alone is sufficient and safe. It is also idempotent: if the transaction is already confirmed on-chain, it returns success.
 >
 > **When is `/verify` still useful?** As a **pre-flight dry-run**: it validates the proof (signature, amounts, recipient, mint) without spending any Solana fees. Useful for diagnostics, or if your seller-side logic needs to confirm validity before committing business logic. The `x402-seller-starter` reference implementation calls both (`/verify` → `/settle`) to obtain a `correlationId` for audit linkage before settling.
 
@@ -83,7 +83,7 @@ curl -sS "$BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | 
 }
 ```
 
-> **Tip**: Copy `extra` from `GET /api/v1/facilitator/supported` → matching `kinds[]` entry + your wallet-specific fields. Or use the `**/upgrade`** endpoint to have the facilitator build this for you (see below).
+> **Tip**: Copy `extra` from `GET /api/v1/facilitator/supported` → matching `kinds[]` entry + your wallet-specific fields. Or use **`POST /api/v1/facilitator/upgrade`** to have the facilitator build this for you (see below).
 
 ---
 
@@ -251,7 +251,7 @@ json.NewEncoder(w).Encode(premiumContent)
 
 ## Shortcut: The `/upgrade` Endpoint
 
-Don't want to look up vault PDAs or merge `extra` fields? Post a minimal 402 body to `**POST /api/v1/facilitator/upgrade**` and get back a fully institutional response.
+Don't want to look up vault PDAs or merge `extra` fields? Post a minimal 402 body to **`POST /api/v1/facilitator/upgrade`** and get back a fully institutional response.
 
 ```bash
 # Your naive 402 body (bare wallet as payTo):
@@ -282,7 +282,7 @@ Cache the result and return it as your 402 response.
 | Discover your `payTo` PDA     | `/api/v1/facilitator/discovery?wallet=X&scheme=exact` | GET      |                                                                                         |
 | Full onboard preview          | `/api/v1/facilitator/onboard?wallet=X`                | GET      |                                                                                         |
 | Upgrade naive 402             | `/api/v1/facilitator/upgrade`                         | POST     |                                                                                         |
-| **Settle (verify + execute)** | `**/api/v1/facilitator/settle`**                      | **POST** | Verifies internally, then executes on-chain. Idempotent.                                |
+| **Settle (verify + execute)** | `/api/v1/facilitator/settle`                      | **POST** | Verifies internally, then executes on-chain. Idempotent.                                |
 | Verify (dry-run only)         | `/api/v1/facilitator/verify`                          | POST     | Optional pre-flight check. No on-chain cost. Returns `correlationId` for audit linkage. |
 | Supported schemes/rails       | `/api/v1/facilitator/supported`                       | GET      |                                                                                         |
 | Full discovery bundle         | `/api/v1/facilitator/capabilities`                    | GET      |                                                                                         |
@@ -290,6 +290,8 @@ Cache the result and return it as your 402 response.
 
 > **pr402 vs standard x402 settle model**: In the generic x402 spec, `/verify` and `/settle` are separate steps with resource delivery in between. On Solana, blockhashes expire in ~60 seconds, making that gap risky. pr402's `/settle` runs verification internally before executing — so calling `/settle` alone is safe and sufficient. `/verify` remains useful as a zero-cost pre-flight check or to obtain a `correlationId` for DB audit trails.
 
-**Canonical API spec**: `GET /openapi.json` on your facilitator deployment.
-**Full integration runbook**: `GET /agent-integration.md` on your facilitator deployment.
-**Reference implementation**: [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter) (Rust + Axum).
+**Canonical API spec:** `GET /openapi.json` on your facilitator deployment (see [API reference](/api-reference) for how humans and agents should use it).
+
+**Full integration runbook:** [Agent integration](/agent-integration) here, or `GET /agent-integration.md` on the facilitator.
+
+**Reference implementation:** [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter) (Rust + Axum).

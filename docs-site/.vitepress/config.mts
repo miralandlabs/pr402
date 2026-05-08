@@ -16,7 +16,13 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Seller Quickstart', link: '/seller-quick-start' },
       { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
-      { text: 'API Reference', link: 'https://ipay.sh/openapi.json' } // API link back to raw or landing
+      { text: 'API Reference', link: '/api-reference' },
+      {
+        text: 'OpenAPI JSON',
+        link: 'https://ipay.sh/openapi.json',
+        target: '_blank',
+        rel: 'noopener noreferrer'
+      }
     ],
 
     // Sidebar navigation
@@ -25,14 +31,21 @@ export default defineConfig({
         text: 'Getting Started',
         items: [
           { text: 'Seller Quickstart', link: '/seller-quick-start' },
+          { text: 'Seller shortcut (5 steps)', link: '/quickstart-seller' },
           { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
           { text: 'Onboarding Guide', link: '/onboarding_guide' }
         ]
       },
       {
+        text: 'Reference',
+        items: [
+          { text: 'API overview (humans + agents)', link: '/api-reference' }
+        ]
+      },
+      {
         text: 'Deep Dives',
         items: [
-          { text: 'Full Agent Integration', link: '/agent-integration' }
+          { text: 'Agent integration runbook', link: '/agent-integration' }
         ]
       }
     ],

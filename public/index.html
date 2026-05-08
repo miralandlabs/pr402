@@ -807,10 +807,10 @@
                 <span class="inline-code">payTo</span> PDAs.
                 <strong style="color: var(--text); font-weight: 500;">Buyer agents</strong> discover <span class="inline-code">accepts[]</span>, build and sign proofs, then call verify and settle.
                 Machine <span class="inline-code">payTo</span> rules: <a href="/agent-payTo-semantics.json" style="color: var(--primary);">/agent-payTo-semantics.json</a>
-                — full runbook: <a href="https://docs.ipay.sh/agent-integration" style="color: var(--primary);">/agent-integration.md</a>
-                — sellers: <a href="https://docs.ipay.sh/agent-integration#publishing-a-payment-required-line-sellers" style="color: var(--primary);">publish 402</a>;
-                buyers routed from a 402: <a href="https://docs.ipay.sh/agent-integration#payment-pipeline-from-accepts-to-settlement" style="color: var(--primary);">pipeline</a>,
-                <a href="https://docs.ipay.sh/agent-integration#how-pr402-differs-from-the-generic-x402-spec" style="color: var(--primary);">vs spec</a>.
+                — full runbook: <a href="https://docs.ipay.sh/agent-integration.html" class="pr402-docs-link" style="color: var(--primary);">Agent integration</a> <span class="inline-code">(.html)</span>
+                — sellers: <a href="https://docs.ipay.sh/agent-integration.html#publishing-a-payment-required-line-sellers" class="pr402-docs-link" style="color: var(--primary);">publish 402</a>;
+                buyers routed from a 402: <a href="https://docs.ipay.sh/agent-integration.html#payment-pipeline-from-accepts-to-settlement" class="pr402-docs-link" style="color: var(--primary);">pipeline</a>,
+                <a href="https://docs.ipay.sh/agent-integration.html#how-pr402-differs-from-the-generic-x402-spec" class="pr402-docs-link" style="color: var(--primary);">vs spec</a>.
             </p>
         </div>
 
@@ -820,15 +820,15 @@
                 <h3>Resource providers</h3>
                 <p>UniversalSettle split-vault onboarding, sovereign discount path, optional signed registry, and SLA-Escrow bank metadata. Your x402 lines must use program PDAs—not a bare wallet—as <span class="inline-code">payTo</span> for settlement proofs.</p>
                 <ul class="card-links">
-                    <li><a href="https://docs.ipay.sh/seller-quick-start">Seller quick start (3 code changes) →</a></li>
-                    <li><a href="https://docs.ipay.sh/agent-integration#seller-agents-resource-providers">Seller runbook →</a></li>
-                    <li><a href="https://docs.ipay.sh/agent-integration#publishing-a-payment-required-line-sellers">Publishing <span class="inline-code">accepts[]</span> →</a></li>
+                    <li><a href="https://docs.ipay.sh/seller-quick-start.html" class="pr402-docs-link">Seller quick start (3 code changes) →</a></li>
+                    <li><a href="https://docs.ipay.sh/agent-integration.html#seller-agents-resource-providers" class="pr402-docs-link">Seller runbook →</a></li>
+                    <li><a href="https://docs.ipay.sh/agent-integration.html#publishing-a-payment-required-line-sellers" class="pr402-docs-link">Publishing <span class="inline-code">accepts[]</span> →</a></li>
                     <li><a href="/api/v1/facilitator/discovery?wallet=...&scheme=exact">GET /discovery (resolve payTo)</a></li>
-                    <li><a href="https://docs.ipay.sh/onboarding_guide">Onboarding guide →</a></li>
+                    <li><a href="https://docs.ipay.sh/onboarding_guide.html" class="pr402-docs-link">Onboarding guide →</a></li>
                 </ul>
                 <div class="btn-group">
-                    <a href="https://docs.ipay.sh/seller-quick-start" class="btn btn-primary" id="btn-seller-quickstart">Quick start</a>
-                    <a href="https://docs.ipay.sh/agent-integration#seller-agents-resource-providers" class="btn btn-secondary" id="btn-seller-docs">Full runbook</a>
+                    <a href="https://docs.ipay.sh/seller-quick-start.html" class="btn btn-primary pr402-docs-link" id="btn-seller-quickstart">Quick start</a>
+                    <a href="https://docs.ipay.sh/agent-integration.html#seller-agents-resource-providers" class="btn btn-secondary pr402-docs-link" id="btn-seller-docs">Full runbook</a>
                 </div>
             </div>
 
@@ -837,13 +837,13 @@
                 <h3>Payers</h3>
                 <p>Match the resource’s 402 offer, call unsigned-tx builders when needed, sign locally, then <span class="inline-code">POST /verify</span> and <span class="inline-code">POST /settle</span> with the same JSON body. SLA-Escrow templates from the facilitator carry canonical <span class="inline-code">payTo</span>.</p>
                 <ul class="card-links">
-                    <li><a href="https://docs.ipay.sh/agent-integration#buyer-agents-payers">Buyer runbook →</a></li>
-                    <li><a href="https://docs.ipay.sh/agent-integration#payment-pipeline-from-accepts-to-settlement">402 → signed tx pipeline →</a></li>
-                    <li><a href="https://docs.ipay.sh/agent-integration#how-pr402-differs-from-the-generic-x402-spec">pr402 vs x402 spec →</a></li>
+                    <li><a href="https://docs.ipay.sh/agent-integration.html#buyer-agents-payers" class="pr402-docs-link">Buyer runbook →</a></li>
+                    <li><a href="https://docs.ipay.sh/agent-integration.html#payment-pipeline-from-accepts-to-settlement" class="pr402-docs-link">402 → signed tx pipeline →</a></li>
+                    <li><a href="https://docs.ipay.sh/agent-integration.html#how-pr402-differs-from-the-generic-x402-spec" class="pr402-docs-link">pr402 vs x402 spec →</a></li>
                     <li><a href="/openapi.json">OpenAPI 3.1 →</a></li>
                 </ul>
                 <div class="btn-group">
-                    <a href="https://docs.ipay.sh/agent-integration#buyer-agents-payers" class="btn btn-primary" id="btn-buyer-docs">Buyer steps</a>
+                    <a href="https://docs.ipay.sh/quickstart-buyer.html" class="btn btn-primary pr402-docs-link" id="btn-buyer-docs">Buyer steps</a>
                     <a href="/openapi.json" class="btn btn-secondary" id="btn-openapi">OpenAPI</a>
                 </div>
             </div>
@@ -1091,6 +1091,27 @@
                 'curl -sS "' +
                 window.location.origin +
                 '/api/v1/facilitator/capabilities" | jq .';
+        })();
+
+        /** Docs site uses explicit *.html paths (VitePress). Point preview facilitator → preview.docs.ipay.sh. */
+        (function syncDocsLinksToCurrentDeployment() {
+            function docsOriginForFacilitatorHost(hostname) {
+                if (!hostname) return null;
+                if (hostname === 'preview.ipay.sh') return 'https://preview.docs.ipay.sh';
+                if (hostname === 'ipay.sh') return 'https://docs.ipay.sh';
+                if (hostname === 'preview.agent.pay402.me') return 'https://preview.docs.ipay.sh';
+                if (hostname === 'agent.pay402.me') return 'https://docs.ipay.sh';
+                return null;
+            }
+            var targetDocs = docsOriginForFacilitatorHost(window.location.hostname);
+            if (!targetDocs) return;
+            document.querySelectorAll('a.pr402-docs-link').forEach(function (a) {
+                try {
+                    var u = new URL(a.href);
+                    if (u.hostname !== 'docs.ipay.sh') return;
+                    a.href = targetDocs + u.pathname + u.search + u.hash;
+                } catch (e) {}
+            });
         })();
 
         function applyHealthToGlobals(data) {
