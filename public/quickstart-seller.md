@@ -1,5 +1,5 @@
 ---
-title: Seller Shortcut (5 steps): Monetize Your API with x402
+title: "Seller Shortcut (5 steps): Monetize Your API with x402"
 ---
 
 # Seller Shortcut (5 steps): Monetize Your API with x402

@@ -1,5 +1,5 @@
 ---
-title: Seller Quick Start: Monetize Your API with x402
+title: "Seller Quick Start: Monetize Your API with x402"
 ---
 
 # Seller Quick Start: Monetize Your API with x402
