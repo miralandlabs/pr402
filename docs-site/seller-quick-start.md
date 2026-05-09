@@ -1,3 +1,7 @@
+---
+title: "Seller Quick Start: Monetize Your API with x402"
+---
+
 # Seller Quick Start: Monetize Your API with x402
 
 **Prefer copy-paste steps only?** Use [Seller Shortcut (5 steps)](/quickstart-seller.html)—minimal `/upgrade` checklist.

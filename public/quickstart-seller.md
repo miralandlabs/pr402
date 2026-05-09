@@ -1,4 +1,8 @@
-# Seller Quick Start — Monetize Your API with x402
+---
+title: "Seller Shortcut (5 steps): Monetize Your API with x402"
+---
+
+# Seller Shortcut (5 steps): Monetize Your API with x402
 
 **New here?** Read the full [Seller Quickstart](/seller-quick-start.md) first (overview, diagram, discovery).
 
