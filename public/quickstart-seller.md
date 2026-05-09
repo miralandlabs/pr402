@@ -37,7 +37,16 @@ curl -sS -X POST "$BASE/api/v1/facilitator/upgrade" \
   -d '<YOUR_402_BODY>' | jq .
 ```
 
-The facilitator replaces your bare wallet `payTo` with the correct vault PDA and injects all `extra` metadata (`feePayer`, `programId`, `configAddress`, `merchantWallet`). **Cache this response.**
+The facilitator turns your draft into **real payment instructions**: it sets `payTo` to the vault address (PDA) buyers must pay, and adds `extra` (`feePayer`, `programId`, `configAddress`, `merchantWallet`, …).
+
+**Save the JSON you get back.** In Step 3 you return that **same JSON** as the body of `402 Payment Required`. You do **not** need to run `/upgrade` on every visitor—only when something below changes.
+
+**In plain terms**
+
+- **What to save:** The whole JSON object printed by the command above (your upgraded `accepts` block and metadata).
+- **Why:** One `/upgrade` per “product” (route, price, mint, network) is enough; doing it on every unpaid request is slower and can hit rate limits.
+- **Where to put it:** Anything your app can read—a config file, env var, database row, Redis, or load it when the server starts.
+- **When to run `/upgrade` again:** You change facilitator URL (`$BASE`), chain, USDC mint, amount, or the facilitator asks you to refresh—then replace what you saved with the new response.
 
 ## Step 3 — Return HTTP 402 to buyers
 
@@ -98,6 +107,6 @@ The `/upgrade` endpoint handles all institutional routing for you. For sovereign
 ## Launch checklist
 
 - Publish one facilitator base URL per environment.
-- Cache the upgraded `402` body and refresh it when facilitator capabilities or asset allowlists change.
+- Save the upgraded `402` body and replace it when facilitator capabilities or asset allowlists change.
 - Run a preview transaction before Mainnet launch.
 - For `sla-escrow`, publish the oracle authority, profile id, evidence registry policy, and maximum supported payment size.
