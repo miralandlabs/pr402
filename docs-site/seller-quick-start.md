@@ -1,5 +1,7 @@
 # Seller Quick Start: Monetize Your API with x402
 
+**Prefer copy-paste steps only?** Use [Seller Shortcut (5 steps)](/quickstart-seller.html)—minimal `/upgrade` checklist.
+
 **Audience**: Any developer with an existing web API (REST, GraphQL, etc.) who wants to gate routes behind paid access using the x402 protocol and the pr402 facilitator.
 
 **Time to integrate**: ~30 minutes. No blockchain SDK required in your server.

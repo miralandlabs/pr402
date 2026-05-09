@@ -1,5 +1,7 @@
 # Seller Quick Start — Monetize Your API with x402
 
+**New here?** Read the full [Seller Quickstart](/seller-quick-start.html) first (overview, diagram, discovery).
+
 > **You have a Solana wallet and want to charge for API calls. Here's the fastest path.**
 
 > **Launch phase:** **Experimental** — **use at your own risk**.

@@ -31,7 +31,7 @@ export default defineConfig({
         text: 'Getting Started',
         items: [
           { text: 'Seller Quickstart', link: '/seller-quick-start' },
-          { text: 'Seller shortcut (5 steps)', link: '/quickstart-seller' },
+          { text: 'Seller Shortcut (5 steps)', link: '/quickstart-seller' },
           { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
           { text: 'Onboarding Guide', link: '/onboarding_guide' }
         ]
