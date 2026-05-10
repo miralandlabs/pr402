@@ -225,6 +225,51 @@ impl Pr402Db {
         }
     }
 
+    /// Returns `true` when at least one `resource_providers` row exists for this wallet
+    /// with `registration_verified_at IS NOT NULL`. Used by the seller lifecycle ladder on
+    /// `GET /onboard` to report the `verified` stage without scanning metadata in the UI.
+    ///
+    /// Scoped to `wallet_pubkey` only (all settlement rails collapse together): a seller is
+    /// "verified" once any rail has completed the challenge + signed submit. The facilitator
+    /// still enforces the one-asset-per-wallet policy at write time.
+    pub async fn resource_provider_verified(&self, wallet_pubkey: &str) -> Result<bool, DbError> {
+        const SQL: &str = r#"
+            SELECT 1
+              FROM resource_providers
+             WHERE wallet_pubkey = $1
+               AND registration_verified_at IS NOT NULL
+             LIMIT 1
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "resource_provider_verified: tx start failed");
+            DbError::TransactionFailed
+        })?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let res = match timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&wallet_pubkey])).await {
+            Ok(Ok(row)) => Ok(row.is_some()),
+            Ok(Err(e)) => {
+                error!(
+                    target: "server_log",
+                    error = %format_err_chain(&e),
+                    "resource_provider_verified query failed"
+                );
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        if res.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            let _ = tx.rollback().await;
+        }
+
+        res
+    }
+
     pub async fn ping(&self) -> Result<(), DbError> {
         let mut client = self.conn().await?;
         let tx = client.transaction().await.map_err(|e| {

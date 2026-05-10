@@ -1330,6 +1330,41 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/SchemeOnboardInfo"
             }
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/SellerLifecycle",
+            "description": "Seller lifecycle snapshot (Preview → Activate → Verify). Absent on older servers; always present on newer ones."
+          }
+        }
+      },
+      "SellerLifecycle": {
+        "type": "object",
+        "description": "Machine-readable seller lifecycle ladder state. `previewed` is always true when the response exists; `activated` reflects whether the exact-rail SplitVault is on-chain; `verified` reflects a `resource_providers` row with `registrationVerifiedAt` set. `nextStep` points at the first stage the seller can still act on.",
+        "required": [
+          "previewed",
+          "activated",
+          "verified"
+        ],
+        "properties": {
+          "previewed": {
+            "type": "boolean"
+          },
+          "activated": {
+            "type": "boolean",
+            "description": "True when the exact rail's SplitVault account exists on-chain. Independent of the sovereign fee tier, which is surfaced via `schemes.exact.isSovereign`."
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "True when a `resource_providers` row with `registrationVerifiedAt IS NOT NULL` exists for this wallet. Disabled deployments (no `DATABASE_URL`) always report `false`."
+          },
+          "nextStep": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "activate",
+              "verify"
+            ],
+            "description": "First pending stage. `null` when all three are complete."
           }
         }
       },
@@ -1566,6 +1601,7 @@
           "vaultPda",
           "solStoragePda",
           "alreadyProvisioned",
+          "statusCode",
           "feePayer",
           "payer",
           "payerSignatureIndex",
@@ -1598,6 +1634,16 @@
           },
           "alreadyProvisioned": {
             "type": "boolean"
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": [
+              "ALREADY_PROVISIONED",
+              "VAULT_AND_ATA",
+              "VAULT_ONLY",
+              "ATA_ONLY"
+            ],
+            "description": "Machine-readable summary of what this call will do (or already observed). Prefer this over parsing `notes[]`. `ALREADY_PROVISIONED` mirrors `alreadyProvisioned: true` (no `transaction`); the other three describe the shape of the unsigned tx returned."
           },
           "transaction": {
             "type": "string",

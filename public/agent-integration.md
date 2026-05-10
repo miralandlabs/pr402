@@ -61,22 +61,38 @@ Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
 ## Seller agents (resource providers)
 
+### Seller lifecycle: Preview → Activate → Verify
+
+The facilitator exposes a three-stage seller lifecycle. Each stage has a distinct side effect; the stages are surfaced machine-readably via the `lifecycle` block on `GET /api/v1/facilitator/onboard` (`previewed` / `activated` / `verified` / `nextStep`).
+
+| Stage | HTTP | Side effect | Required? |
+|-------|------|-------------|-----------|
+| **Preview** | `GET /api/v1/facilitator/onboard?wallet=…` | None. Derives vault PDAs and returns on-chain state. | No wallet needed. |
+| **Activate** | `POST /api/v1/facilitator/onboard/provision` | Returns an unsigned `CreateVault` (+ optional ATA) tx. After the **seller** signs and broadcasts, the on-chain `SplitVault` exists and unlocks the sovereign 5 bps fee tier. | Required before accepting payments. |
+| **Verify** (optional) | `GET /api/v1/facilitator/onboard/challenge` then `POST /api/v1/facilitator/onboard` | Writes a verified row in the off-chain `resource_providers` registry so the seller appears in discovery. The facilitator **refuses** this step with `409 Conflict` until Activate has landed. | Optional. Only required for verified-seller discovery listings. |
+
+The `POST /onboard/provision` response carries a `statusCode` enum so agents don't have to parse `notes[]`:
+
+- `ALREADY_PROVISIONED` — vault (and ATA if applicable) already exist; no `transaction` returned.
+- `VAULT_AND_ATA` — first-time SPL provisioning (two setup ixs).
+- `VAULT_ONLY` — first-time native-SOL provisioning (single `CreateVault` ix).
+- `ATA_ONLY` — vault exists, adding a new SPL mint (single ATA-create ix).
+
 If you receive payment for resources and want **Sovereign** status (95 bps fee tier) and correct **402 `accepts[]`** lines:
 
 1. **Discover rules**: [Onboarding guide](/onboarding_guide.md) — Sovereign vs facilitated (JIT) paths.
-2. **Protocol onboarding (on-chain provisioning)**:
-   - **API (agent-native)**:
-     1. **Build**: `POST /api/v1/facilitator/onboard/provision` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a mint). Repeat per asset; same pair is idempotent (`alreadyProvisioned` + no `transaction` when done). Under the facilitator's application-layer policy, use **one asset per merchant wallet**; repeats for the same `(wallet, asset)` are idempotent. For another token, use **another seller wallet** (see above).
-     2. **Sign**: When `transaction` is present, sign the `VersionedTransaction` (base64 bincode) with your seller key.
-     3. **Send**: Broadcast to Solana when applicable.
-   - **Incentive**: Proactive vault creation earns an ongoing **5 bps** protocol fee discount.
-3. **Status**: Discover your `payTo` (vault PDA) and metadata:
+2. **Preview (no wallet):** `GET /api/v1/facilitator/onboard?wallet=<YOUR_PUBKEY>`. The `lifecycle` block tells you what stage to act on next.
+3. **Activate (on-chain):**
+   - **Build**: `POST /api/v1/facilitator/onboard/provision` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a mint). Idempotent per `(wallet, asset)` (`statusCode: "ALREADY_PROVISIONED"` + no `transaction` when done).
+   - **Sign** the base64 bincode `VersionedTransaction` with your seller key.
+   - **Send** to Solana. Signing with the seller wallet itself earns an ongoing **5 bps** protocol fee discount.
+4. **Discover your `payTo` (vault PDA)** and metadata:
    ```bash
    curl -sS "https://<facilitator-url>/api/v1/facilitator/discovery?wallet=<YOUR_PUBKEY>&scheme=exact" | jq .
    ```
-   Try the **Vault Explorer** on the facilitator `/` landing page for the same resolution. (Note: `/onboard` is for institutional status and proactive onboarding).
-4. **Off-chain registry (optional)**: `GET /api/v1/facilitator/onboard/challenge?wallet=…` then `POST /api/v1/facilitator/onboard` with the signed payload plus optional **`asset`** (defaults to **USDC**) — selects the single settlement rail recorded in Postgres for that merchant wallet. **One asset per wallet:** use another seller key for a second coin. Requires `DATABASE_URL` + HMAC secret on the server; persists verified vault metadata for discovery.
-5. **Publishing x402**: See [Publishing a Payment Required line](#publishing-a-payment-required-line-sellers) so your `accepts[]` matches what this facilitator verifies.
+   Try the **Vault Explorer** on the facilitator `/` landing page for the same resolution.
+5. **Verify identity (optional):** `GET /api/v1/facilitator/onboard/challenge?wallet=…`, sign the returned `message` with the wallet, then `POST /api/v1/facilitator/onboard` with `{ wallet, message, signature, asset }`. The signature must be base58-encoded Ed25519. The facilitator returns **`409 Conflict`** if the on-chain vault does not yet exist — run Activate first. Requires `DATABASE_URL` + HMAC secret on the server; persists verified vault metadata for discovery.
+6. **Publishing x402**: See [Publishing a Payment Required line](#publishing-a-payment-required-line-sellers) so your `accepts[]` matches what this facilitator verifies.
 
 <a id="publishing-a-payment-required-line-sellers"></a>
 
@@ -112,11 +128,11 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 
 ### Seller agent checklist (automation)
 
-1. **Discovery**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Seller provisioning is under `httpEndpoints.onboardProvision`.
-2. **State**: `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact`. If `isSovereign: true`, you already have the discount path where applicable.
-3. **Full Onboarding**: `GET /api/v1/facilitator/onboard?wallet=<PUBKEY>` for all schemes.
-4. **Provision**: `POST /api/v1/facilitator/onboard/provision` with `wallet` + **`asset`** for that seller key’s single rail (see OpenAPI `SellerProvisionTxResponse`); use **another seller key** for a second coin.
-5. **Sign & send** when `transaction` is returned; then re-check onboard JSON for sovereign / provisioning fields.
+1. **Capabilities**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Seller lifecycle endpoints are under `httpEndpoints.onboardPreview` / `onboardChallenge` / `onboard` / `onboardProvision`.
+2. **Preview**: `GET /api/v1/facilitator/onboard?wallet=<PUBKEY>`. Inspect the `lifecycle` block — if `nextStep === "activate"`, skip to step 4. If `isSovereign: true` on `schemes.exact`, you already have the discount path.
+3. **Scheme discovery**: `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact` (or `sla-escrow&asset=<MINT>`) for a single canonical `payTo`.
+4. **Activate**: `POST /api/v1/facilitator/onboard/provision` with `wallet` + **`asset`** for that seller key's single rail. Inspect `statusCode`: `ALREADY_PROVISIONED` means no tx to sign; otherwise sign the base64 bincode tx and broadcast.
+5. **Verify (optional)**: `GET /api/v1/facilitator/onboard/challenge?wallet=<PUBKEY>` → sign the returned `message` → `POST /api/v1/facilitator/onboard` with `{ wallet, message, signature (base58), asset }`. Expect `409 Conflict` if Activate hasn't landed on-chain yet.
 6. **Balances (debug)**: `GET /api/v1/facilitator/vault-snapshot?wallet=<PUBKEY>` (UniversalSettle deployments).
 
 ---

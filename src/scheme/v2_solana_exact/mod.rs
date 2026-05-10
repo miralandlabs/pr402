@@ -178,11 +178,15 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         let (config_pda, _) = self.provider.get_config_pda(&us_config.program_id);
 
         let mut is_sovereign = false;
+        let mut vault_exists = false;
         let mut provisioning_status = None;
         let mut current_fee_bps = fee_bps;
 
         // Fetch on-chain state to determine sovereign status and recovery progress
         if let Ok(vault_acc) = self.provider.rpc_client().get_account(&vault_pda).await {
+            // Vault account exists on-chain. Even if decoding fails below, this is enough to
+            // report `activated` truthfully to the seller lifecycle ladder.
+            vault_exists = true;
             let data = &vault_acc.data;
             if data.len() >= 8 + std::mem::size_of::<SplitVault>() {
                 let vault: &SplitVault =
@@ -249,8 +253,12 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             fee_bps: current_fee_bps.into(),
             status: if is_sovereign {
                 "Sovereign".to_string()
-            } else {
+            } else if vault_exists {
                 "Active".to_string()
+            } else {
+                // Vault has not yet been created on-chain for this wallet.
+                // The seller lifecycle's `activated` flag is derived from this value.
+                "NotProvisioned".to_string()
             },
             is_sovereign,
             provisioning_status,

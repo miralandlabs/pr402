@@ -230,7 +230,17 @@ struct CapabilitiesHttpEndpoints {
     build_oracle_confirm_tx: HttpEndpointInfo,
     sweep: HttpEndpointInfo,
     sweep_cron: HttpEndpointInfo,
+    /// `GET` — read-only PDA preview across all schemes (the "preview" step in the
+    /// seller lifecycle; no wallet, no signature, no DB/chain writes).
+    onboard_preview: HttpEndpointInfo,
+    /// `GET` — issues a short-lived HMAC challenge the seller wallet signs before
+    /// calling `POST /onboard` (the "verify identity" step).
+    onboard_challenge: HttpEndpointInfo,
+    /// `POST` — wallet-signed registry submit. Requires a challenge from
+    /// `GET /onboard/challenge`; writes a verified row in `resource_providers`.
     onboard: HttpEndpointInfo,
+    /// `POST` — on-chain "activate" step. Builds the unsigned `CreateVault` (+ vault ATA)
+    /// tx the seller must sign and broadcast. Idempotent per `(wallet, asset)`.
     onboard_provision: HttpEndpointInfo,
     supported: HttpEndpointInfo,
     health: HttpEndpointInfo,

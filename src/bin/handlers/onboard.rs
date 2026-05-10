@@ -207,6 +207,58 @@ pub async fn handle_onboard_submit(
         Ok(response) => {
             if let Some(db) = pr402_db() {
                 if let Some(info) = response.schemes.get("exact") {
+                    // Gate: refuse to persist a `resource_providers` row that points at a vault
+                    // PDA which does not yet exist on-chain. Without this check the registry can
+                    // acquire dormant rows whose `split_vault_pda` is only a mathematical address
+                    // — buyers would then try to pay a non-existent account.
+                    //
+                    // This is belt-and-suspenders; the well-lit path for sellers is:
+                    //   1. POST /onboard/provision → sign → broadcast  (the "activate" step)
+                    //   2. GET  /onboard/challenge                     (the "verify identity" step)
+                    //   3. POST /onboard (this handler)
+                    if let Some(cp) = CHAIN_PROVIDER.get() {
+                        let vault_pk = match solana_pubkey::Pubkey::from_str(&info.vault_pda) {
+                            Ok(pk) => pk,
+                            Err(e) => {
+                                return error_response(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    &format!("internal: invalid vault pda: {}", e),
+                                );
+                            }
+                        };
+                        match cp.solana.account_exists(&vault_pk).await {
+                            Ok(true) => {}
+                            Ok(false) => {
+                                return error_response(
+                                    StatusCode::CONFLICT,
+                                    "Vault is not yet on-chain for this wallet. Activate first: \
+                                     POST /api/v1/facilitator/onboard/provision (sign and broadcast), \
+                                     then retry registry submit.",
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    target: LOG_SERVER_LOG,
+                                    error = %e,
+                                    "onboard submit: vault existence probe failed; refusing to persist"
+                                );
+                                return error_response(
+                                    StatusCode::SERVICE_UNAVAILABLE,
+                                    "Could not verify vault on-chain right now; try again shortly.",
+                                );
+                            }
+                        }
+                    } else {
+                        warn!(
+                            target: LOG_SERVER_LOG,
+                            "onboard submit: CHAIN_PROVIDER not initialized; cannot verify vault existence"
+                        );
+                        return error_response(
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            "Chain provider not initialized; registry submit unavailable.",
+                        );
+                    }
+
                     match db
                         .upsert_resource_provider_vaults_verified(
                             &submit.wallet,

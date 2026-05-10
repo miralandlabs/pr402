@@ -526,6 +526,91 @@
         .pill.amber  { color: var(--amber);  border-color: var(--amber); }
         .pill.blue   { color: var(--blue);   border-color: var(--blue); }
 
+        /* Seller lifecycle ladder */
+        .lifecycle-wallet {
+            margin-bottom: 1.5rem;
+        }
+        .lifecycle-wallet .hint {
+            margin-top: 0.5rem;
+            color: var(--fg-faint);
+        }
+        .ladder-step {
+            border: 1px solid var(--rule);
+            margin-top: 1rem;
+            background: var(--bg-alt);
+        }
+        .ladder-head {
+            display: grid;
+            grid-template-columns: 2rem 1fr auto;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.85rem 1.1rem;
+            border-bottom: 1px solid var(--rule);
+        }
+        .ladder-num {
+            display: inline-flex;
+            width: 1.75rem;
+            height: 1.75rem;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--fg-faint);
+            color: var(--fg-dim);
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .ladder-step[data-complete="true"] .ladder-num {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-soft);
+        }
+        .ladder-title h3 {
+            font-size: 15px;
+            font-weight: 700;
+            margin: 0;
+            letter-spacing: -0.01em;
+        }
+        .ladder-sub {
+            display: block;
+            font-size: 11px;
+            color: var(--fg-faint);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-top: 0.2rem;
+        }
+        .ladder-optional {
+            display: inline-block;
+            margin-left: 0.4em;
+            padding: 0.05em 0.45em;
+            border: 1px solid var(--rule);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--fg-faint);
+            font-weight: 500;
+            vertical-align: 0.15em;
+        }
+        .ladder-status {
+            font-size: 11px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-weight: 600;
+            padding: 0.2em 0.55em;
+            border: 1px solid var(--rule);
+            color: var(--fg-dim);
+            min-width: 6rem;
+            text-align: center;
+        }
+        .ladder-status[data-status="pending"]  { color: var(--fg-dim); }
+        .ladder-status[data-status="current"]  { color: var(--amber); border-color: var(--amber); }
+        .ladder-status[data-status="done"]     { color: var(--accent); border-color: var(--accent); }
+        .ladder-status[data-status="skipped"]  { color: var(--fg-faint); border-style: dashed; }
+        .ladder-body {
+            padding: 1rem 1.1rem 1.1rem;
+            font-size: 13px;
+        }
+        .ladder-body > p { margin: 0 0 0.75rem; color: var(--fg); }
+        .ladder-body > .hint { margin-top: 0.5rem; }
+
         /* Theme toggle in the env strip */
         .theme-toggle {
             appearance: none;
@@ -599,20 +684,13 @@
         </nav>
     </header>
 
-    <!-- Probe -->
+    <!-- Probe: agent-facing capabilities check -->
     <section>
         <h2><span class="hash">§</span>probe</h2>
-        <p class="muted">One terminal. Three things you can do without leaving this page.</p>
+        <p class="muted">Confirm the live contract of this deployment from your shell. No wallet required.</p>
         <div class="probe" id="probe">
-            <div class="probe-tabs" role="tablist">
-                <button role="tab" data-pane="capabilities" aria-selected="true">capabilities</button>
-                <button role="tab" data-pane="onboard" aria-selected="false">onboard</button>
-                <button role="tab" data-pane="provision" aria-selected="false">provision</button>
-            </div>
-
-            <!-- capabilities pane -->
             <div class="probe-pane active" id="pane-capabilities" role="tabpanel">
-                <p>Probe the live contract from your shell. Works against this deployment <em id="cap-host-label">(loading…)</em>.</p>
+                <p>Runs against this origin <em id="cap-host-label">(loading…)</em>. Feature flags, mint allowlists, and endpoint paths live here.</p>
                 <pre><span class="prompt">$</span> <span id="curl-capabilities">curl -sS "/api/v1/facilitator/capabilities" | jq .</span></pre>
                 <div class="action-row">
                     <button class="btn" id="btn-copy-curl">copy</button>
@@ -621,22 +699,59 @@
                 </div>
                 <div class="probe-output" id="out-capabilities" aria-live="polite"></div>
             </div>
+        </div>
+    </section>
 
-            <!-- onboard pane -->
-            <div class="probe-pane" id="pane-onboard" role="tabpanel">
-                <p>Resolve the canonical vault PDAs and scheme metadata for a seller wallet. Buyer agents: use <code>/verify</code> + <code>/settle</code> instead.</p>
-                <div class="input-row">
-                    <span style="color: var(--accent);">wallet &gt;</span>
-                    <input type="text" id="wallet-input" placeholder="paste seller pubkey (base58)" autocomplete="off" spellcheck="false">
-                    <button class="btn primary" id="btn-onboard-run">onboard</button>
+    <!-- Seller lifecycle ladder -->
+    <section>
+        <h2><span class="hash">§</span>seller lifecycle</h2>
+        <p class="muted">
+            Three stages, in order. <strong>Preview</strong> is pure math — nothing changes.
+            <strong>Activate</strong> puts your SplitVault on-chain and unlocks the sovereign fee tier.
+            <strong>Verify</strong> is optional and registers your wallet in the off-chain discovery index.
+        </p>
+
+        <!-- Shared wallet pubkey row -->
+        <div class="lifecycle-wallet">
+            <div class="input-row">
+                <span style="color: var(--accent);">wallet &gt;</span>
+                <input type="text" id="wallet-input" placeholder="paste seller pubkey (base58) — or connect a wallet below" autocomplete="off" spellcheck="false">
+            </div>
+            <p class="hint">All three stages operate on this pubkey. Step 2 and Step 3 require the wallet's signature; they fall back to the pasted value only for Preview.</p>
+        </div>
+
+        <!-- Step 1 · Preview -->
+        <article class="ladder-step" id="ladder-preview">
+            <header class="ladder-head">
+                <span class="ladder-num">1</span>
+                <div class="ladder-title">
+                    <h3>Preview</h3>
+                    <span class="ladder-sub">read-only · no wallet · no state change</span>
+                </div>
+                <span class="ladder-status" data-status="pending">pending</span>
+            </header>
+            <div class="ladder-body">
+                <p>Resolve your canonical vault PDAs for every rail this deployment supports. This is pure math: nothing is written to disk, chain, or database.</p>
+                <div class="action-row">
+                    <button class="btn primary" id="btn-preview-run">resolve</button>
                 </div>
                 <div class="hint">GET /api/v1/facilitator/onboard?wallet=…</div>
-                <div class="probe-output" id="out-onboard" aria-live="polite"></div>
+                <div class="probe-output" id="out-preview" aria-live="polite"></div>
             </div>
+        </article>
 
-            <!-- provision pane -->
-            <div class="probe-pane" id="pane-provision" role="tabpanel">
-                <p>Establish your <strong>SplitVault</strong> and payment surface in one transaction. Sovereign provisioning earns a <span class="pill accent">5 bps</span> fee discount. Idempotent per <code>(wallet, asset)</code>.</p>
+        <!-- Step 2 · Activate -->
+        <article class="ladder-step" id="ladder-activate">
+            <header class="ladder-head">
+                <span class="ladder-num">2</span>
+                <div class="ladder-title">
+                    <h3>Activate</h3>
+                    <span class="ladder-sub">on-chain · wallet signs · sovereign 5 bps discount</span>
+                </div>
+                <span class="ladder-status" data-status="pending">pending</span>
+            </header>
+            <div class="ladder-body">
+                <p>Creates your <strong>SplitVault</strong> (and the vault ATA for SPL rails). Idempotent per <code>(wallet, asset)</code> — re-running is safe. Signing with the seller wallet itself is what unlocks the <span class="pill accent">5 bps</span> sovereign tier.</p>
                 <div class="input-row">
                     <span style="color: var(--accent);">asset &gt;</span>
                     <select id="provision-asset">
@@ -652,12 +767,33 @@
                 </div>
                 <div class="action-row">
                     <button class="btn" id="btn-wallet-connect">connect wallet</button>
-                    <button class="btn primary" id="btn-provision-vault" disabled>provision vault</button>
+                    <button class="btn primary" id="btn-provision-vault" disabled>activate</button>
                 </div>
                 <div class="hint">POST /api/v1/facilitator/onboard/provision · one asset per merchant wallet — use separate wallets for additional tokens.</div>
                 <div class="probe-output" id="out-provision" aria-live="polite"></div>
             </div>
-        </div>
+        </article>
+
+        <!-- Step 3 · Verify -->
+        <article class="ladder-step" id="ladder-verify">
+            <header class="ladder-head">
+                <span class="ladder-num">3</span>
+                <div class="ladder-title">
+                    <h3>Verify identity <span class="ladder-optional">optional</span></h3>
+                    <span class="ladder-sub">off-chain registry · wallet signs a message · listed in discovery</span>
+                </div>
+                <span class="ladder-status" data-status="pending">pending</span>
+            </header>
+            <div class="ladder-body">
+                <p>Proves key control over the wallet and records a verified row in the facilitator's <code>resource_providers</code> index. Not required to accept payments, but buyers can filter by verified sellers. The facilitator refuses this step until Activate has put the vault on-chain.</p>
+                <div class="action-row">
+                    <button class="btn" id="btn-wallet-connect-verify">connect wallet</button>
+                    <button class="btn primary" id="btn-verify-identity" disabled>sign &amp; register</button>
+                </div>
+                <div class="hint">GET /api/v1/facilitator/onboard/challenge → wallet signs message → POST /api/v1/facilitator/onboard</div>
+                <div class="probe-output" id="out-verify" aria-live="polite"></div>
+            </div>
+        </article>
     </section>
 
     <!-- Audiences -->
@@ -828,9 +964,13 @@
         if (valHost) valHost.textContent = window.location.host;
     }
 
-    // ---- tabs ----
+    // ---- tabs (capabilities probe is the only remaining pane) ----
+    // Tabs used to switch between three panes; the ladder replaced two of them and the
+    // remaining `pane-capabilities` is always visible. Kept the shim as a no-op so the
+    // file is resilient to future multi-pane additions.
     function initTabs() {
         var buttons = document.querySelectorAll('.probe-tabs button');
+        if (!buttons.length) return;
         buttons.forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var target = btn.getAttribute('data-pane');
@@ -871,29 +1011,99 @@
         });
     }
 
-    // ---- onboard probe ----
-    function initOnboardProbe() {
-        var input = document.getElementById('wallet-input');
-        var btn   = document.getElementById('btn-onboard-run');
-        var out   = document.getElementById('out-onboard');
+    // ---- base58 encode (needed for Verify: MiracleMessageSigner returns b64, the
+    //      facilitator expects base58-encoded Ed25519 signature per `Signature::from_str`).
+    //      Pure, no deps. Alphabet from Bitcoin / Solana convention.
+    var B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    function base58Encode(bytes) {
+        if (!bytes || bytes.length === 0) return '';
+        // Count leading zeros.
+        var zeros = 0;
+        while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
+        // Convert the rest to base58.
+        var b = [].slice.call(bytes);
+        var out = '';
+        var size = bytes.length * 2; // upper bound
+        var digits = new Uint8Array(size);
+        var digitslen = 1;
+        for (var i = zeros; i < b.length; i++) {
+            var carry = b[i];
+            var j = 0;
+            for (var k = size - 1; (carry !== 0 || j < digitslen) && k >= 0; k--, j++) {
+                carry += 256 * digits[k];
+                digits[k] = carry % 58;
+                carry = (carry / 58) | 0;
+            }
+            digitslen = j;
+        }
+        var firstNonZero = size - digitslen;
+        while (firstNonZero < size && digits[firstNonZero] === 0) firstNonZero++;
+        for (var z = 0; z < zeros; z++) out += B58_ALPHABET[0];
+        for (var n = firstNonZero; n < size; n++) out += B58_ALPHABET[digits[n]];
+        return out;
+    }
+    function base64ToBytes(b64) {
+        var bin = atob(b64);
+        var out = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+        return out;
+    }
 
-        function renderOnboard(data) {
+    // ---- seller lifecycle ladder (Preview → Activate → Verify) ----
+    function initLifecycleLadder() {
+        var input         = document.getElementById('wallet-input');
+        var btnPreview    = document.getElementById('btn-preview-run');
+        var outPreview    = document.getElementById('out-preview');
+        var stepPreview   = document.getElementById('ladder-preview');
+        var stepActivate  = document.getElementById('ladder-activate');
+        var stepVerify    = document.getElementById('ladder-verify');
+        var statusPreview  = stepPreview  && stepPreview.querySelector('.ladder-status');
+        var statusActivate = stepActivate && stepActivate.querySelector('.ladder-status');
+        var statusVerify   = stepVerify   && stepVerify.querySelector('.ladder-status');
+
+        function setStep(stepEl, statusEl, state, label) {
+            if (!stepEl || !statusEl) return;
+            stepEl.setAttribute('data-complete', state === 'done' ? 'true' : 'false');
+            statusEl.setAttribute('data-status', state);
+            statusEl.textContent = label || state;
+        }
+
+        function applyLifecycle(lifecycle) {
+            // Default to "pending"; lifecycle may be absent on older servers.
+            var lc = lifecycle || {};
+            var nextStep = lc.nextStep || null;
+            setStep(stepPreview, statusPreview,
+                lc.previewed ? 'done' : 'current',
+                lc.previewed ? 'done' : 'current');
+            setStep(stepActivate, statusActivate,
+                lc.activated ? 'done' : (nextStep === 'activate' ? 'current' : 'pending'),
+                lc.activated ? 'done' : (nextStep === 'activate' ? 'current' : 'pending'));
+            setStep(stepVerify, statusVerify,
+                lc.verified ? 'done'
+                  : (nextStep === 'verify' ? 'current'
+                     : (lc.activated ? 'pending' : 'pending')),
+                lc.verified ? 'done'
+                  : (nextStep === 'verify' ? 'current'
+                     : (lc.activated ? 'optional' : 'pending')));
+        }
+
+        function renderPreview(data) {
             if (data && data.error) {
-                out.classList.add('is-error');
-                out.textContent = 'FAILED · ' + data.error;
+                outPreview.classList.add('is-error');
+                outPreview.textContent = 'FAILED · ' + data.error;
                 return;
             }
-            out.classList.remove('is-error');
+            outPreview.classList.remove('is-error');
             var lines = [];
-            lines.push('STATUS · resolution complete');
+            lines.push('STATUS · preview complete');
             var schemes = (data && data.schemes) || {};
             Object.keys(schemes).forEach(function (name) {
                 var info = schemes[name] || {};
                 lines.push('');
                 lines.push('protocol: ' + name.toUpperCase()
-                    + (info.is_sovereign ? '  [sovereign · discounted]' : ''));
+                    + (info.isSovereign ? '  [sovereign · discounted]' : ''));
                 lines.push('  role         : ' + (info.role || ''));
-                if (info.label) lines.push('  ' + info.label.padEnd(13) + ': ' + info.vaultPda);
+                if (info.label) lines.push('  ' + String(info.label).padEnd(13) + ': ' + info.vaultPda);
                 if (info.solStoragePda) lines.push('  sol storage  : ' + info.solStoragePda);
                 if (info.tokenPda)      lines.push('  token ata    : ' + info.tokenPda);
                 if (info.feeBps != null) lines.push('  fee (bps)    : ' + info.feeBps);
@@ -904,27 +1114,61 @@
                     lines.push('  note         : sla-escrow — x402 payTo = escrow PDA per mint; see /agent-payTo-semantics.json.');
                 }
             });
-            out.textContent = lines.join('\n');
+            if (data && data.lifecycle) {
+                lines.push('');
+                lines.push('lifecycle:');
+                lines.push('  previewed : ' + (data.lifecycle.previewed ? 'yes' : 'no'));
+                lines.push('  activated : ' + (data.lifecycle.activated ? 'yes' : 'no'));
+                lines.push('  verified  : ' + (data.lifecycle.verified  ? 'yes' : 'no'));
+                if (data.lifecycle.nextStep) {
+                    lines.push('  next-step : ' + data.lifecycle.nextStep);
+                }
+            }
+            outPreview.textContent = lines.join('\n');
         }
 
-        async function runOnboard() {
+        // Exposed to the Activate flow so it can refresh the ladder after a successful provision.
+        window.__PR402_REFRESH_LADDER__ = async function () {
+            var wallet = (input && input.value || '').trim();
+            if (!wallet) {
+                applyLifecycle(null);
+                return null;
+            }
+            try {
+                var res = await fetch('/api/v1/facilitator/onboard?wallet=' + encodeURIComponent(wallet));
+                if (!res.ok) return null;
+                var data = await res.json();
+                applyLifecycle(data.lifecycle || null);
+                return data;
+            } catch (_) { return null; }
+        };
+
+        async function runPreview() {
             var wallet = (input.value || '').trim();
-            if (!wallet) return;
-            out.classList.remove('is-error');
-            out.textContent = '> onboard ' + wallet;
+            if (!wallet) {
+                outPreview.classList.add('is-error');
+                outPreview.textContent = 'Paste a Solana pubkey above, or connect a wallet.';
+                return;
+            }
+            outPreview.classList.remove('is-error');
+            outPreview.textContent = '> onboard ' + wallet;
             try {
                 var res = await fetch('/api/v1/facilitator/onboard?wallet=' + encodeURIComponent(wallet));
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 var data = await res.json();
-                renderOnboard(data);
+                renderPreview(data);
+                applyLifecycle(data.lifecycle || null);
             } catch (e) {
-                out.classList.add('is-error');
-                out.textContent = 'FAILED · ' + (e && e.message ? e.message : e);
+                outPreview.classList.add('is-error');
+                outPreview.textContent = 'FAILED · ' + (e && e.message ? e.message : e);
             }
         }
 
-        btn.addEventListener('click', runOnboard);
-        input.addEventListener('keypress', function (e) { if (e.key === 'Enter') runOnboard(); });
+        if (btnPreview) btnPreview.addEventListener('click', runPreview);
+        if (input) {
+            input.addEventListener('keypress', function (e) { if (e.key === 'Enter') runPreview(); });
+        }
+        applyLifecycle(null);
     }
 
     // ---- oracle partner button ----
@@ -1035,77 +1279,122 @@
         }
     }
 
-    function initProvisionPane() {
+    // ---- shared wallet state + connect buttons (drives Activate + Verify) ----
+    //
+    // The lifecycle has two wallet-signing steps (Activate, Verify) that must share a single
+    // wallet connection. Each step exposes its own "connect" button but they delegate here so
+    // the user only signs in once. The shared `#wallet-input` on the ladder is auto-populated
+    // with the connected pubkey so Preview resolves against the same identity.
+    function initWalletState() {
+        var walletInput  = document.getElementById('wallet-input');
         var btnConnect   = document.getElementById('btn-wallet-connect');
+        var btnConnectV  = document.getElementById('btn-wallet-connect-verify');
         var btnProvision = document.getElementById('btn-provision-vault');
-        var out          = document.getElementById('out-provision');
-        var assetSel     = document.getElementById('provision-asset');
-        var mintOverride = document.getElementById('provision-mint-override');
+        var btnVerify    = document.getElementById('btn-verify-identity');
         var connectedB58 = null;
-
-        function setStatus(txt, isError) {
-            out.classList.toggle('is-error', !!isError);
-            out.textContent = txt || '';
-        }
+        var userTypedWallet = false;
 
         function truncate(pk) {
             if (!pk) return '';
             return pk.length > 10 ? pk.slice(0, 4) + '…' + pk.slice(-4) : pk;
         }
 
-        function refreshConnectButton() {
+        function paint(btn) {
+            if (!btn) return;
             if (connectedB58) {
-                btnConnect.textContent = truncate(connectedB58) + ' ✓';
-                btnConnect.title = 'connected — click to disconnect';
-                btnConnect.setAttribute('aria-label', 'disconnect wallet');
-                btnConnect.classList.add('is-connected');
+                btn.textContent = truncate(connectedB58) + ' ✓';
+                btn.title = 'connected — click to disconnect';
+                btn.setAttribute('aria-label', 'disconnect wallet');
+                btn.classList.add('is-connected');
             } else {
-                btnConnect.textContent = 'connect wallet';
-                btnConnect.removeAttribute('title');
-                btnConnect.setAttribute('aria-label', 'connect solana wallet');
-                btnConnect.classList.remove('is-connected');
+                btn.textContent = 'connect wallet';
+                btn.removeAttribute('title');
+                btn.setAttribute('aria-label', 'connect solana wallet');
+                btn.classList.remove('is-connected');
             }
         }
 
-        function applyPubkey(pk) {
+        function apply(pk) {
             var next = pk && typeof pk === 'string' ? pk : null;
             connectedB58 = next;
-            btnProvision.disabled = !next;
-            refreshConnectButton();
+            if (btnProvision) btnProvision.disabled = !next;
+            if (btnVerify)    btnVerify.disabled    = !next;
+            paint(btnConnect);
+            paint(btnConnectV);
+            // Reflect the connected pubkey into the shared ladder input unless the user has
+            // typed a different value. This keeps Preview / Activate / Verify aligned.
+            if (walletInput && next && !userTypedWallet) {
+                walletInput.value = next;
+                // Auto-refresh the ladder so Preview and status pills update without a click.
+                if (typeof window.__PR402_REFRESH_LADDER__ === 'function') {
+                    window.__PR402_REFRESH_LADDER__();
+                }
+            }
         }
 
         window.addEventListener('miracle-pubkey', function (ev) {
             var d = ev && ev.detail;
             if (d && d.pubkey && d.pubkey.length) {
-                applyPubkey(typeof d.pubkeyBase58 === 'string' ? d.pubkeyBase58 : null);
+                apply(typeof d.pubkeyBase58 === 'string' ? d.pubkeyBase58 : null);
             } else {
-                applyPubkey(null);
+                apply(null);
             }
         });
 
-        btnConnect.addEventListener('click', function () {
+        if (walletInput) {
+            walletInput.addEventListener('input', function () {
+                userTypedWallet = (walletInput.value || '').trim() !== (connectedB58 || '');
+            });
+        }
+
+        function onConnectClick() {
             if (connectedB58) {
                 if (window.MiracleWalletDisconnecter) {
-                    try { window.MiracleWalletDisconnecter(); }
-                    catch (err) { setStatus(err && err.message ? err.message : String(err), true); }
+                    try { window.MiracleWalletDisconnecter(); } catch (_) {}
                 }
                 return;
             }
             var hasProvider = !!(window.solana || window.phantom || window.solflare || window.backpack);
             if (window.ShowWalletModal) {
                 if (!hasProvider) {
-                    setStatus('No Solana wallet detected. Install Phantom, Solflare, or Backpack to provision a vault.', true);
+                    // Surface the hint on both step outputs so whichever the user is looking at catches it.
+                    var msg = 'No Solana wallet detected. Install Phantom, Solflare, or Backpack to continue.';
+                    ['out-provision', 'out-verify'].forEach(function (id) {
+                        var el = document.getElementById(id);
+                        if (el) { el.classList.add('is-error'); el.textContent = msg; }
+                    });
                 }
                 window.ShowWalletModal();
-            } else {
-                setStatus('Wallet UI is still loading — try again in a second.', true);
             }
-        });
+        }
+        if (btnConnect)  btnConnect.addEventListener('click', onConnectClick);
+        if (btnConnectV) btnConnectV.addEventListener('click', onConnectClick);
 
-        refreshConnectButton();
+        paint(btnConnect);
+        paint(btnConnectV);
+
+        // Exposed for other steps.
+        return {
+            currentPubkey: function () { return connectedB58; },
+        };
+    }
+
+    // ---- Activate step: POST /onboard/provision → sign → send ----
+    function initActivateStep(walletState) {
+        var btnProvision = document.getElementById('btn-provision-vault');
+        var out          = document.getElementById('out-provision');
+        var assetSel     = document.getElementById('provision-asset');
+        var mintOverride = document.getElementById('provision-mint-override');
+        if (!btnProvision) return;
+
+        function setStatus(txt, isError) {
+            out.classList.toggle('is-error', !!isError);
+            out.textContent = txt || '';
+        }
 
         btnProvision.addEventListener('click', async function () {
-            if (!connectedB58) { setStatus('Connect a wallet first.', true); return; }
+            var connected = walletState.currentPubkey();
+            if (!connected) { setStatus('Connect a wallet first.', true); return; }
             if (typeof window.MiracleSignAndSendVersionedTxB64 !== 'function') {
                 setStatus('Wallet bundle not ready.', true);
                 return;
@@ -1118,15 +1407,21 @@
                 var res = await fetch('/api/v1/facilitator/onboard/provision', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ wallet: connectedB58, asset: asset })
+                    body: JSON.stringify({ wallet: connected, asset: asset })
                 });
                 var txt = await res.text();
                 if (!res.ok) throw new Error(txt || ('HTTP ' + res.status));
                 var j = JSON.parse(txt);
                 if (j.error) throw new Error(j.error);
-                if (j.alreadyProvisioned) {
+
+                // Prefer the new statusCode enum; fall back to alreadyProvisioned for older servers.
+                var code = j.statusCode || (j.alreadyProvisioned ? 'ALREADY_PROVISIONED' : null);
+                if (code === 'ALREADY_PROVISIONED') {
                     var notes = (j.notes && j.notes.length) ? j.notes.join('\n') : '';
-                    setStatus('Already provisioned for this wallet and asset — nothing to sign.\n' + notes);
+                    setStatus('Already activated for this wallet and asset — nothing to sign.\n' + notes);
+                    if (typeof window.__PR402_REFRESH_LADDER__ === 'function') {
+                        window.__PR402_REFRESH_LADDER__();
+                    }
                     return;
                 }
                 var txB64 = j.transaction;
@@ -1136,6 +1431,81 @@
                 setStatus(
                     'Confirmed on-chain.\nsignature: ' + sig + '\nexplorer : ' + explorerTxUrl(sig)
                 );
+                if (typeof window.__PR402_REFRESH_LADDER__ === 'function') {
+                    window.__PR402_REFRESH_LADDER__();
+                }
+            } catch (e) {
+                setStatus(e && e.message ? e.message : String(e), true);
+            }
+        });
+    }
+
+    // ---- Verify step: /onboard/challenge → wallet signs → POST /onboard ----
+    function initVerifyStep(walletState) {
+        var btnVerify = document.getElementById('btn-verify-identity');
+        var out       = document.getElementById('out-verify');
+        var assetSel  = document.getElementById('provision-asset');
+        var mintOverride = document.getElementById('provision-mint-override');
+        if (!btnVerify) return;
+
+        function setStatus(txt, isError) {
+            out.classList.toggle('is-error', !!isError);
+            out.textContent = txt || '';
+        }
+
+        btnVerify.addEventListener('click', async function () {
+            var connected = walletState.currentPubkey();
+            if (!connected) { setStatus('Connect a wallet first.', true); return; }
+            if (typeof window.MiracleMessageSigner !== 'function') {
+                setStatus('Wallet bundle not ready (MiracleMessageSigner).', true);
+                return;
+            }
+            var asset = (mintOverride && mintOverride.value.trim())
+                ? mintOverride.value.trim()
+                : (assetSel ? assetSel.value : 'USDC');
+
+            setStatus('Requesting signed challenge…');
+            try {
+                // Step 1: fetch challenge
+                var chRes = await fetch(
+                    '/api/v1/facilitator/onboard/challenge?wallet=' + encodeURIComponent(connected)
+                );
+                var chTxt = await chRes.text();
+                if (!chRes.ok) throw new Error(chTxt || ('HTTP ' + chRes.status));
+                var challenge = JSON.parse(chTxt);
+                if (challenge.error) throw new Error(challenge.error);
+                var message = challenge.message;
+                if (!message) throw new Error('Challenge missing `message`.');
+
+                // Step 2: wallet signs. MiracleMessageSigner returns a base64-encoded signature;
+                // the facilitator expects base58. Convert before submitting.
+                setStatus('Sign the challenge in your wallet…');
+                var sigB64 = await window.MiracleMessageSigner(message);
+                if (!sigB64) throw new Error('Wallet returned an empty signature.');
+                var sigBytes = base64ToBytes(sigB64);
+                var sigB58 = base58Encode(sigBytes);
+
+                // Step 3: submit. The facilitator refuses this if Activate hasn't landed on-chain.
+                setStatus('Submitting verification…');
+                var submitRes = await fetch('/api/v1/facilitator/onboard', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wallet: connected,
+                        message: message,
+                        signature: sigB58,
+                        asset: asset,
+                    }),
+                });
+                var submitTxt = await submitRes.text();
+                if (!submitRes.ok) {
+                    // 409 = not activated yet; helpful hint.
+                    throw new Error(submitTxt || ('HTTP ' + submitRes.status));
+                }
+                setStatus('Verified. Your wallet is registered as a resource provider.');
+                if (typeof window.__PR402_REFRESH_LADDER__ === 'function') {
+                    window.__PR402_REFRESH_LADDER__();
+                }
             } catch (e) {
                 setStatus(e && e.message ? e.message : String(e), true);
             }
@@ -1206,9 +1576,11 @@
         syncCurlProbe();
         initTabs();
         initCapabilitiesProbe();
-        initOnboardProbe();
+        initLifecycleLadder();
         initOracleEmail();
-        initProvisionPane();
+        var walletState = initWalletState();
+        initActivateStep(walletState);
+        initVerifyStep(walletState);
         (async function () {
             await updateHealth();
             await ensureWalletBundle();

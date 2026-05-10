@@ -102,6 +102,16 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/sweep-cron",
                 auth: Some("bearer"),
             },
+            onboard_preview: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/onboard",
+                auth: None,
+            },
+            onboard_challenge: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/onboard/challenge",
+                auth: None,
+            },
             onboard: HttpEndpointInfo {
                 method: "POST",
                 path: "/api/v1/facilitator/onboard",
