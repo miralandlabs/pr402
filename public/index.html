@@ -70,6 +70,18 @@
         :root[data-theme="light"] { color-scheme: light; }
         :root[data-theme="dark"]  { color-scheme: dark;  }
 
+        /* Theme native form widgets (the "List publicly" checkbox in Step 3, most notably) so
+         * the OS-blue accent doesn't break the terminal-green palette. `accent-color` is the
+         * cheapest way to recolor the native tick without re-styling the whole widget. */
+        html { accent-color: var(--accent); }
+
+        /* Themed text-selection + caret — a small touch that makes the page feel like a
+         * terminal in both modes. Keeps highlighted pubkeys / curl snippets on-palette. */
+        ::selection {
+            background: var(--accent-soft);
+            color: var(--fg);
+        }
+
         * { box-sizing: border-box; }
 
         html, body {
@@ -311,7 +323,12 @@
             background: var(--bg);
             border: 1px solid var(--rule);
             font-size: 13px;
+            transition: border-color 0.12s ease;
         }
+        /* Move the focus affordance to the wrapper since the `<input>` itself has
+         * `outline: none`. Without this, keyboard users have no signal about where
+         * focus is in a form with multiple stacked rows. */
+        .probe-pane .input-row:focus-within { border-color: var(--accent); }
         .probe-pane input[type="text"],
         .probe-pane select {
             flex: 1 1 auto;
@@ -328,6 +345,7 @@
              * the text from clipping inside the row on narrower viewports. */
             font-variant-numeric: tabular-nums;
             text-overflow: ellipsis;
+            caret-color: var(--accent);
         }
         /* Room-to-breathe between the asset selector and the mint override in the Activate step,
          * plus anywhere else we stack two or more input rows in the same card. */
@@ -615,12 +633,14 @@
         .ladder-body > p { margin: 0 0 0.75rem; color: var(--fg); }
         .ladder-body > .hint { margin-top: 0.5rem; }
 
-        /* Optional discovery form inside Step 3 (Verify identity). */
+        /* Optional discovery form inside Step 3 (Verify identity). A subtle tinted card
+         * so the optional nature is obvious but the wash doesn't dominate the section —
+         * the original 40% mix was visibly heavy in light mode. */
         .ladder-details {
             margin: 0.75rem 0 1rem;
             border: 1px dashed var(--rule);
             padding: 0.5rem 1rem 0.75rem;
-            background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
+            background: color-mix(in srgb, var(--accent-soft) 20%, transparent);
         }
         .ladder-details summary {
             cursor: pointer;
@@ -662,7 +682,10 @@
             background: var(--bg);
             border: 1px solid var(--rule);
             font-size: 13px;
+            transition: border-color 0.12s ease;
         }
+        .ladder-body .input-row:focus-within,
+        .lifecycle-wallet .input-row:focus-within { border-color: var(--accent); }
         .ladder-body .input-row input[type="text"],
         .ladder-body .input-row select,
         .lifecycle-wallet .input-row input[type="text"],
@@ -679,6 +702,7 @@
             padding: 0;
             font-variant-numeric: tabular-nums;
             text-overflow: ellipsis;
+            caret-color: var(--accent);
         }
         /* Breathing room between stacked input rows (asset / mint pair in Activate). */
         .ladder-body .input-row + .input-row,
