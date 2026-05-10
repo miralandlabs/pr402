@@ -1,16 +1,16 @@
 ---
-title: "Seller Shortcut (5 steps): Monetize Your API with x402"
+title: "Seller shortcut · 5 steps"
 ---
 
-# Seller Shortcut (5 steps): Monetize Your API with x402
+# Seller shortcut · 5 steps
 
-**New here?** Read the full [Seller Quickstart](/seller-quick-start.md) first (overview, diagram, discovery).
+> **Cheat-sheet.** This is the minimal 5-step flow for sellers who already understand x402. If you want the full walkthrough with diagrams, language examples, and rationale, use [Seller Quickstart](/seller-quick-start.md) instead.
 
 > **You have a Solana wallet and want to charge for API calls. Here's the fastest path.**
 
-> **Launch phase:** **Experimental** — **use at your own risk**.
+> **Status.** The `exact` rail on pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); the same service is also served at `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). For `sla-escrow` you must choose an `oracle_authority` you trust — the reference oracle is [`oracle-qa`](https://github.com/miraland-labs/oracle-qa).
 
-Replace **`$BASE`** with your facilitator URL. **Recommended:** **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet). **Also:** `https://agent.pay402.me` / `https://preview.agent.pay402.me` (same service). Confirm **`solanaNetwork`** with **`GET /api/v1/facilitator/health`** on that host.
+Replace **`$BASE`** with your facilitator URL. Confirm the cluster with **`GET /api/v1/facilitator/health`** on that host.
 
 Use the same `$BASE` in your public docs, 402 bodies, buyer instructions, `/verify`, and `/settle`. Most integration failures come from mixing preview/mainnet origins or publishing a bare wallet where this facilitator expects a PDA.
 

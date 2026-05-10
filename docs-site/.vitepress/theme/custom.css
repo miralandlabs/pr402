@@ -1,15 +1,31 @@
 /* Home hero artwork — pr402.png is high-resolution */
 .VPHomeHero .image .image-src {
-  max-width: min(100%, 28rem);
+  max-width: min(100%, 24rem);
   width: 100%;
   height: auto;
-  border-radius: 1rem;
+  border-radius: 0.75rem;
 }
 
 @media (max-width: 960px) {
   .VPHomeHero .image {
     margin-top: 2rem;
   }
+}
+
+/* Subtle monospace accent so docs match the landing page aesthetic */
+.VPHomeHero .name,
+.VPHomeHero .text {
+  letter-spacing: -0.02em;
+}
+
+.VPHomeHero .name {
+  font-family:
+    "Berkeley Mono", "JetBrains Mono", "IBM Plex Mono",
+    ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.VPHomeHero .tagline {
+  max-width: 48rem;
 }
 
 /* Floating community buttons — VitePress brand vars track light/dark */

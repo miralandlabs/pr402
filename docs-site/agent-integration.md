@@ -22,7 +22,7 @@ Runbook for two kinds of autonomous clients:
 
 **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL.
 
-> **Launch phase:** Facilitator APIs and this runbook are **experimental** — **use at your own risk**.
+> **Status.** pr402 is live on **Solana Mainnet** and **Devnet**; the `exact` rail is GA, and `sla-escrow` is available to integrators who operate or trust a production `oracle_authority` (reference: [`oracle-qa`](https://github.com/miraland-labs/oracle-qa)). Behavior and flags can evolve — `GET /capabilities` and `GET /openapi.json` on the host you actually call are the live contract.
 
 | | **Recommended** | **Also available (same service)** |
 |--|-----------------|----------------|
@@ -90,7 +90,7 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 2. **Bootstrap shape from discovery**  
    Call **`GET /api/v1/facilitator/supported`** (or read **`supported`** inside **`GET /capabilities`**). Copy the structure of a `kinds[]` entry for your rail (`v2:solana:exact` or `v2:solana:sla-escrow`): `network`, `scheme`, and especially **`extra`** (fee payer, program IDs, oracle lists, bank/config PDAs). Your **`accepts[]`** lines should be consistent with that shape so buyers can call builders without guessing.
 
-   **Several options in one 402:** x402 **`accepts[]`** is an **array**—each entry is a full payment requirement with its own **`payTo`**, **`asset`**, and metadata; the buyer returns **one** chosen line as **`accepted`**. This is how you advertise more than one token or rail on the same resource. With this facilitator’s **one asset per merchant wallet** rule, use **distinct seller pubkeys** per rail and give each `accepts[]` row the **`payTo`** / **`extra.merchantWallet`** from discovery for **that** key (see [Onboarding guide](/onboarding_guide) — *Launch phase: one payment asset per merchant wallet*).
+   **Several options in one 402:** x402 **`accepts[]`** is an **array**—each entry is a full payment requirement with its own **`payTo`**, **`asset`**, and metadata; the buyer returns **one** chosen line as **`accepted`**. This is how you advertise more than one token or rail on the same resource. With this facilitator’s **one asset per merchant wallet** rule, use **distinct seller pubkeys** per rail and give each `accepts[]` row the **`payTo`** / **`extra.merchantWallet`** from discovery for **that** key (see [Onboarding guide](/onboarding_guide) — *Policy: one payment asset per merchant wallet*).
 
 3. **`v2:solana:exact` (UniversalSettle)**  
    - **`payTo`**: Must identify the **vault rail** the facilitator checks on-chain (split-vault / SOL storage / vault ATA semantics per deployment). Use PDAs from **`GET /api/v1/facilitator/discovery?wallet=<your_seller_pubkey>&scheme=exact`** (`vaultPda`, `solStoragePda`, etc.). Do **not** publish only your personal wallet as `payTo` unless that is explicitly the derived rail for your deployment.  

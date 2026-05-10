@@ -4,15 +4,15 @@ title: "Seller Quick Start: Monetize Your API with x402"
 
 # Seller Quick Start: Monetize Your API with x402
 
-**Prefer copy-paste steps only?** Use [Seller Shortcut (5 steps)](/quickstart-seller.html)—minimal `/upgrade` checklist.
-
 **Audience**: Any developer with an existing web API (REST, GraphQL, etc.) who wants to gate routes behind paid access using the x402 protocol and the pr402 facilitator.
 
 **Time to integrate**: ~30 minutes. No blockchain SDK required in your server.
 
-> **Launch phase:** **Experimental** — **use at your own risk**.
+**Prefer a five-step cheat-sheet?** Use [Seller shortcut · 5 steps](/quickstart-seller.html) for the minimal `/upgrade` path.
 
-Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. **Recommended:** **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet). **Also:** `https://agent.pay402.me` / `https://preview.agent.pay402.me`. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.
+> **Status.** pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). Behavior, feature flags, and fee parameters can evolve — treat **`GET /capabilities`** and **`GET /openapi.json`** on the host you actually call as the live contract.
+
+Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.
 
 ---
 
