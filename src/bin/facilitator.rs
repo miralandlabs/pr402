@@ -622,6 +622,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         ),
                     }
                 }
+                // Site icon — served at both the canonical `/pr402.png` (referenced by
+                // `<link rel="icon">` in `public/index.html`) and `/favicon.ico` (browser
+                // default probe when a JSON endpoint like `/capabilities` is shown without
+                // any `<link>` tags). `apple-touch-icon*.png` is for iOS home-screen bookmarks.
+                // The PNG is compiled in via `include_bytes!` so it ships with the binary
+                // alongside the already-embedded `public/index.html`.
+                ("GET", "/pr402.png")
+                | ("GET", "/favicon.ico")
+                | ("GET", "/apple-touch-icon.png")
+                | ("GET", "/apple-touch-icon-precomposed.png") => {
+                    const ICON_BYTES: &[u8] = include_bytes!("../../public/pr402.png");
+                    Response::builder()
+                        .header("Content-Type", "image/png")
+                        .header("Cache-Control", "public, max-age=86400, immutable")
+                        .body(Body::Binary(ICON_BYTES.to_vec()))
+                        .unwrap()
+                }
                 ("GET", "/api/v1/facilitator/onboard/challenge") => {
                     handle_onboard_challenge(&query).await
                 }

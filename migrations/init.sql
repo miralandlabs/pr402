@@ -198,7 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_parameters_inactive ON parameters (inactive ASC);
 --     Comma- or whitespace-separated base58 mint pubkeys. Parsed in Rust by splitting on commas
 --     and ASCII whitespace (see `parameters::resolve_allowed_payment_mints`).
 --     Include native SOL explicitly as 11111111111111111111111111111111 (matches x402/Solana
---     convention for `asset` on native SOL lines). WSOL uses mint So11111111111111111111111111111111111111112.
+--     convention for `asset` on native SOL lines).
 --     Use exactly one USDC mint for your cluster (mainnet EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v;
 --     devnet 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU). Do not mix cluster mints on one deploy.
 --     Empty / omitted = allowlist disabled (permissive; not for production).
@@ -210,7 +210,7 @@ INSERT INTO parameters (param_name, param_value) VALUES
     ('PR402_ONBOARD_CHALLENGE_TTL_SEC', '600'),
     (
         'PR402_ALLOWED_PAYMENT_MINTS',
-        '11111111111111111111111111111111,So11111111111111111111111111111111111111112,EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+        '11111111111111111111111111111111,EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
     ),
     -- Hard-gate: refuse to start when PR402_ALLOWED_PAYMENT_MINTS is empty. Seeds `false`
     -- for backward compatibility with existing devnet deployments; flip to `true` in
@@ -223,7 +223,7 @@ INSERT INTO parameters (param_name, param_value) VALUES
     ('PR402_SWEEP_MIN_SPENDABLE_LAMPORTS', '30000000'),
     (
         'PR402_SWEEP_MIN_SPL_RAW_BY_MINT',
-        '{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v":"3000000","So11111111111111111111111111111111111111112":"30000000"}'
+        '{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v":"3000000"}'
     ),
     ('PR402_SWEEP_MIN_SPL_RAW_DEFAULT', '3000000')
 ON CONFLICT (param_name) DO UPDATE SET
