@@ -34,7 +34,7 @@ pub async fn handle_onboard_preview(
 }
 
 /// Agent-native seller provisioning: unsigned tx for UniversalSettle SplitVault + asset surface (SOL or SPL vault ATA).
-/// Body JSON: `wallet`, `asset` (`SOL` | `USDC` | `WSOL` | `USDT` | base58 mint). Idempotent per `(wallet, asset)`.
+/// Body JSON: `wallet`, `asset` (`SOL` | `USDC` | `USDT` | base58 mint). Idempotent per `(wallet, asset)`.
 pub async fn handle_onboard_provision(
     facilitator: Arc<
         dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,
@@ -66,7 +66,7 @@ pub async fn handle_onboard_provision(
     if asset.is_empty() {
         return error_response(
             StatusCode::BAD_REQUEST,
-            "Missing asset (e.g. SOL, USDC, WSOL, USDT, or a base58 mint address)",
+            "Missing asset (e.g. SOL, USDC, USDT, or a base58 mint address)",
         );
     }
 

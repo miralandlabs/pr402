@@ -83,7 +83,7 @@ If you receive payment for resources and want **Sovereign** status (90 bps fee t
 1. **Discover rules**: [Onboarding guide](/onboarding_guide.md) — Sovereign vs facilitated (JIT) paths.
 2. **Preview (no wallet):** `GET /api/v1/facilitator/onboard?wallet=<YOUR_PUBKEY>`. The `lifecycle` block tells you what stage to act on next.
 3. **Activate (on-chain):**
-   - **Build**: `POST /api/v1/facilitator/onboard/provision` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a mint). Idempotent per `(wallet, asset)` (`statusCode: "ALREADY_PROVISIONED"` + no `transaction` when done).
+   - **Build**: `POST /api/v1/facilitator/onboard/provision` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `USDT`, or a base58 SPL mint). Idempotent per `(wallet, asset)` (`statusCode: "ALREADY_PROVISIONED"` + no `transaction` when done).
    - **Sign** the base64 bincode `VersionedTransaction` with your seller key.
    - **Send** to Solana. Signing with the seller wallet itself earns the ongoing **10 bps** protocol fee discount (90 bps sovereign rate vs 100 bps standard).
 4. **Discover your `payTo` (vault PDA)** and metadata:

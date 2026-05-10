@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>pr402 — x402 facilitator for Solana</title>
     <link rel="icon" type="image/png" href="/pr402.png">
+    <!-- Fallback for browsers / scrapers that probe /favicon.ico directly. Same PNG,
+         served by the Rust binary and Vercel static route under both paths. -->
+    <link rel="shortcut icon" type="image/png" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <meta name="description" content="pr402 is the x402 facilitator for Solana. HTTP 402 for autonomous agents, settled on-chain via UniversalSettle and SLA-Escrow. Live on Mainnet and Devnet.">
     <meta name="color-scheme" content="dark light">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -975,7 +979,6 @@
                     <select id="provision-asset">
                         <option value="USDC" selected>USDC — typical for agents</option>
                         <option value="SOL">SOL — native (virtual mint 1111…1111)</option>
-                        <option value="WSOL">WSOL — wrapped SOL</option>
                         <option value="USDT">USDT — mainnet; devnet use custom mint</option>
                     </select>
                 </div>
