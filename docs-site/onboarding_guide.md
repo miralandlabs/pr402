@@ -34,7 +34,7 @@ For autonomous agents and backend services:
 3. **Send**: Broadcast to Solana when a transaction is present.
 
 **Institutional Incentive**: 
-- **Discounted Fees**: You receive an ongoing **5 bps (0.05%) discount** on all protocol fees. (Standard: 1.00% → Your Rate: **0.95%**).
+- **Discounted Fees**: You receive an ongoing **10 bps (0.10%) discount** on all protocol fees. (Standard: **1.00%** → Your Rate: **0.90%**).
 - **No Setup Fee**: You avoid the one-time $1.00 provisioning recovery fee.
 
 **Registry (Off-Chain Discovery)**: After provisioning your vault on-chain, use the Facilitator API (`/onboard/challenge`) to persist your verified metadata in the database for high-fidelity discovery.
@@ -77,7 +77,7 @@ universalsettle vault-status --seller <YOUR_WALLET_PUBKEY>
 ```
 
 **Fields to watch:**
-- `is_sovereign`: `YES` means you have the 5 bps Institutional Discount.
+- `is_sovereign`: `YES` means you have the 10 bps Institutional Discount (pay 90 bps instead of the standard 100 bps).
 - `is_provisioned`: `1` means you are now in "Tiered-Fee" mode (rent recovered).
 - `sol_recovered`: Progress towards the SOL setup recovery.
 - `spl_recovered`: Progress towards the SPL setup recovery.
