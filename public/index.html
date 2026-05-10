@@ -920,9 +920,11 @@
             <p class="fee-schedule-footnote">
                 Seller receives <code>amount − protocol_fee − oracle_tip</code>. On <code>exact</code>
                 there is no oracle tip. On <code>sla-escrow</code> the oracle tip is paid only when
-                the oracle rendered a verdict (<code>resolution_state ≠ 0</code>). The <code>exact · min fee</code>
-                floor on the SPL rail is <code>$0.01 USDC (10 000 raw units)</code>; SOL-rail floor
-                is <code>200 000 lamports</code>. See <a href="/api/v1/facilitator/capabilities">/capabilities</a>
+                the oracle rendered a verdict (<code>resolution_state ≠ 0</code>) and is a
+                per-escrow field capped by the program at 500 bps; this deployment opens
+                escrows with the default shown above. The <code>exact · min fee</code> floor on
+                the SPL rail is <code>$0.01 USDC (10 000 raw units)</code>; SOL-rail floor is
+                <code>200 000 lamports</code>. See <a href="/api/v1/facilitator/capabilities">/capabilities</a>
                 for the authoritative live values.
             </p>
         </section>

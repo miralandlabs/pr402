@@ -222,6 +222,12 @@ impl UniversalSettleConfig {
 
 impl SLAEscrowConfig {
     /// Read fee settings from on-chain Bank account.
+    ///
+    /// The Bank carries a facilitator-wide `fee_bps` only. The oracle tip (`oracle_fee_bps`)
+    /// is a **per-escrow** field on the sla-escrow protocol — there is no Bank-level default.
+    /// pr402 therefore resolves its default oracle tip from its own operator config
+    /// (`PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS` via `parameters` / env), clamped to
+    /// `MAX_ORACLE_FEE_BPS` so misconfiguration can't advertise a value the program rejects.
     pub async fn load_fee_settings(
         &mut self,
         rpc_client: &solana_client::nonblocking::rpc_client::RpcClient,
@@ -254,6 +260,17 @@ impl SLAEscrowConfig {
 
         self.fee_bps = Some(bank_state.fee_bps);
         self.bank_address = Some(bank_pda);
+
+        // Operator-configured default oracle tip. Sync resolver: reads the DB parameters
+        // cache if warm, else the env var, else `DEFAULT_SLA_ESCROW_ORACLE_FEE_BPS`. The cap
+        // matches the on-chain program constant so `/capabilities` advertises a value the
+        // program will actually accept.
+        self.oracle_fee_bps = Some(crate::parameters::resolve_u16_bps_sync(
+            crate::parameters::PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS,
+            crate::parameters::PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS,
+            crate::parameters::DEFAULT_SLA_ESCROW_ORACLE_FEE_BPS,
+            sla_escrow_api::consts::MAX_ORACLE_FEE_BPS,
+        ));
 
         Ok(())
     }
