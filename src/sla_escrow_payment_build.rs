@@ -440,6 +440,17 @@ pub async fn build_sla_escrow_fund_payment_tx(
             )
         })?;
 
+    // Full ordered signer list (see `BuildPaymentTxResponse::signer_pubkeys`). Covers
+    // both the sponsored path (fee_payer + buyer) and the buyer-as-fee-payer path.
+    let num_signers = vtx.message.header().num_required_signatures as usize;
+    let signer_pubkeys: Vec<String> = vtx
+        .message
+        .static_account_keys()
+        .iter()
+        .take(num_signers)
+        .map(|k| k.to_string())
+        .collect();
+
     let wire = bincode::serialize(&vtx).map_err(|e| {
         SlaEscrowPaymentBuildError::InvalidRequest(format!("bincode serialize: {}", e))
     })?;
@@ -494,6 +505,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
         payer: payer_pk.to_string(),
         payment_uid: Some(payment_uid),
         payer_signature_index,
+        signer_pubkeys,
         verify_body_template,
         notes,
     })

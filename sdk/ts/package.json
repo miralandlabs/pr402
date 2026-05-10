@@ -1,16 +1,41 @@
 {
   "name": "@miraland-labs/pr402-client",
-  "version": "0.1.0",
-  "description": "Lightweight NPM library for Autonomous Agents discovering and settling x402 402 AI APIs",
+  "version": "0.3.0",
+  "description": "Lightweight NPM library + CLI for autonomous agents paying HTTP 402 APIs settled on Solana via pr402.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "type": "commonjs",
+  "bin": {
+    "pr402-buy": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "postbuild": "node -e \"require('fs').chmodSync('dist/cli.js', 0o755)\""
   },
   "dependencies": {
     "@solana/web3.js": "^1.87.0"
   },
   "devDependencies": {
+    "@types/node": "^20",
     "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "x402",
+    "solana",
+    "pr402",
+    "facilitator",
+    "agent"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/miralandlabs/pr402"
   }
 }

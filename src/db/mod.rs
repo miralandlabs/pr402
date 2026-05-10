@@ -36,6 +36,181 @@ pub struct Pr402Db {
     pool: Pool,
 }
 
+/// One row emitted by [`Pr402Db::list_public_providers`] / [`Pr402Db::get_public_provider`].
+///
+/// Intentionally minimal: only fields the seller opted to publish, plus the vault PDA so
+/// buyers / discovery consumers can skip a separate `/discovery` round-trip when they want
+/// to build an `accepts[]` line. Sensitive / internal columns (sweep signatures, attempt
+/// counters) are never included.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicProviderEntry {
+    pub wallet_pubkey: String,
+    pub settlement_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spl_mint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub split_vault_pda: Option<String>,
+    pub service_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_metadata: Option<serde_json::Value>,
+    /// When the seller signed the onboard challenge for this row. RFC3339 string so
+    /// JSON serialization is straightforward even in clients without date libraries.
+    pub registration_verified_at: String,
+    /// Last time the row was touched by the facilitator (metadata update, discovery
+    /// flag flip, etc.). Reuse as the pagination cursor for the next page.
+    pub updated_at: String,
+}
+
+impl PublicProviderEntry {
+    fn from_row(row: &tokio_postgres::Row) -> Self {
+        Self {
+            wallet_pubkey: row.get::<_, String>("wallet_pubkey"),
+            settlement_mode: row.get::<_, String>("settlement_mode"),
+            spl_mint: row.try_get::<_, Option<String>>("spl_mint").ok().flatten(),
+            split_vault_pda: row
+                .try_get::<_, Option<String>>("split_vault_pda")
+                .ok()
+                .flatten(),
+            service_url: row
+                .try_get::<_, Option<String>>("service_url")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+            display_name: row
+                .try_get::<_, Option<String>>("display_name")
+                .ok()
+                .flatten(),
+            description: row
+                .try_get::<_, Option<String>>("description")
+                .ok()
+                .flatten(),
+            tags: row
+                .try_get::<_, Option<Vec<String>>>("tags")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+            service_metadata: row
+                .try_get::<_, Option<Json<serde_json::Value>>>("service_metadata")
+                .ok()
+                .flatten()
+                .map(|j| j.0),
+            registration_verified_at: row
+                .try_get::<_, Option<std::time::SystemTime>>("registration_verified_at")
+                .ok()
+                .flatten()
+                .map(system_time_to_rfc3339)
+                .unwrap_or_default(),
+            updated_at: row
+                .try_get::<_, std::time::SystemTime>("updated_at")
+                .map(system_time_to_rfc3339)
+                .unwrap_or_default(),
+        }
+    }
+}
+
+/// One row emitted by [`Pr402Db::list_seller_payments`]. Mirrors the `payment_attempts`
+/// columns a seller actually needs to reconcile — no verify/settle error prose.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SellerPaymentEntry {
+    pub correlation_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verify_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verify_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settle_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settle_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payer_wallet: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheme: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amount: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset: Option<String>,
+    pub created_at: String,
+}
+
+impl SellerPaymentEntry {
+    fn from_row(row: &tokio_postgres::Row) -> Self {
+        let iso = |c: &str| {
+            row.try_get::<_, Option<std::time::SystemTime>>(c)
+                .ok()
+                .flatten()
+                .map(system_time_to_rfc3339)
+        };
+        Self {
+            correlation_id: row.get::<_, String>("correlation_id"),
+            verify_at: iso("verify_at"),
+            verify_ok: row.try_get::<_, Option<bool>>("verify_ok").ok().flatten(),
+            settle_at: iso("settle_at"),
+            settle_ok: row.try_get::<_, Option<bool>>("settle_ok").ok().flatten(),
+            settlement_signature: row
+                .try_get::<_, Option<String>>("settlement_signature")
+                .ok()
+                .flatten(),
+            payer_wallet: row
+                .try_get::<_, Option<String>>("payer_wallet")
+                .ok()
+                .flatten(),
+            scheme: row.try_get::<_, Option<String>>("scheme").ok().flatten(),
+            amount: row.try_get::<_, Option<String>>("amount").ok().flatten(),
+            asset: row.try_get::<_, Option<String>>("asset").ok().flatten(),
+            created_at: row
+                .try_get::<_, std::time::SystemTime>("created_at")
+                .map(system_time_to_rfc3339)
+                .unwrap_or_default(),
+        }
+    }
+}
+
+/// Render a `SystemTime` as RFC3339 / ISO-8601 with microsecond precision. No chrono or
+/// time-crate dependency: we compute seconds + fractional seconds from the UNIX_EPOCH and
+/// delegate to `humantime_serde`-compatible formatting via manual splitting of UTC components
+/// using the `time` crate's primitives... but we don't have `time` either, so we do it from
+/// scratch with a verified algorithm. Keeps the database module dep-light.
+fn system_time_to_rfc3339(t: std::time::SystemTime) -> String {
+    use std::time::{Duration, UNIX_EPOCH};
+    let dur = t.duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO);
+    let total_secs = dur.as_secs() as i64;
+    let micros = dur.subsec_micros();
+
+    // Convert total_secs since 1970-01-01 UTC to (year, month, day, hh, mm, ss).
+    // Algorithm from Howard Hinnant "date" (civil_from_days) — public domain / CC0.
+    let days = total_secs.div_euclid(86_400);
+    let mut secs_of_day = total_secs.rem_euclid(86_400);
+    let hh = secs_of_day / 3600;
+    secs_of_day %= 3600;
+    let mm = secs_of_day / 60;
+    let ss = secs_of_day % 60;
+
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:06}Z",
+        year, m, d, hh, mm, ss, micros
+    )
+}
+
 #[derive(Debug)]
 pub enum DbError {
     Pool(String),
@@ -238,6 +413,7 @@ impl Pr402Db {
               FROM resource_providers
              WHERE wallet_pubkey = $1
                AND registration_verified_at IS NOT NULL
+               AND (retired_at IS NULL)
              LIMIT 1
         "#;
 
@@ -268,6 +444,348 @@ impl Pr402Db {
         }
 
         res
+    }
+
+    /// Apply an optional discovery payload to the seller's registry rows. Updates *all*
+    /// rails for `wallet_pubkey` in lockstep so the public listing stays consistent across
+    /// settlement modes. Called at the tail of `POST /onboard`.
+    ///
+    /// Length / pattern limits are enforced in the application layer (handler) before this
+    /// runs; this function just writes the validated values. Passing `None` for any field
+    /// leaves the existing column untouched (vs. clearing it), so a seller can update
+    /// the display name without wiping tags.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn apply_seller_discovery(
+        &self,
+        wallet_pubkey: &str,
+        service_url: Option<&str>,
+        display_name: Option<&str>,
+        description: Option<&str>,
+        tags: Option<&[String]>,
+        service_metadata: Option<&serde_json::Value>,
+        listing_opt_in: Option<bool>,
+    ) -> Result<u64, DbError> {
+        const SQL: &str = r#"
+            UPDATE resource_providers SET
+                service_url      = COALESCE($2, service_url),
+                display_name     = COALESCE($3, display_name),
+                description      = COALESCE($4, description),
+                tags             = COALESCE($5, tags),
+                service_metadata = COALESCE($6, service_metadata),
+                listing_opt_in   = COALESCE($7, listing_opt_in),
+                updated_at       = NOW()
+             WHERE wallet_pubkey = $1
+               AND (retired_at IS NULL)
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "apply_seller_discovery: tx start failed");
+            DbError::TransactionFailed
+        })?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let metadata_json = service_metadata.map(Json);
+        // Owned so references live long enough for the query call.
+        let tags_owned: Option<Vec<String>> = tags.map(|t| t.to_vec());
+
+        let res = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.execute(
+                SQL,
+                &[
+                    &wallet_pubkey,
+                    &service_url,
+                    &display_name,
+                    &description,
+                    &tags_owned,
+                    &metadata_json,
+                    &listing_opt_in,
+                ],
+            ),
+        )
+        .await
+        {
+            Ok(Ok(n)) => Ok(n),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "apply_seller_discovery failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        match res {
+            Ok(n) => {
+                tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+                Ok(n)
+            }
+            Err(e) => {
+                let _ = tx.rollback().await;
+                Err(e)
+            }
+        }
+    }
+
+    /// Retire all `resource_providers` rows for a wallet. Sets `retired_at = NOW()` (if not
+    /// already set) and flips `inactive = TRUE`. Called from `POST /onboard/retire` after
+    /// the same HMAC challenge + wallet signature verification as `POST /onboard`.
+    ///
+    /// Returns the count of rows updated. Zero = wallet was not in the registry; callers
+    /// should surface that as a no-op success, not an error.
+    pub async fn retire_resource_provider(&self, wallet_pubkey: &str) -> Result<u64, DbError> {
+        const SQL: &str = r#"
+            UPDATE resource_providers SET
+                retired_at     = COALESCE(retired_at, NOW()),
+                inactive       = TRUE,
+                listing_opt_in = FALSE,
+                updated_at     = NOW()
+             WHERE wallet_pubkey = $1
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "retire_resource_provider: tx start failed");
+            DbError::TransactionFailed
+        })?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let res = match timeout(Self::QUERY_TIMEOUT, tx.execute(SQL, &[&wallet_pubkey])).await {
+            Ok(Ok(n)) => Ok(n),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "retire_resource_provider failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        match res {
+            Ok(n) => {
+                tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+                Ok(n)
+            }
+            Err(e) => {
+                let _ = tx.rollback().await;
+                Err(e)
+            }
+        }
+    }
+
+    /// Refuses to proceed when the wallet has an unretired row that already opted into
+    /// verification — a guard against accidentally re-submitting the HMAC challenge for a
+    /// wallet that has been retired. Returns `Ok(true)` when any unretired row exists,
+    /// `Ok(false)` otherwise.
+    pub async fn resource_provider_has_active_row(
+        &self,
+        wallet_pubkey: &str,
+    ) -> Result<bool, DbError> {
+        const SQL: &str = r#"
+            SELECT 1
+              FROM resource_providers
+             WHERE wallet_pubkey = $1
+               AND (retired_at IS NULL)
+             LIMIT 1
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let res = match timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&wallet_pubkey])).await {
+            Ok(Ok(row)) => Ok(row.is_some()),
+            Ok(Err(e)) => Err(DbError::Query(format_err_chain(&e))),
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        if res.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            let _ = tx.rollback().await;
+        }
+        res
+    }
+
+    /// List public directory entries. Filters are hard-coded to `listing_opt_in = TRUE` +
+    /// `registration_verified_at IS NOT NULL` + `inactive = FALSE` + `retired_at IS NULL`,
+    /// matching the partial index `idx_resource_providers_public_listing`. Pagination uses a
+    /// simple `updated_at < cursor` cursor so the caller can page backwards by passing the
+    /// previous page's last `updated_at`.
+    ///
+    /// `limit` is clamped to `[1, 100]`. Tags are summarized as JSON so the row shape is
+    /// stable regardless of the client's array-decoding story.
+    pub async fn list_public_providers(
+        &self,
+        limit: i64,
+        cursor_updated_at: Option<std::time::SystemTime>,
+    ) -> Result<Vec<PublicProviderEntry>, DbError> {
+        let limit = limit.clamp(1, 100);
+
+        let rows = {
+            let mut client = self.conn().await?;
+            let tx = client
+                .transaction()
+                .await
+                .map_err(|_| DbError::TransactionFailed)?;
+            Self::deallocate_all_signer_style(&tx).await;
+
+            const SQL_PAGE: &str = r#"
+                SELECT wallet_pubkey,
+                       settlement_mode,
+                       spl_mint,
+                       split_vault_pda,
+                       service_url,
+                       display_name,
+                       description,
+                       tags,
+                       service_metadata,
+                       registration_verified_at,
+                       updated_at
+                  FROM resource_providers
+                 WHERE listing_opt_in = TRUE
+                   AND registration_verified_at IS NOT NULL
+                   AND inactive = FALSE
+                   AND retired_at IS NULL
+                   AND ($2::timestamptz IS NULL OR updated_at < $2::timestamptz)
+                 ORDER BY updated_at DESC
+                 LIMIT $1
+            "#;
+
+            let res = timeout(
+                Self::QUERY_TIMEOUT,
+                tx.query(SQL_PAGE, &[&limit, &cursor_updated_at]),
+            )
+            .await;
+
+            let rows = match res {
+                Ok(Ok(rows)) => rows,
+                Ok(Err(e)) => {
+                    let _ = tx.rollback().await;
+                    return Err(DbError::Query(format_err_chain(&e)));
+                }
+                Err(_) => {
+                    let _ = tx.rollback().await;
+                    return Err(DbError::Timeout);
+                }
+            };
+
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+            rows
+        };
+
+        Ok(rows.iter().map(PublicProviderEntry::from_row).collect())
+    }
+
+    /// Single-wallet lookup for the public directory. Applies the same visibility filters as
+    /// `list_public_providers`. Returns `None` when no public row exists — callers surface that
+    /// as HTTP 404.
+    pub async fn get_public_provider(
+        &self,
+        wallet_pubkey: &str,
+    ) -> Result<Option<PublicProviderEntry>, DbError> {
+        const SQL: &str = r#"
+            SELECT wallet_pubkey,
+                   settlement_mode,
+                   spl_mint,
+                   split_vault_pda,
+                   service_url,
+                   display_name,
+                   description,
+                   tags,
+                   service_metadata,
+                   registration_verified_at,
+                   updated_at
+              FROM resource_providers
+             WHERE wallet_pubkey = $1
+               AND listing_opt_in = TRUE
+               AND registration_verified_at IS NOT NULL
+               AND inactive = FALSE
+               AND retired_at IS NULL
+             ORDER BY updated_at DESC
+             LIMIT 1
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let res = timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&wallet_pubkey])).await;
+        let row = match res {
+            Ok(Ok(Some(row))) => Some(row),
+            Ok(Ok(None)) => None,
+            Ok(Err(e)) => {
+                let _ = tx.rollback().await;
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                let _ = tx.rollback().await;
+                return Err(DbError::Timeout);
+            }
+        };
+        tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        Ok(row.as_ref().map(PublicProviderEntry::from_row))
+    }
+
+    /// List recent settled payments for a seller wallet. Joins through the resource-provider id.
+    /// Pagination uses `created_at < cursor`; limit clamped to `[1, 100]`.
+    pub async fn list_seller_payments(
+        &self,
+        wallet_pubkey: &str,
+        limit: i64,
+        cursor_created_at: Option<std::time::SystemTime>,
+    ) -> Result<Vec<SellerPaymentEntry>, DbError> {
+        let limit = limit.clamp(1, 100);
+
+        const SQL: &str = r#"
+            SELECT pa.correlation_id,
+                   pa.verify_at,
+                   pa.verify_ok,
+                   pa.settle_at,
+                   pa.settle_ok,
+                   pa.settlement_signature,
+                   pa.payer_wallet,
+                   pa.scheme,
+                   pa.amount,
+                   pa.asset,
+                   pa.created_at
+              FROM payment_attempts pa
+              JOIN resource_providers rp ON rp.id = pa.resource_provider_id
+             WHERE rp.wallet_pubkey = $1
+               AND ($3::timestamptz IS NULL OR pa.created_at < $3::timestamptz)
+             ORDER BY pa.created_at DESC
+             LIMIT $2
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let res = timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query(SQL, &[&wallet_pubkey, &limit, &cursor_created_at]),
+        )
+        .await;
+
+        let rows = match res {
+            Ok(Ok(rows)) => rows,
+            Ok(Err(e)) => {
+                let _ = tx.rollback().await;
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                let _ = tx.rollback().await;
+                return Err(DbError::Timeout);
+            }
+        };
+        tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        Ok(rows.iter().map(SellerPaymentEntry::from_row).collect())
     }
 
     pub async fn ping(&self) -> Result<(), DbError> {

@@ -10,6 +10,16 @@ title: "Seller Quick Start: Monetize Your API with x402"
 
 **Prefer a five-step cheat-sheet?** Use [Seller shortcut · 5 steps](/quickstart-seller.html) for the minimal `/upgrade` path.
 
+> **Seller documentation map.** This is the canonical seller guide. Other seller-facing pages exist for good reasons; use them in this order:
+>
+> | When you want… | Read |
+> |---|---|
+> | A 30-minute walkthrough with language examples (Rust / Python / JS / Go) | **This page** |
+> | A 5-step cheat-sheet after you already know the flow | [Seller shortcut · 5 steps](/quickstart-seller.html) |
+> | Deep dive on sovereign fees, JIT provisioning, one-asset-per-wallet policy | [Onboarding guide](/onboarding_guide.html) |
+> | The Preview → Activate → Verify lifecycle and how each HTTP endpoint maps | [Agent integration · Seller agents](/agent-integration.html#seller-agents-resource-providers) |
+> | Machine-readable contract | `GET /openapi.json` on the host you call |
+
 > **Status.** pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). Behavior, feature flags, and fee parameters can evolve — treat **`GET /capabilities`** and **`GET /openapi.json`** on the host you actually call as the live contract.
 
 Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.

@@ -379,6 +379,17 @@ pub async fn build_exact_spl_payment_tx(
             )
         })?;
 
+    // Full ordered signer list so clients don't have to infer slots from the header +
+    // `payerSignatureIndex`. `signerPubkeys[i]` corresponds to `signatures[i]`.
+    let num_signers = vtx.message.header().num_required_signatures as usize;
+    let signer_pubkeys: Vec<String> = vtx
+        .message
+        .static_account_keys()
+        .iter()
+        .take(num_signers)
+        .map(|k| k.to_string())
+        .collect();
+
     // BUY-3: Estimate blockhash expiry (~60s conservative, Solana slots are ~400ms).
     let recent_blockhash_expires_at = estimate_blockhash_expiry_unix();
 
@@ -416,6 +427,7 @@ pub async fn build_exact_spl_payment_tx(
         fee_payer: fee_payer.to_string(),
         payer: payer_pk.to_string(),
         payer_signature_index,
+        signer_pubkeys,
         payment_uid: None,
         verify_body_template,
         notes,

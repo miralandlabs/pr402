@@ -615,6 +615,41 @@
         .ladder-body > p { margin: 0 0 0.75rem; color: var(--fg); }
         .ladder-body > .hint { margin-top: 0.5rem; }
 
+        /* Optional discovery form inside Step 3 (Verify identity). */
+        .ladder-details {
+            margin: 0.75rem 0 1rem;
+            border: 1px dashed var(--rule);
+            padding: 0.5rem 1rem 0.75rem;
+            background: color-mix(in srgb, var(--accent-soft) 40%, transparent);
+        }
+        .ladder-details summary {
+            cursor: pointer;
+            font-size: 12px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--fg-dim);
+            font-weight: 600;
+            padding: 0.25rem 0;
+        }
+        .ladder-details[open] summary { color: var(--accent); }
+        .ladder-details .ladder-help {
+            margin: 0.5rem 0 0.75rem;
+            font-size: 12px;
+        }
+
+        /* Retire row at the foot of the ladder. */
+        .ladder-retire {
+            margin-top: 1.25rem;
+            padding-top: 0.75rem;
+            border-top: 1px dotted var(--rule);
+        }
+        .ladder-retire-btn {
+            color: var(--amber);
+            border-color: var(--amber);
+        }
+        .ladder-retire-btn:hover { color: var(--red); border-color: var(--red); }
+        .ladder-retire-btn:disabled { color: var(--fg-faint); border-color: var(--rule); }
+
         /* Ladder and shared wallet row use the same `.input-row` template as `.probe-pane`,
          * but they render at full container width. Override flex sizing so base58 pubkeys
          * (44 chars) and SPL mint addresses (44 chars) render in full without clipping. */
@@ -826,12 +861,48 @@
             </header>
             <div class="ladder-body">
                 <p>Proves key control over the wallet and records a verified row in the facilitator's <code>resource_providers</code> index. Not required to accept payments, but buyers can filter by verified sellers. The facilitator refuses this step until Activate has put the vault on-chain.</p>
+
+                <details class="ladder-details">
+                    <summary>Publish listing details (optional)</summary>
+                    <p class="muted ladder-help">
+                        Fill these in to appear on the public <a href="/api/v1/facilitator/providers">/providers</a> directory. The facilitator only verifies wallet control; it does not vet the advertised service. All fields are optional; leave empty to register without a public listing.
+                    </p>
+                    <div class="input-row">
+                        <span style="color: var(--accent);">service URL &gt;</span>
+                        <input type="text" id="verify-service-url" placeholder="https://your-api.example.com/premium" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="input-row">
+                        <span style="color: var(--accent);">display name &gt;</span>
+                        <input type="text" id="verify-display-name" placeholder="Example Oracle (≤ 64 chars)" autocomplete="off" maxlength="64">
+                    </div>
+                    <div class="input-row">
+                        <span style="color: var(--accent);">description &gt;</span>
+                        <input type="text" id="verify-description" placeholder="Tweet-sized blurb (≤ 280 chars)" autocomplete="off" maxlength="280">
+                    </div>
+                    <div class="input-row">
+                        <span style="color: var(--accent);">tags &gt;</span>
+                        <input type="text" id="verify-tags" placeholder="weather, api, oracle (≤ 5, lowercase/digits/-)" autocomplete="off">
+                    </div>
+                    <div class="input-row" style="gap: 0.75rem;">
+                        <label style="display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+                            <input type="checkbox" id="verify-listing-opt-in" checked>
+                            <span>List publicly on /providers</span>
+                        </label>
+                    </div>
+                </details>
+
                 <div class="action-row">
                     <button class="btn" id="btn-wallet-connect-verify">connect wallet</button>
                     <button class="btn primary" id="btn-verify-identity" disabled>sign &amp; register</button>
                 </div>
                 <div class="hint">GET /api/v1/facilitator/onboard/challenge → wallet signs message → POST /api/v1/facilitator/onboard</div>
                 <div class="probe-output" id="out-verify" aria-live="polite"></div>
+
+                <div class="ladder-retire">
+                    <button type="button" class="btn ladder-retire-btn" id="btn-retire-wallet" disabled>retire this wallet from the registry</button>
+                    <p class="hint">Removes the wallet from <a href="/api/v1/facilitator/providers">/providers</a> and flags the registry row as retired. No on-chain change; existing payments still settle. Use this before rotating to a new seller wallet.</p>
+                    <div class="probe-output" id="out-retire" aria-live="polite"></div>
+                </div>
             </div>
         </article>
     </section>
@@ -1486,11 +1557,39 @@
         var out       = document.getElementById('out-verify');
         var assetSel  = document.getElementById('provision-asset');
         var mintOverride = document.getElementById('provision-mint-override');
+        // Optional discovery form fields — all may be absent in older builds; we guard each read.
+        var fServiceUrl  = document.getElementById('verify-service-url');
+        var fDisplayName = document.getElementById('verify-display-name');
+        var fDescription = document.getElementById('verify-description');
+        var fTagsRaw     = document.getElementById('verify-tags');
+        var fOptIn       = document.getElementById('verify-listing-opt-in');
         if (!btnVerify) return;
 
         function setStatus(txt, isError) {
             out.classList.toggle('is-error', !!isError);
             out.textContent = txt || '';
+        }
+
+        function collectDiscoveryPayload() {
+            // Build the optional discovery sub-object. Omit fields left empty so we don't
+            // blow away existing DB values on re-verify.
+            var out = {};
+            var serviceUrl = fServiceUrl && fServiceUrl.value.trim();
+            if (serviceUrl) out.serviceUrl = serviceUrl;
+            var displayName = fDisplayName && fDisplayName.value.trim();
+            if (displayName) out.displayName = displayName;
+            var description = fDescription && fDescription.value.trim();
+            if (description) out.description = description;
+            var tagsRaw = fTagsRaw && fTagsRaw.value.trim();
+            if (tagsRaw) {
+                var tags = tagsRaw
+                    .split(/[,\s]+/)
+                    .map(function (t) { return t.toLowerCase().trim(); })
+                    .filter(Boolean);
+                if (tags.length > 0) out.tags = tags;
+            }
+            if (fOptIn) out.listingOptIn = !!fOptIn.checked;
+            return Object.keys(out).length > 0 ? out : null;
         }
 
         btnVerify.addEventListener('click', async function () {
@@ -1517,8 +1616,10 @@
                 var message = challenge.message;
                 if (!message) throw new Error('Challenge missing `message`.');
 
-                // Step 2: wallet signs. MiracleMessageSigner returns a base64-encoded signature;
-                // the facilitator expects base58. Convert before submitting.
+                // Step 2: wallet signs. MiracleMessageSigner returns base64; the server
+                // now accepts base64 natively (server-side decoder picks base58 or base64
+                // based on decoded length), but we still submit base58 for back-compat with
+                // older facilitator builds.
                 setStatus('Sign the challenge in your wallet…');
                 var sigB64 = await window.MiracleMessageSigner(message);
                 if (!sigB64) throw new Error('Wallet returned an empty signature.');
@@ -1527,15 +1628,18 @@
 
                 // Step 3: submit. The facilitator refuses this if Activate hasn't landed on-chain.
                 setStatus('Submitting verification…');
+                var submitBody = {
+                    wallet: connected,
+                    message: message,
+                    signature: sigB58,
+                    asset: asset,
+                };
+                var discovery = collectDiscoveryPayload();
+                if (discovery) submitBody.discovery = discovery;
                 var submitRes = await fetch('/api/v1/facilitator/onboard', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        wallet: connected,
-                        message: message,
-                        signature: sigB58,
-                        asset: asset,
-                    }),
+                    body: JSON.stringify(submitBody),
                 });
                 var submitTxt = await submitRes.text();
                 if (!submitRes.ok) {
@@ -1543,6 +1647,91 @@
                     throw new Error(submitTxt || ('HTTP ' + submitRes.status));
                 }
                 setStatus('Verified. Your wallet is registered as a resource provider.');
+                if (typeof window.__PR402_REFRESH_LADDER__ === 'function') {
+                    window.__PR402_REFRESH_LADDER__();
+                }
+            } catch (e) {
+                setStatus(e && e.message ? e.message : String(e), true);
+            }
+        });
+    }
+
+    // ---- Retire step: wallet-signed opt-out that flips retired_at + listing_opt_in ----
+    // Shares `walletState` with Activate / Verify so the same wallet-gating applies.
+    function initRetireStep(walletState) {
+        var btn = document.getElementById('btn-retire-wallet');
+        var out = document.getElementById('out-retire');
+        if (!btn || !out) return;
+
+        // Enable / disable in lockstep with the other wallet-signing steps.
+        window.addEventListener('miracle-pubkey', function (ev) {
+            var d = ev && ev.detail;
+            btn.disabled = !(d && d.pubkey && d.pubkey.length);
+        });
+
+        function setStatus(txt, isError) {
+            out.classList.toggle('is-error', !!isError);
+            out.textContent = txt || '';
+        }
+
+        btn.addEventListener('click', async function () {
+            var connected = walletState.currentPubkey();
+            if (!connected) { setStatus('Connect a wallet first.', true); return; }
+            if (typeof window.MiracleMessageSigner !== 'function') {
+                setStatus('Wallet bundle not ready (MiracleMessageSigner).', true);
+                return;
+            }
+            // Two-click confirmation: irreversible in the sense that the row is marked
+            // retired and the wallet needs a full re-run to come back.
+            if (!btn.dataset.armed) {
+                btn.dataset.armed = '1';
+                var old = btn.textContent;
+                btn.textContent = 'click again to confirm · retire ' + connected.slice(0, 4) + '…';
+                setTimeout(function () {
+                    if (btn.dataset.armed === '1') {
+                        btn.dataset.armed = '';
+                        btn.textContent = old;
+                    }
+                }, 5000);
+                return;
+            }
+            btn.dataset.armed = '';
+
+            setStatus('Requesting signed challenge…');
+            try {
+                var chRes = await fetch(
+                    '/api/v1/facilitator/onboard/challenge?wallet=' + encodeURIComponent(connected)
+                );
+                var chTxt = await chRes.text();
+                if (!chRes.ok) throw new Error(chTxt || ('HTTP ' + chRes.status));
+                var challenge = JSON.parse(chTxt);
+                if (challenge.error) throw new Error(challenge.error);
+                var message = challenge.message;
+                if (!message) throw new Error('Challenge missing `message`.');
+
+                setStatus('Sign the retirement message in your wallet…');
+                var sigB64 = await window.MiracleMessageSigner(message);
+                if (!sigB64) throw new Error('Wallet returned an empty signature.');
+                var sigBytes = base64ToBytes(sigB64);
+                var sigB58 = base58Encode(sigBytes);
+
+                setStatus('Submitting retirement…');
+                var res = await fetch('/api/v1/facilitator/onboard/retire', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        wallet: connected,
+                        message: message,
+                        signature: sigB58,
+                    }),
+                });
+                var txt = await res.text();
+                if (!res.ok) throw new Error(txt || ('HTTP ' + res.status));
+                var j = JSON.parse(txt);
+                setStatus(
+                    'Retired from the registry.\nrows updated: ' + (j.retiredRowCount || 0) +
+                    (j.note ? '\n' + j.note : '')
+                );
                 if (typeof window.__PR402_REFRESH_LADDER__ === 'function') {
                     window.__PR402_REFRESH_LADDER__();
                 }
@@ -1621,6 +1810,7 @@
         var walletState = initWalletState();
         initActivateStep(walletState);
         initVerifyStep(walletState);
+        initRetireStep(walletState);
         (async function () {
             await updateHealth();
             await ensureWalletBundle();

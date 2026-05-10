@@ -93,6 +93,12 @@ pub const PR402_QUOTE_SPL_MINTS: &str = "PR402_QUOTE_SPL_MINTS";
 /// Effectively the "Sovereign Whitelist" for the facilitator.
 pub const PR402_ALLOWED_PAYMENT_MINTS: &str = "PR402_ALLOWED_PAYMENT_MINTS";
 
+/// Hard-gate: when set to a truthy value (`1`, `true`, `yes`, `on`, case-insensitive), the
+/// facilitator refuses to start if [`PR402_ALLOWED_PAYMENT_MINTS`] is empty. Prevents the
+/// silent "permissive mode" trap where a production deployment forgets to set the allowlist
+/// and silently accepts any SPL mint from buyers.
+pub const PR402_REQUIRE_MINT_ALLOWLIST: &str = "PR402_REQUIRE_MINT_ALLOWLIST";
+
 /// Maximum number of new SplitVaults the facilitator will pay to create per day (anti-spam).
 pub const PR402_MAX_DAILY_PROVISION_COUNT: &str = "PR402_MAX_DAILY_PROVISION_COUNT";
 
@@ -248,6 +254,24 @@ pub async fn resolve_allowed_payment_mints(db: Option<&Pr402Db>) -> Vec<String> 
         .collect()
 }
 
+/// Read [`PR402_REQUIRE_MINT_ALLOWLIST`] from the DB `parameters` table (falling back to env).
+/// Truthy values: `1`, `true`, `yes`, `on` (ASCII-case-insensitive).
+pub async fn resolve_require_mint_allowlist(db: Option<&Pr402Db>) -> bool {
+    let Some(raw) = resolve_string(
+        db,
+        PR402_REQUIRE_MINT_ALLOWLIST,
+        Some(PR402_REQUIRE_MINT_ALLOWLIST),
+    )
+    .await
+    else {
+        return false;
+    };
+    matches!(
+        raw.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
 static PAYMENT_MINT_ALLOWLIST_PERMISSIVE_WARNED: Once = Once::new();
 
 fn warn_payment_mint_allowlist_permissive_once() {
@@ -284,7 +308,11 @@ pub async fn ensure_allowed_payment_mint(
         "payment mint not in PR402_ALLOWED_PAYMENT_MINTS"
     );
     Err(format!(
-        "Mint {} is not supported for payment by this facilitator. Approved assets: {}.",
+        "Mint {} is not supported for payment by this facilitator. Approved assets: {}. \
+         (To accept this asset, ask the operator to add it to PR402_ALLOWED_PAYMENT_MINTS — \
+         environment or `parameters` table. Provisioning a vault for a disallowed mint will \
+         create the on-chain account but buyers will be rejected at verify/settle, so fix the \
+         allowlist first.)",
         mint_str,
         allowed.join(", ")
     ))

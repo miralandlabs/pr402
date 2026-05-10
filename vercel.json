@@ -142,10 +142,42 @@
       ]
     },
     {
+      "src": "/api/v1/facilitator/onboard/retire",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
       "src": "/api/v1/facilitator/onboard",
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/providers",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/providers/(?<wallet>[^/]+)",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "GET",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/seller/payments",
+      "dest": "/src/bin/facilitator",
+      "methods": [
         "POST",
         "OPTIONS"
       ]

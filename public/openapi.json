@@ -628,6 +628,174 @@
         }
       }
     },
+    "/api/v1/facilitator/onboard/retire": {
+      "post": {
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Opt-out / retire a seller registration",
+        "description": "Off-chain retirement. Same HMAC challenge + wallet-signed message as `POST /onboard`; sets `retired_at` / `inactive` / `listing_opt_in=false` so the wallet drops out of the public directory and future settle attempts warn. No on-chain write — the SplitVault remains usable; existing payments still settle. Use this before rotating to a new seller wallet.",
+        "operationId": "facilitatorOnboardRetire",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardRetireBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Retirement result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardRetireResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body"
+          },
+          "401": {
+            "description": "Signature verification failed"
+          },
+          "503": {
+            "description": "Registry disabled (DATABASE_URL unset) or HMAC secret missing"
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/providers": {
+      "get": {
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Public seller directory (paged)",
+        "description": "Lists verified, unretired sellers that have opted into public visibility (`listing_opt_in = true`). Each row contains only seller-declared metadata (`serviceUrl`, `displayName`, `description`, `tags`, `serviceMetadata`) plus the settlement rail pubkeys required to construct a 402 line. Pagination uses `cursor` (RFC3339 `updated_at`; rows returned are `updated_at < cursor`). Response includes a `notice` string making clear the facilitator only verifies wallet control — it does not vet the advertised service.",
+        "operationId": "facilitatorProvidersList",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "RFC3339 timestamp; server returns rows with updated_at < cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public directory page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProvidersPage"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Registry disabled (DATABASE_URL unset)"
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/providers/{wallet}": {
+      "get": {
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Public seller directory \u2014 single-wallet lookup",
+        "description": "Returns a single listing for the given wallet. Same visibility filters as the list endpoint. 404 when no public listing exists.",
+        "operationId": "facilitatorProviderGet",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Seller wallet pubkey (base58)"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public directory entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProviderSingle"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No public listing for this wallet"
+          },
+          "503": {
+            "description": "Registry disabled (DATABASE_URL unset)"
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/seller/payments": {
+      "post": {
+        "tags": [
+          "pr402 Extension: Seller Onboarding"
+        ],
+        "summary": "Wallet-authenticated seller payment history",
+        "description": "Returns recent `payment_attempts` rows for the authenticated seller wallet. Uses the same HMAC challenge + wallet-signed message as `POST /onboard` so only the wallet owner can read their own history.",
+        "operationId": "facilitatorSellerPayments",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SellerPaymentsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Page of seller payments",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SellerPaymentsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid parameters"
+          },
+          "401": {
+            "description": "Signature verification failed"
+          },
+          "503": {
+            "description": "Registry disabled (DATABASE_URL unset) or HMAC secret missing"
+          }
+        }
+      }
+    },
     "/api/v1/facilitator/discovery": {
       "get": {
         "tags": [
@@ -1230,11 +1398,201 @@
             "type": "string"
           },
           "signature": {
-            "type": "string"
+            "type": "string",
+            "description": "Ed25519 signature of `message`. Accepts **base58** (canonical Solana form) or **base64** (what browser wallet adapters return natively). Must decode to exactly 64 bytes; other encodings / lengths are rejected."
           },
           "asset": {
             "type": "string",
             "description": "Payment asset this seller registers in `resource_providers` (one per wallet). Default **USDC** (`SOL`, `USDC`, mint, \u2026 \u2014 same resolution as `POST /onboard/provision`)."
+          },
+          "discovery": {
+            "$ref": "#/components/schemas/OnboardDiscoveryPayload"
+          }
+        }
+      },
+      "OnboardDiscoveryPayload": {
+        "type": "object",
+        "description": "Optional seller-declared discovery payload. All fields are optional; submit any subset to update only those columns. All limits are enforced server-side.",
+        "properties": {
+          "serviceUrl": {
+            "type": "string",
+            "description": "Seller's 402-gated endpoint URL. Must start with http:// or https://. Required for the row to appear in GET /providers.",
+            "maxLength": 2048
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Human-friendly name for the listing.",
+            "maxLength": 64
+          },
+          "description": {
+            "type": "string",
+            "description": "Tweet-sized blurb.",
+            "maxLength": 280
+          },
+          "tags": {
+            "type": "array",
+            "description": "Up to 5 tags; each is 1..=32 ASCII lowercase letters, digits, or '-'.",
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "maxLength": 32,
+              "pattern": "^[a-z0-9-]+$"
+            }
+          },
+          "serviceMetadata": {
+            "type": "object",
+            "description": "Seller-defined opaque JSON object. Facilitator does not interpret. Max 4096 bytes when serialized."
+          },
+          "listingOptIn": {
+            "type": "boolean",
+            "description": "Must be true for the wallet to appear on GET /providers."
+          }
+        }
+      },
+      "OnboardRetireBody": {
+        "type": "object",
+        "required": [
+          "wallet",
+          "message",
+          "signature"
+        ],
+        "description": "Same HMAC-bound, wallet-signed payload shape as POST /onboard. The facilitator only retires the wallet after signature verification passes.",
+        "properties": {
+          "wallet": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        }
+      },
+      "OnboardRetireResponse": {
+        "type": "object",
+        "required": ["wallet", "retiredRowCount"],
+        "properties": {
+          "wallet": {
+            "type": "string"
+          },
+          "retiredRowCount": {
+            "type": "integer",
+            "description": "Number of resource_providers rows updated. 0 = wallet was not in the registry."
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      },
+      "PublicProviderEntry": {
+        "type": "object",
+        "required": [
+          "walletPubkey",
+          "settlementMode",
+          "serviceUrl",
+          "tags",
+          "registrationVerifiedAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "walletPubkey": { "type": "string" },
+          "settlementMode": { "type": "string", "enum": ["native_sol", "spl"] },
+          "splMint": { "type": "string" },
+          "splitVaultPda": { "type": "string" },
+          "serviceUrl": { "type": "string" },
+          "displayName": { "type": "string" },
+          "description": { "type": "string" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "serviceMetadata": { "type": "object" },
+          "registrationVerifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PublicProvidersPage": {
+        "type": "object",
+        "required": ["entries", "notice"],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PublicProviderEntry" }
+          },
+          "nextCursor": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Pass as `?cursor=…` on the next request to page backwards."
+          },
+          "notice": {
+            "type": "string",
+            "description": "Facilitator disclaimer: wallet control is verified; the advertised service is not vetted."
+          }
+        }
+      },
+      "PublicProviderSingle": {
+        "type": "object",
+        "required": ["entry", "notice"],
+        "properties": {
+          "entry": { "$ref": "#/components/schemas/PublicProviderEntry" },
+          "notice": { "type": "string" }
+        }
+      },
+      "SellerPaymentsRequest": {
+        "type": "object",
+        "required": ["wallet", "message", "signature"],
+        "description": "Same HMAC challenge + wallet-signed payload as POST /onboard.",
+        "properties": {
+          "wallet": { "type": "string" },
+          "message": { "type": "string" },
+          "signature": { "type": "string" },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 50
+          },
+          "cursor": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SellerPaymentEntry": {
+        "type": "object",
+        "required": ["correlationId", "createdAt"],
+        "properties": {
+          "correlationId": { "type": "string" },
+          "verifyAt": { "type": "string", "format": "date-time" },
+          "verifyOk": { "type": "boolean" },
+          "settleAt": { "type": "string", "format": "date-time" },
+          "settleOk": { "type": "boolean" },
+          "settlementSignature": { "type": "string" },
+          "payerWallet": { "type": "string" },
+          "scheme": { "type": "string" },
+          "amount": { "type": "string" },
+          "asset": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SellerPaymentsPage": {
+        "type": "object",
+        "required": ["entries"],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SellerPaymentEntry" }
+          },
+          "nextCursor": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
