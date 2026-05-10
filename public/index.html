@@ -314,7 +314,9 @@
         }
         .probe-pane input[type="text"],
         .probe-pane select {
-            flex: 1;
+            flex: 1 1 auto;
+            min-width: 0;
+            width: 100%;
             background: transparent;
             border: none;
             color: var(--fg);
@@ -322,12 +324,14 @@
             font-size: inherit;
             outline: none;
             padding: 0;
-            min-width: 0;
+            /* Hint for base58 Solana pubkeys (~44 chars) and SPL mint addresses. Prevents
+             * the text from clipping inside the row on narrower viewports. */
+            font-variant-numeric: tabular-nums;
+            text-overflow: ellipsis;
         }
-        .probe-pane select {
-            color: var(--fg);
-        }
-        .probe-pane .input-row + .input-row { margin-top: 0.5rem; }
+        /* Room-to-breathe between the asset selector and the mint override in the Activate step,
+         * plus anywhere else we stack two or more input rows in the same card. */
+        .probe-pane .input-row + .input-row { margin-top: 0.75rem; }
         .probe-pane .hint {
             font-size: 12px;
             color: var(--fg-faint);
@@ -610,6 +614,42 @@
         }
         .ladder-body > p { margin: 0 0 0.75rem; color: var(--fg); }
         .ladder-body > .hint { margin-top: 0.5rem; }
+
+        /* Ladder and shared wallet row use the same `.input-row` template as `.probe-pane`,
+         * but they render at full container width. Override flex sizing so base58 pubkeys
+         * (44 chars) and SPL mint addresses (44 chars) render in full without clipping. */
+        .ladder-body .input-row,
+        .lifecycle-wallet .input-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            background: var(--bg);
+            border: 1px solid var(--rule);
+            font-size: 13px;
+        }
+        .ladder-body .input-row input[type="text"],
+        .ladder-body .input-row select,
+        .lifecycle-wallet .input-row input[type="text"],
+        .lifecycle-wallet .input-row select {
+            flex: 1 1 auto;
+            min-width: 0;
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--fg);
+            font-family: inherit;
+            font-size: inherit;
+            outline: none;
+            padding: 0;
+            font-variant-numeric: tabular-nums;
+            text-overflow: ellipsis;
+        }
+        /* Breathing room between stacked input rows (asset / mint pair in Activate). */
+        .ladder-body .input-row + .input-row,
+        .lifecycle-wallet .input-row + .input-row {
+            margin-top: 0.75rem;
+        }
 
         /* Theme toggle in the env strip */
         .theme-toggle {
