@@ -365,7 +365,7 @@ pub async fn handle_onboard_submit(
                         if let Err(msg) = validate_discovery(discovery) {
                             return error_response(StatusCode::BAD_REQUEST, &msg);
                         }
-                        if let Err(e) = db
+                        match db
                             .apply_seller_discovery(
                                 &submit.wallet,
                                 discovery.service_url.as_deref(),
@@ -377,11 +377,35 @@ pub async fn handle_onboard_submit(
                             )
                             .await
                         {
-                            warn!(
-                                target: LOG_SERVER_LOG,
-                                error = %e,
-                                "apply_seller_discovery failed; onboard write succeeded but discovery fields not persisted"
-                            );
+                            Ok(0) => {
+                                // UPDATE matched zero rows despite a payload being submitted.
+                                // This almost always means the row is still retired (stale binary
+                                // without the retirement-clearing upsert fix), or the row was
+                                // deleted between upsert and this update. Loud warning so the
+                                // silent-success trap stops biting operators.
+                                warn!(
+                                    target: LOG_SERVER_LOG,
+                                    wallet = %submit.wallet,
+                                    "apply_seller_discovery: 0 rows updated (discovery payload ignored). \
+                                     Likely cause: row is still retired or missing. \
+                                     Confirm upsert cleared retired_at/inactive."
+                                );
+                            }
+                            Ok(n) => {
+                                info!(
+                                    target: LOG_SERVER_LOG,
+                                    wallet = %submit.wallet,
+                                    rows = n,
+                                    "apply_seller_discovery: discovery payload applied"
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    target: LOG_SERVER_LOG,
+                                    error = %e,
+                                    "apply_seller_discovery failed; onboard write succeeded but discovery fields not persisted"
+                                );
+                            }
                         }
                     }
                 }

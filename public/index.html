@@ -1650,6 +1650,12 @@
                 if (typeof window.__PR402_REFRESH_LADDER__ === 'function') {
                     window.__PR402_REFRESH_LADDER__();
                 }
+                // If the user just reactivated a previously-retired wallet, clear any armed
+                // "click again to confirm" state on the retire button so it doesn't look
+                // like it's still in the middle of a retire flow.
+                if (typeof window.__PR402_RESET_RETIRE_ARMED__ === 'function') {
+                    window.__PR402_RESET_RETIRE_ARMED__();
+                }
             } catch (e) {
                 setStatus(e && e.message ? e.message : String(e), true);
             }
@@ -1663,10 +1669,27 @@
         var out = document.getElementById('out-retire');
         if (!btn || !out) return;
 
-        // Enable / disable in lockstep with the other wallet-signing steps.
+        // Capture the pristine button label once so we can always restore it, regardless of
+        // whether we land here via the 5s disarm timer, a successful retire, a wallet change,
+        // or a post-verify ladder refresh (e.g. after reactivation).
+        var pristineLabel = btn.textContent;
+
+        function resetArmed() {
+            btn.dataset.armed = '';
+            btn.textContent = pristineLabel;
+        }
+
+        // Expose so the ladder refresh and wallet-state changes can always snap the button
+        // back to the pristine label — prevents the "click again to confirm" state from
+        // persisting across retire → reactivate cycles.
+        window.__PR402_RESET_RETIRE_ARMED__ = resetArmed;
+
+        // Enable / disable in lockstep with the other wallet-signing steps. Also snap back
+        // to the pristine label so a prior armed state never bleeds into the next wallet.
         window.addEventListener('miracle-pubkey', function (ev) {
             var d = ev && ev.detail;
             btn.disabled = !(d && d.pubkey && d.pubkey.length);
+            resetArmed();
         });
 
         function setStatus(txt, isError) {
@@ -1685,17 +1708,13 @@
             // retired and the wallet needs a full re-run to come back.
             if (!btn.dataset.armed) {
                 btn.dataset.armed = '1';
-                var old = btn.textContent;
                 btn.textContent = 'click again to confirm · retire ' + connected.slice(0, 4) + '…';
                 setTimeout(function () {
-                    if (btn.dataset.armed === '1') {
-                        btn.dataset.armed = '';
-                        btn.textContent = old;
-                    }
+                    if (btn.dataset.armed === '1') resetArmed();
                 }, 5000);
                 return;
             }
-            btn.dataset.armed = '';
+            resetArmed();
 
             setStatus('Requesting signed challenge…');
             try {
@@ -1737,6 +1756,9 @@
                 }
             } catch (e) {
                 setStatus(e && e.message ? e.message : String(e), true);
+            } finally {
+                // Regardless of outcome, we always want a clean label for the next click.
+                resetArmed();
             }
         });
     }

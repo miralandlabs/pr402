@@ -1067,6 +1067,14 @@ impl Pr402Db {
         self.assert_merchant_single_rail_policy(wallet_pubkey, settlement_mode, spl_mint)
             .await?;
 
+        // NOTE: on conflict we also clear the retirement markers so a seller can
+        // reactivate a previously retired wallet by re-running the Activate → Verify
+        // ladder. Without this, POST /onboard would return 200 OK but the row would
+        // remain `inactive = TRUE, retired_at = <prev>`, silently leaving the wallet
+        // hidden from /providers and blocked from `apply_seller_discovery` (which
+        // filters on `retired_at IS NULL`). `listing_opt_in` is deliberately NOT
+        // reset here; re-opting in is a separate explicit action via the optional
+        // discovery payload on POST /onboard.
         const SQL: &str = r#"
                 INSERT INTO resource_providers (
                     wallet_pubkey, settlement_mode, spl_mint,
@@ -1077,7 +1085,9 @@ impl Pr402Db {
                     split_vault_pda = EXCLUDED.split_vault_pda,
                     vault_sol_storage_pda = EXCLUDED.vault_sol_storage_pda,
                     updated_at = NOW(),
-                    registration_verified_at = NOW()
+                    registration_verified_at = NOW(),
+                    retired_at = NULL,
+                    inactive = FALSE
                 RETURNING id
                 "#;
 
