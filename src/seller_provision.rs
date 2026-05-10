@@ -58,6 +58,17 @@ pub struct SellerProvisionTxResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vault_token_ata: Option<String>,
     pub already_provisioned: bool,
+    /// Machine-readable summary of what this call will do on-chain (or what it observed).
+    /// One of:
+    ///   - `"ALREADY_PROVISIONED"` — both vault and (if applicable) ATA exist; `transaction` is absent.
+    ///   - `"VAULT_AND_ATA"` — first-time SPL provisioning (two setup ixs).
+    ///   - `"VAULT_ONLY"` — first-time native-SOL provisioning (single `CreateVault` ix).
+    ///   - `"ATA_ONLY"` — vault exists, adding a new SPL mint (single ATA-create ix).
+    ///
+    /// Clients should prefer this over parsing `notes[]`. Backward-compatible: the field is
+    /// additive and absent in older clients; `already_provisioned` still carries the same
+    /// boolean signal.
+    pub status_code: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -256,6 +267,7 @@ pub async fn build_universalsettle_seller_provision(
             sol_storage_pda: sol_storage.to_string(),
             vault_token_ata: vault_token_ata_str,
             already_provisioned: true,
+            status_code: "ALREADY_PROVISIONED".to_string(),
             transaction: None,
             recent_blockhash: None,
             recent_blockhash_expires_at: None,
@@ -296,6 +308,16 @@ pub async fn build_universalsettle_seller_provision(
     let tx_b64 = STANDARD
         .encode(bincode::serialize(&tx).map_err(|e| SellerProvisionError::Chain(e.to_string()))?);
 
+    // The `budget` branch above enumerates exactly the 3 non-idempotent shapes. Mirror them in
+    // the machine-readable `statusCode` so UIs don't have to infer from `notes[]`.
+    let status_code = match budget {
+        TxBudget::VaultCreateWithAta => "VAULT_AND_ATA",
+        TxBudget::VaultCreate => "VAULT_ONLY",
+        TxBudget::VaultAtaCreate => "ATA_ONLY",
+        _ => "VAULT_ONLY", // Unreachable under current budget mapping; safe default.
+    }
+    .to_string();
+
     notes.push("Sign and send with the seller wallet (sovereign provisioning).".into());
 
     Ok(SellerProvisionTxResponse {
@@ -307,6 +329,7 @@ pub async fn build_universalsettle_seller_provision(
         sol_storage_pda: sol_storage.to_string(),
         vault_token_ata: vault_token_ata_str,
         already_provisioned: false,
+        status_code,
         transaction: Some(tx_b64),
         recent_blockhash: Some(blockhash.to_string()),
         recent_blockhash_expires_at: Some(estimate_blockhash_expiry_unix()),

@@ -52,4 +52,4 @@ Exact paths and bodies live **only** in **`openapi.json`** — avoid copying tab
 
 ---
 
-**Experimental:** Facilitator behavior may evolve — treat **`capabilities`** and **`openapi.json`** as the live contract.
+**Live contract:** behavior and feature flags can evolve; treat **`GET /capabilities`** and **`GET /openapi.json`** on the host you actually call as the source of truth.

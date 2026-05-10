@@ -209,6 +209,20 @@ struct CapabilitiesFeatures {
     sla_escrow: bool,
     unsigned_exact_payment_tx_build: bool,
     unsigned_sla_escrow_payment_tx_build: bool,
+    /// True when `GET /onboard` returns the `lifecycle` block (preview → activate → verify).
+    /// Agents can use this to decide whether to trust `nextStep` or fall back to parsing
+    /// `schemes["exact"].status` + separately probing the registry.
+    seller_lifecycle_block: bool,
+    /// True when `POST /onboard` accepts both base58 and base64 signature encodings.
+    /// Browser wallet adapters return base64 natively — this flag lets clients skip the
+    /// in-page base58 encoder when the server already accepts their raw output.
+    accepts_base64_onboard_signature: bool,
+    /// True when build responses include `signerPubkeys[]`. Agents can use this to map
+    /// each `signatures[i]` slot to its required pubkey without re-decoding the tx.
+    build_response_signer_pubkeys: bool,
+    /// True when `GET /providers` + `GET /providers/{wallet}` return the public seller
+    /// directory. Absent on deployments without a database.
+    public_provider_directory: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -230,8 +244,27 @@ struct CapabilitiesHttpEndpoints {
     build_oracle_confirm_tx: HttpEndpointInfo,
     sweep: HttpEndpointInfo,
     sweep_cron: HttpEndpointInfo,
+    /// `GET` — read-only PDA preview across all schemes (the "preview" step in the
+    /// seller lifecycle; no wallet, no signature, no DB/chain writes).
+    onboard_preview: HttpEndpointInfo,
+    /// `GET` — issues a short-lived HMAC challenge the seller wallet signs before
+    /// calling `POST /onboard` (the "verify identity" step).
+    onboard_challenge: HttpEndpointInfo,
+    /// `POST` — wallet-signed registry submit. Requires a challenge from
+    /// `GET /onboard/challenge`; writes a verified row in `resource_providers`.
     onboard: HttpEndpointInfo,
+    /// `POST` — on-chain "activate" step. Builds the unsigned `CreateVault` (+ vault ATA)
+    /// tx the seller must sign and broadcast. Idempotent per `(wallet, asset)`.
     onboard_provision: HttpEndpointInfo,
+    /// `POST` — off-chain retirement. Same HMAC challenge flow as `POST /onboard`;
+    /// flips `retired_at` + `inactive` so the wallet drops out of public discovery.
+    onboard_retire: HttpEndpointInfo,
+    /// `GET` — public seller directory (paged).
+    providers: HttpEndpointInfo,
+    /// `GET` — public seller directory single-wallet lookup. `{wallet}` is a path segment.
+    provider: HttpEndpointInfo,
+    /// `POST` — wallet-authenticated seller payment history (same HMAC flow as onboard).
+    seller_payments: HttpEndpointInfo,
     supported: HttpEndpointInfo,
     health: HttpEndpointInfo,
     capabilities: HttpEndpointInfo,
@@ -429,9 +462,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .await
         .is_empty()
     {
+        // Hard-gate the startup when the operator set `PR402_REQUIRE_MINT_ALLOWLIST=true`.
+        // This prevents the silent "permissive mode" trap where a production deployment
+        // forgets to configure an allowlist and silently accepts any SPL mint from buyers.
+        // The gate reads from the same DB `parameters` table the allowlist itself uses,
+        // so operators can toggle it without redeploying.
+        if pr402::parameters::resolve_require_mint_allowlist(db.as_ref()).await {
+            error!(
+                target: LOG_SERVER_LOG,
+                "PR402_REQUIRE_MINT_ALLOWLIST is enabled but PR402_ALLOWED_PAYMENT_MINTS is empty. Refusing to start. Configure an allowlist (environment or `parameters` table) or disable the gate explicitly."
+            );
+            return Err(
+                "Refusing to start: PR402_REQUIRE_MINT_ALLOWLIST=true with empty PR402_ALLOWED_PAYMENT_MINTS"
+                    .into(),
+            );
+        }
         warn!(
             target: LOG_SERVER_LOG,
-            "PR402_ALLOWED_PAYMENT_MINTS is not set (environment or `parameters` table). No mint allowlist is active: the facilitator accepts any SPL mint until an allowlist is configured. Configure an allowlist before production use."
+            "PR402_ALLOWED_PAYMENT_MINTS is not set (environment or `parameters` table). No mint allowlist is active: the facilitator accepts any SPL mint until an allowlist is configured. Configure an allowlist before production use, or set PR402_REQUIRE_MINT_ALLOWLIST=true to refuse start when unconfigured."
         );
     }
 
@@ -570,6 +618,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     } else {
                         handle_onboard_provision(facilitator.clone(), body).await
                     }
+                }
+                ("POST", "/api/v1/facilitator/onboard/retire") => handle_onboard_retire(body).await,
+                ("GET", "/api/v1/facilitator/providers") => {
+                    handle_public_providers_list(&query).await
+                }
+                // Single-wallet directory lookup. The handler is given the wallet pubkey
+                // as the trailing path segment; guard with `len > prefix.len()` so the
+                // bare `/providers` route (handled above) still hits list semantics.
+                ("GET", p)
+                    if p.starts_with("/api/v1/facilitator/providers/")
+                        && p.len() > "/api/v1/facilitator/providers/".len() =>
+                {
+                    let wallet = &p["/api/v1/facilitator/providers/".len()..];
+                    handle_public_provider_single(wallet).await
+                }
+                ("POST", "/api/v1/facilitator/seller/payments") => {
+                    handle_seller_payments_list(&query, body).await
                 }
                 ("GET", "/api/v1/facilitator/vault-snapshot") => {
                     handle_vault_snapshot(&query).await

@@ -88,6 +88,11 @@ export class X402AgentClient {
   /**
    * GET a 402-gated resource. If challenged, automatically build, sign, and settle.
    *
+   * On success (seller returns 200) the retry request carries the signed
+   * `verifyBodyTemplate` as a **`PAYMENT-SIGNATURE`** header (x402 v2). The value
+   * is base64(UTF-8 JSON). Sellers in this ecosystem accept either base64 or raw
+   * JSON in that header; this client emits base64 for URL-safety.
+   *
    * @param url        - The target API endpoint
    * @param preferredMint - Base58 mint address of the token you want to pay with
    * @param options    - Optional extra fetch options (headers, autoWrapSol, etc.)
@@ -220,11 +225,18 @@ export class X402AgentClient {
     const proofB64 = btoa(JSON.stringify(verifyBody));
 
     // ── Step 5: Replay original request with proof ──────────────────
+    //
+    // x402 v2 uses the `PAYMENT-SIGNATURE` header name (see the x402 HTTP
+    // transport-v2 spec and `public/agent-integration.md` in this repo).
+    // v1 used `X-PAYMENT`; every seller in this ecosystem today — aethervane,
+    // spl-token-balance-serverless, x402-seller-starter — reads only
+    // `PAYMENT-SIGNATURE`, so emitting `X-PAYMENT` silently fails with a
+    // repeated 402. Emit the canonical v2 header exclusively.
     return fetch(url, {
       ...options,
       headers: {
         ...(options?.headers || {}),
-        'X-PAYMENT': proofB64,
+        'PAYMENT-SIGNATURE': proofB64,
       },
     });
   }

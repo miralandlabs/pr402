@@ -31,6 +31,20 @@ CREATE TABLE IF NOT EXISTS resource_providers (
     last_sweep_attempt_at TIMESTAMPTZ,
     last_sweep_signature TEXT,
     inactive            BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Retirement (opt-out): set by POST /onboard/retire so the row is excluded from
+    -- public discovery and future signed submits refuse to reuse it.
+    retired_at          TIMESTAMPTZ,
+    -- Discovery surface (populated via optional `discovery` sub-object on POST /onboard;
+    -- application layer enforces length / pattern limits).
+    service_url         TEXT,
+    display_name        TEXT,
+    description         TEXT,
+    tags                TEXT[],
+    service_metadata    JSONB,
+    listing_opt_in      BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Versioning for the signed-onboard payload contract (e.g. bumped when the required
+    -- discovery fields grow). Lets ops queries spot stale verified rows.
+    verified_schema_version INTEGER NOT NULL DEFAULT 1,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -48,6 +62,15 @@ CREATE INDEX IF NOT EXISTS idx_resource_providers_created_at
 
 CREATE INDEX IF NOT EXISTS idx_resource_providers_updated_at
     ON resource_providers (updated_at ASC);
+
+-- Public discovery lookups filter on four predicates together; a partial index keeps
+-- scans cheap as the registry grows.
+CREATE INDEX IF NOT EXISTS idx_resource_providers_public_listing
+    ON resource_providers (updated_at DESC)
+    WHERE listing_opt_in = TRUE
+      AND registration_verified_at IS NOT NULL
+      AND inactive = FALSE
+      AND retired_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS payment_attempts (
     id                   BIGSERIAL PRIMARY KEY,
@@ -189,6 +212,10 @@ INSERT INTO parameters (param_name, param_value) VALUES
         'PR402_ALLOWED_PAYMENT_MINTS',
         '11111111111111111111111111111111,So11111111111111111111111111111111111111112,EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
     ),
+    -- Hard-gate: refuse to start when PR402_ALLOWED_PAYMENT_MINTS is empty. Seeds `false`
+    -- for backward compatibility with existing devnet deployments; flip to `true` in
+    -- production to prevent the silent "any mint is accepted" trap on misconfiguration.
+    ('PR402_REQUIRE_MINT_ALLOWLIST', 'false'),
     ('PR402_SWEEP_CRON_TOKEN', 'SHARE_SAME_VALUE_BTW_CRON_SECRET_AND_CRON_TOKEN'),
     ('PR402_SWEEP_CRON_COOLDOWN_SEC', '300'),
     ('PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC', '86400'),

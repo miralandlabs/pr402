@@ -103,6 +103,31 @@ pub struct OnboardResponse {
     pub wallet: String,
     pub facilitator: String,
     pub schemes: HashMap<String, SchemeOnboardInfo>,
+    /// Seller lifecycle snapshot for UI ladders and agent next-step inference.
+    /// Absent in older clients that pre-date the field; always present on servers that emit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<SellerLifecycle>,
+}
+
+/// Machine-readable seller lifecycle state: **Preview → Activate → Verify**.
+///
+/// - `previewed`: PDAs were resolvable (true whenever this response exists).
+/// - `activated`: on-chain SplitVault for the exact rail exists (seller ran `/onboard/provision`
+///   and broadcast). Does not imply `is_sovereign`; that is reported on `schemes["exact"]`.
+/// - `verified`: a `resource_providers` row exists with `registration_verified_at` set for
+///   this wallet (seller completed `/onboard/challenge` + `POST /onboard`).
+///
+/// `nextStep` is the first stage the seller can meaningfully act on — `null` once all three
+/// are complete.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SellerLifecycle {
+    pub previewed: bool,
+    pub activated: bool,
+    pub verified: bool,
+    /// One of: `"activate"`, `"verify"`, or `null` once all three stages are complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_step: Option<String>,
 }
 
 /// Local facilitator implementation supporting multiple Solana schemes.
@@ -263,6 +288,7 @@ impl Facilitator for FacilitatorLocal {
             wallet: wallet.to_string(),
             facilitator: "pr402".to_string(), // TODO: Get facilitator name/id
             schemes: HashMap::new(),
+            lifecycle: None,
         };
 
         for (name, handler) in &self.scheme_handlers {
@@ -272,6 +298,41 @@ impl Facilitator for FacilitatorLocal {
             })?;
             response.schemes.insert(name.clone(), onboard_info);
         }
+
+        // Machine-readable lifecycle snapshot (preview → activate → verify). The three flags
+        // lead the page ladder so naive sellers can see what is still outstanding without
+        // parsing notes or inferring state from other responses.
+        //
+        // DESIGN INTENT
+        //   - `previewed`:  PDAs resolvable (always true when we reach this line).
+        //   - `activated`:  the exact-rail SplitVault already exists on-chain. Derived from the
+        //                   `status` field on the exact scheme (`NotProvisioned` vs anything
+        //                   else). Does NOT imply `is_sovereign` — that's orthogonal (depends
+        //                   on who paid `CreateVault`) and is surfaced on `schemes["exact"]`.
+        //   - `verified`:   a `resource_providers` row exists with `registration_verified_at`
+        //                   set. Requires `/onboard/challenge` + `POST /onboard`.
+        let activated = response
+            .schemes
+            .get("exact")
+            .map(|info| info.status != "NotProvisioned")
+            .unwrap_or(false);
+        let verified = match &self.db {
+            Some(db) => db.resource_provider_verified(wallet).await.unwrap_or(false),
+            None => false,
+        };
+        let next_step = if !activated {
+            Some("activate".to_string())
+        } else if !verified {
+            Some("verify".to_string())
+        } else {
+            None
+        };
+        response.lifecycle = Some(SellerLifecycle {
+            previewed: true,
+            activated,
+            verified,
+            next_step,
+        });
 
         Ok(response)
     }

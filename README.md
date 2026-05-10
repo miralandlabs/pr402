@@ -2,7 +2,7 @@
 
 **A minimal, x402-compliant facilitator for Solana, optimized for Vercel Serverless Functions. It bridges agent/human requests with on-chain settlement engines like `UniversalSettle` and `SLA-Escrow`.**
 
-> **Launch phase:** pr402 is **experimental**. Use **at your own risk** — behavior, fees, allowlists, and availability may change without notice.
+> **Status.** pr402 and the `exact` (UniversalSettle) rail are **live on Solana Mainnet and Devnet**. The `sla-escrow` program is also deployed on both clusters; general availability of the `sla-escrow` scheme depends on the seller or buyer choosing an `oracle_authority` they trust — the reference oracle is [`oracle-qa`](https://github.com/miraland-labs/oracle-qa). Behavior, fees, and feature flags can evolve; treat **`GET /capabilities`** and **`GET /openapi.json`** as the live contract.
 
 ## Official deployments
 
@@ -52,7 +52,7 @@ Sellers can onboard either **Proactively** (Protocol Onboarding) to receive a fe
 
 **Agentic Onboarding Flow:**
 1. **Discover**: Find your `payTo` (vault PDA) address via `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact`.
-2. **On-Chain Provisioning**: **`POST /api/v1/facilitator/onboard/provision`** with a **JSON body** (`Content-Type: application/json`). Put `wallet` and `asset` **in the request body**, not in the query string — e.g. `{"wallet":"<PUBKEY>","asset":"SOL"}` (`USDC`, `WSOL`, `USDT`, or a base58 mint). Example: `curl -X POST .../onboard/provision -H "Content-Type: application/json" -d '{"wallet":"<PUBKEY>","asset":"SOL"}'`. Idempotent when already on-chain; sign & broadcast when `transaction` is present. (Launch-phase policy: **one asset per merchant wallet**; use **separate wallets** for additional tokens — see [`public/onboarding_guide.md`](public/onboarding_guide.md).)
+2. **On-Chain Provisioning**: **`POST /api/v1/facilitator/onboard/provision`** with a **JSON body** (`Content-Type: application/json`). Put `wallet` and `asset` **in the request body**, not in the query string — e.g. `{"wallet":"<PUBKEY>","asset":"SOL"}` (`USDC`, `WSOL`, `USDT`, or a base58 mint). Example: `curl -X POST .../onboard/provision -H "Content-Type: application/json" -d '{"wallet":"<PUBKEY>","asset":"SOL"}'`. Idempotent when already on-chain; sign & broadcast when `transaction` is present. (Facilitator policy: **one asset per merchant wallet**; use **separate wallets** for additional tokens — see [`public/onboarding_guide.md`](public/onboarding_guide.md).)
 3. **Registry (Off-Chain)**: Use `/onboard/challenge` to persist verified metadata for high-fidelity discovery.
 
 ## For buyer agents (payers)

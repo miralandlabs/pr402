@@ -5,7 +5,7 @@
 
 Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Resource Provider (Seller) using the **UniversalSettle** protocol with Institutional Neutrality.
 
-> **Launch phase:** Onboarding and facilitator behavior are **experimental** — **use at your own risk**.
+> **Status.** pr402 and the `exact` rail are live on **Solana Mainnet** and **Devnet**. The policy described below (one payment asset per merchant wallet) is an **operational policy in the facilitator's application layer**, not a hard on-chain constraint, and may be relaxed as the network matures.
 
 **Official facilitator hosts:** **Recommended:** **Production** `https://ipay.sh` (Solana Mainnet) · **Preview** `https://preview.ipay.sh` (Solana Devnet). **Also available** (same service; not deprecated): **`https://agent.pay402.me`**, **`https://preview.agent.pay402.me`**. Use the deployment that matches your programs and the facilitator URL you give buyers; verify with **`GET /api/v1/facilitator/health`** or **`/capabilities`**.
 
@@ -13,9 +13,9 @@ Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Res
 
 For **`sla-escrow`**, the on-chain payment includes an **`oracle_authority`** that resolves delivery via **`ConfirmOracle`**. The **`oracle-qa`** reference implements profile **`x402/oracle-qa/api-quality/v1`**: **hash-bound** SLA and delivery JSON fetched from an HTTP evidence registry (see the normative spec linked from **`GET /api/v1/facilitator/capabilities`** under **`slaEscrowOracleQa`**). Set **`oracle_authority`** to your chosen operator’s pubkey (the keypair that runs `oracle-qa`). Deployments may advertise an optional default operator via facilitator env (`PR402_DEFAULT_SLA_ORACLE_PUBKEY`, etc.); integrators should still confirm the pubkey matches their trust model.
 
-### Launch phase: one payment asset per merchant wallet
+### Policy: one payment asset per merchant wallet
 
-During the initial launch period we keep the **operator and integrator experience intentionally small**: **each merchant wallet is expected to register and settle on a single payment asset (one coin / one settlement rail)**—for example, USDC *or* native SOL, not both under the same wallet in our off-chain registry. This follows a simple design principle we care about: **favor simplicity first, implemented with care so the result still feels elegant**—minimal surface area for discovery, reconciliation, and automation.
+This is a **product and operations policy** enforced in the facilitator's application layer — not a hard on-chain constraint. We keep the **operator and integrator experience intentionally small**: **each merchant wallet is expected to register and settle on a single payment asset (one coin / one settlement rail)**—for example, USDC *or* native SOL, not both under the same wallet in our off-chain registry. This follows a simple design principle we care about: **favor simplicity first, implemented with care so the result still feels elegant**—minimal surface area for discovery, reconciliation, and automation.
 
 That rule is enforced in the facilitator’s **application layer** (not by tightening on-chain or database uniqueness beyond what already exists). **We may relax or refine it as the network matures; that is a product and operations decision, not a guarantee.** If you already know you will accept **multiple tokens**, plan for **separate seller wallets** (one wallet per asset/rail you want to treat as a first-class merchant identity). That pattern stays compatible with UniversalSettle and keeps future policy changes straightforward.
 
@@ -29,7 +29,7 @@ If you already have SOL and wish to fully control your vault setup:
 
 ### Agentic Provisioning (Protocol On-Chain)
 For autonomous agents and backend services:
-1. **Build**: `POST /api/v1/facilitator/onboard/provision` with JSON body `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a base58 mint). Under the launch-phase policy, use **one asset per merchant wallet**; repeats for the same `(wallet, asset)` are idempotent. For another token, use **another seller wallet** (see above).
+1. **Build**: `POST /api/v1/facilitator/onboard/provision` with JSON body `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a base58 mint). Under the facilitator's application-layer policy, use **one asset per merchant wallet**; repeats for the same `(wallet, asset)` are idempotent. For another token, use **another seller wallet** (see above).
 2. **Sign**: If the response includes `transaction`, sign the base64 bincode `VersionedTransaction` locally. If `alreadyProvisioned` is true, there is nothing to send for that asset.
 3. **Send**: Broadcast to Solana when a transaction is present.
 

@@ -65,6 +65,11 @@ pub async fn handle_capabilities(
             sla_escrow,
             unsigned_exact_payment_tx_build: true,
             unsigned_sla_escrow_payment_tx_build: sla_escrow,
+            seller_lifecycle_block: true,
+            accepts_base64_onboard_signature: true,
+            build_response_signer_pubkeys: true,
+            // Directory surface requires Postgres (lists read from `resource_providers`).
+            public_provider_directory: pr402_db().is_some(),
         },
         http_endpoints: CapabilitiesHttpEndpoints {
             verify: HttpEndpointInfo {
@@ -102,6 +107,16 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/sweep-cron",
                 auth: Some("bearer"),
             },
+            onboard_preview: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/onboard",
+                auth: None,
+            },
+            onboard_challenge: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/onboard/challenge",
+                auth: None,
+            },
             onboard: HttpEndpointInfo {
                 method: "POST",
                 path: "/api/v1/facilitator/onboard",
@@ -110,6 +125,26 @@ pub async fn handle_capabilities(
             onboard_provision: HttpEndpointInfo {
                 method: "POST",
                 path: "/api/v1/facilitator/onboard/provision",
+                auth: None,
+            },
+            onboard_retire: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/onboard/retire",
+                auth: None,
+            },
+            providers: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/providers",
+                auth: None,
+            },
+            provider: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/providers/{wallet}",
+                auth: None,
+            },
+            seller_payments: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/seller/payments",
                 auth: None,
             },
             supported: HttpEndpointInfo {

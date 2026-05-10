@@ -4,9 +4,19 @@
 
 **Time to integrate**: ~30 minutes. No blockchain SDK required in your server.
 
-> **Launch phase:** **Experimental** — **use at your own risk**.
+> **Seller documentation map.** This is the canonical seller guide. Other seller-facing pages exist for good reasons; use them in this order:
+>
+> | When you want… | Read |
+> |---|---|
+> | A 30-minute walkthrough with language examples (Rust / Python / JS / Go) | **This page** |
+> | A 5-step cheat-sheet after you already know the flow | [Seller shortcut · 5 steps](/quickstart-seller.md) |
+> | Deep dive on sovereign fees, JIT provisioning, one-asset-per-wallet policy | [Onboarding guide](/onboarding_guide.md) |
+> | The Preview → Activate → Verify lifecycle and how each HTTP endpoint maps | [Agent integration · Seller agents](/agent-integration.md#seller-agents-resource-providers) |
+> | Machine-readable contract | `GET /openapi.json` on the host you call |
 
-Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. **Recommended:** **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet). **Also:** `https://agent.pay402.me` / `https://preview.agent.pay402.me`. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.
+> **Status.** pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). Behavior, feature flags, and fee parameters can evolve — treat **`GET /capabilities`** and **`GET /openapi.json`** on the host you actually call as the live contract.
+
+Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.
 
 ---
 

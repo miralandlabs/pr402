@@ -2,9 +2,9 @@
 
 > **You have a Solana wallet and received HTTP 402 from a seller. Here's what to do.**
 
-> **Launch phase:** **Experimental** — **use at your own risk**.
+> **Status.** pr402 and the `exact` rail are live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). For `sla-escrow`, the `oracle_authority` on the payment is chosen by the seller — trust that authority explicitly before funding.
 
-Replace **`$BASE`** with the facilitator URL the seller documents. **Recommended** defaults: **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet). **Same APIs** on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). Run **`curl -sS "$BASE/api/v1/facilitator/health" | jq .solanaNetwork`** to confirm the cluster.
+Replace **`$BASE`** with the facilitator URL the seller documents. Run **`curl -sS "$BASE/api/v1/facilitator/health" | jq .solanaNetwork`** to confirm the cluster.
 
 Do not silently substitute a different facilitator origin than the seller documented. `payTo`, program ids, asset allowlists, and oracle authorities are deployment-specific.
 

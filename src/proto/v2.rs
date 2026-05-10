@@ -133,6 +133,14 @@ pub struct BuildPaymentTxResponse {
     pub fee_payer: String,
     pub payer: String,
     pub payer_signature_index: usize,
+    /// Ordered list of all required signers for the unsigned transaction (base58 pubkeys).
+    /// `signerPubkeys[i]` corresponds to `signatures[i]` in the wire transaction. For
+    /// single-payer flows this is `[fee_payer]` (index 0 = facilitator-filled) or
+    /// `[fee_payer, payer]`; for SLA-Escrow builds the buyer may see additional slots.
+    /// Absent on older servers that pre-date the field; tooling should fall back to
+    /// `payer_signature_index` when `signer_pubkeys` is empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub signer_pubkeys: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payment_uid: Option<String>,
     pub verify_body_template: serde_json::Value,

@@ -49,6 +49,43 @@ fn parse_nonce_hex(s: &str) -> bool {
     s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// Decode an ed25519 signature given as **base58** (canonical Solana encoding) or
+/// **base64** (what browser wallet adapters frequently return). Signatures are
+/// always 64 bytes, which is how we disambiguate: we try base58 first (the
+/// canonical form), and fall back to base64 when that fails. Rejects anything
+/// that doesn't decode to exactly 64 bytes.
+///
+/// Why both: `@solana/wallet-adapter-react` `useWallet().signMessage` returns a
+/// `Uint8Array` which most integrators then base64-encode over the wire; the
+/// facilitator historically only accepted base58, forcing clients to carry a
+/// base58 encoder just for this one call. Accepting both removes that
+/// side-quest from agents and browser pages.
+fn decode_signature_flexible(encoded: &str) -> Result<Signature, String> {
+    let raw = encoded.trim();
+    if raw.is_empty() {
+        return Err("empty signature".into());
+    }
+
+    if let Ok(sig) = Signature::from_str(raw) {
+        return Ok(sig);
+    }
+
+    use base64::{engine::general_purpose::STANDARD as B64_STD, Engine};
+    let bytes = B64_STD
+        .decode(raw)
+        .map_err(|_| "invalid signature encoding (expected base58 or base64)")?;
+    if bytes.len() != 64 {
+        return Err(format!(
+            "invalid signature length: expected 64 bytes, got {}",
+            bytes.len()
+        ));
+    }
+    let arr: [u8; 64] = bytes
+        .try_into()
+        .map_err(|_| "invalid signature length after base64 decode")?;
+    Ok(Signature::from(arr))
+}
+
 /// Build the exact UTF-8 string the wallet must sign for POST `/api/v1/facilitator/onboard`.
 pub fn build_signed_onboard_message(
     hmac_secret: &[u8],
@@ -72,14 +109,19 @@ pub fn build_signed_onboard_message(
 }
 
 /// Verify HMAC + expiry + wallet line, then ed25519(signature, message, pubkey).
+///
+/// Accepts either **base58** (canonical Solana signature encoding — what
+/// `Signature::from_str` parses) or **base64** (what `@solana/wallet-adapter`
+/// and many JS wallets return natively from `signMessage`). Auto-detects on
+/// decoded length: an ed25519 signature is always 64 bytes.
 pub fn verify_onboard_submission(
     hmac_secret: &[u8],
     wallet_b58: &str,
     message: &str,
-    signature_b58: &str,
+    signature_encoded: &str,
 ) -> Result<(), String> {
     let pk = Pubkey::from_str(wallet_b58).map_err(|_| "invalid wallet pubkey")?;
-    let sig = Signature::from_str(signature_b58).map_err(|_| "invalid signature encoding")?;
+    let sig = decode_signature_flexible(signature_encoded)?;
 
     let Some(idx) = message.rfind(HMAC_LINE_PREFIX) else {
         return Err("missing HMAC line".into());
@@ -170,5 +212,33 @@ mod tests {
         let sig = kp.sign_message(msg.as_bytes());
         let wrong = solana_keypair::Keypair::new().pubkey().to_string();
         assert!(verify_onboard_submission(secret, &wrong, &msg, &sig.to_string()).is_err());
+    }
+
+    #[test]
+    fn accepts_base64_signature() {
+        use base64::{engine::general_purpose::STANDARD as B64_STD, Engine};
+        let secret = b"test-secret-at-least-32-bytes-long!!";
+        let kp = solana_keypair::Keypair::new();
+        let wallet = kp.pubkey().to_string();
+        let (msg, _exp) = build_signed_onboard_message(secret, &wallet, 600).unwrap();
+        let sig = kp.sign_message(msg.as_bytes());
+        // Encode the 64-byte signature as base64 instead of the canonical base58.
+        // The server must accept both (browser wallets return base64 natively).
+        let sig_b64 = B64_STD.encode(<[u8; 64]>::from(sig));
+        verify_onboard_submission(secret, &wallet, &msg, &sig_b64).unwrap();
+    }
+
+    #[test]
+    fn rejects_wrong_length_base64() {
+        let secret = b"test-secret-at-least-32-bytes-long!!";
+        let kp = solana_keypair::Keypair::new();
+        let wallet = kp.pubkey().to_string();
+        let (msg, _exp) = build_signed_onboard_message(secret, &wallet, 600).unwrap();
+        // 32 bytes of zeros, base64-encoded — length mismatch must be rejected, not
+        // silently coerced.
+        use base64::{engine::general_purpose::STANDARD as B64_STD, Engine};
+        let bogus = B64_STD.encode([0u8; 32]);
+        let err = verify_onboard_submission(secret, &wallet, &msg, &bogus).unwrap_err();
+        assert!(err.contains("signature"), "err = {err}");
     }
 }

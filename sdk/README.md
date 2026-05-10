@@ -61,7 +61,7 @@ console.log(await res.json());
 2. **Challenge** — If the server responds with `HTTP 402`, the SDK parses the `accepts[]` array and selects the pricing tier matching your `preferredMint`.
 3. **Delegation** — The SDK reads `extra.capabilitiesUrl` from the 402 body and sends a `POST /build-exact-payment-tx` to the pr402 Facilitator. The Facilitator handles all PDA derivation, rent computation, and instruction ordering.
 4. **Signing** — The SDK deserializes the unsigned `VersionedTransaction`, locates the agent's pubkey index, and signs with Ed25519.
-5. **Settlement** — The signed proof is base64-encoded into the `X-PAYMENT` header and the original request is replayed.
+5. **Settlement** — The signed proof is base64-encoded into the `PAYMENT-SIGNATURE` header (x402 v2; replaces v1 `X-PAYMENT`) and the original request is replayed.
 
 ## Relationship to `sdk/facilitator-build-tx.ts`
 
