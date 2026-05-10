@@ -582,15 +582,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     handle_capabilities(facilitator.clone()).await
                 }
                 ("GET", "/") => {
-                    if accept.contains("text/html") {
+                    if accept.contains("text/markdown") {
+                        Response::builder()
+                            .header("Content-Type", "text/markdown; charset=utf-8")
+                            .header("Link", "</openapi.json>; rel=\"service-desc\"")
+                            .body(Body::Text(
+                                include_str!("../../public/agent-integration.md").to_string(),
+                            ))
+                            .unwrap()
+                    } else if accept.contains("text/html") {
                         Response::builder()
                             .header("Content-Type", "text/html")
+                            .header("Link", "</openapi.json>; rel=\"service-desc\"")
                             .body(Body::Text(
                                 include_str!("../../public/index.html").to_string(),
                             ))
                             .unwrap()
                     } else {
-                        handle_capabilities(facilitator.clone()).await
+                        let mut res = handle_capabilities(facilitator.clone()).await;
+                        res.headers_mut().insert(
+                            http::header::LINK,
+                            http::HeaderValue::from_static("</openapi.json>; rel=\"service-desc\""),
+                        );
+                        res
                     }
                 }
                 ("GET", "/wallet.js") => {
