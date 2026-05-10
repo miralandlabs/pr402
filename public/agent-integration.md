@@ -68,7 +68,7 @@ The facilitator exposes a three-stage seller lifecycle. Each stage has a distinc
 | Stage | HTTP | Side effect | Required? |
 |-------|------|-------------|-----------|
 | **Preview** | `GET /api/v1/facilitator/onboard?wallet=…` | None. Derives vault PDAs and returns on-chain state. | No wallet needed. |
-| **Activate** | `POST /api/v1/facilitator/onboard/provision` | Returns an unsigned `CreateVault` (+ optional ATA) tx. After the **seller** signs and broadcasts, the on-chain `SplitVault` exists and unlocks the sovereign 5 bps fee tier. | Required before accepting payments. |
+| **Activate** | `POST /api/v1/facilitator/onboard/provision` | Returns an unsigned `CreateVault` (+ optional ATA) tx. After the **seller** signs and broadcasts, the on-chain `SplitVault` exists and unlocks the sovereign 90 bps fee tier. | Required before accepting payments. |
 | **Verify** (optional) | `GET /api/v1/facilitator/onboard/challenge` then `POST /api/v1/facilitator/onboard` | Writes a verified row in the off-chain `resource_providers` registry so the seller appears in discovery. The facilitator **refuses** this step with `409 Conflict` until Activate has landed. | Optional. Only required for verified-seller discovery listings. |
 
 The `POST /onboard/provision` response carries a `statusCode` enum so agents don't have to parse `notes[]`:
@@ -78,14 +78,14 @@ The `POST /onboard/provision` response carries a `statusCode` enum so agents don
 - `VAULT_ONLY` — first-time native-SOL provisioning (single `CreateVault` ix).
 - `ATA_ONLY` — vault exists, adding a new SPL mint (single ATA-create ix).
 
-If you receive payment for resources and want **Sovereign** status (95 bps fee tier) and correct **402 `accepts[]`** lines:
+If you receive payment for resources and want **Sovereign** status (90 bps fee tier — a 10 bps discount off the standard 100 bps rate) and correct **402 `accepts[]`** lines:
 
 1. **Discover rules**: [Onboarding guide](/onboarding_guide.md) — Sovereign vs facilitated (JIT) paths.
 2. **Preview (no wallet):** `GET /api/v1/facilitator/onboard?wallet=<YOUR_PUBKEY>`. The `lifecycle` block tells you what stage to act on next.
 3. **Activate (on-chain):**
    - **Build**: `POST /api/v1/facilitator/onboard/provision` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `WSOL`, `USDT`, or a mint). Idempotent per `(wallet, asset)` (`statusCode: "ALREADY_PROVISIONED"` + no `transaction` when done).
    - **Sign** the base64 bincode `VersionedTransaction` with your seller key.
-   - **Send** to Solana. Signing with the seller wallet itself earns an ongoing **5 bps** protocol fee discount.
+   - **Send** to Solana. Signing with the seller wallet itself earns the ongoing **10 bps** protocol fee discount (90 bps sovereign rate vs 100 bps standard).
 4. **Discover your `payTo` (vault PDA)** and metadata:
    ```bash
    curl -sS "https://<facilitator-url>/api/v1/facilitator/discovery?wallet=<YOUR_PUBKEY>&scheme=exact" | jq .

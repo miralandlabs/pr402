@@ -49,8 +49,17 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
+    },
+    {
+      "src": "/robots.txt",
+      "dest": "/public/robots.txt"
+    },
+    {
+      "src": "/sitemap.xml",
+      "dest": "/public/sitemap.xml"
     },
     {
       "src": "/openapi.json",
@@ -97,6 +106,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "POST",
         "OPTIONS"
       ]
@@ -106,6 +116,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
     },
@@ -114,6 +125,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
     },
@@ -122,6 +134,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
     },
@@ -130,6 +143,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
     },
@@ -154,6 +168,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "POST",
         "OPTIONS"
       ]
@@ -163,6 +178,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
     },
@@ -171,6 +187,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
     },
@@ -187,6 +204,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
     },
@@ -195,6 +213,7 @@
       "dest": "/src/bin/facilitator",
       "methods": [
         "GET",
+        "HEAD",
         "OPTIONS"
       ]
     },

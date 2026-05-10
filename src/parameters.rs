@@ -102,6 +102,15 @@ pub const PR402_REQUIRE_MINT_ALLOWLIST: &str = "PR402_REQUIRE_MINT_ALLOWLIST";
 /// Maximum number of new SplitVaults the facilitator will pay to create per day (anti-spam).
 pub const PR402_MAX_DAILY_PROVISION_COUNT: &str = "PR402_MAX_DAILY_PROVISION_COUNT";
 
+/// Default oracle tip basis points advertised on `/capabilities` for the sla-escrow scheme,
+/// and used as the default `oracle_fee_bps` when pr402 opens an escrow on behalf of buyers.
+///
+/// On-chain the oracle tip is a **per-escrow** field (`Escrow::oracle_fee_bps`), set at
+/// `open_escrow` time and capped by `MAX_ORACLE_FEE_BPS = 500`. The sla-escrow Bank account
+/// carries no facilitator-wide default for it, so pr402 sources this value from its own
+/// operator config: DB `parameters` row wins, else env var, else [`DEFAULT_SLA_ESCROW_ORACLE_FEE_BPS`].
+pub const PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS: &str = "PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS";
+
 /// Min spendable lamports in UniversalSettle SOL storage before submitting a Sweep (gas not worth dust).
 pub const PR402_SWEEP_MIN_SPENDABLE_LAMPORTS: &str = "PR402_SWEEP_MIN_SPENDABLE_LAMPORTS";
 /// Default min SPL raw amount when mint has no entry in [`PR402_SWEEP_MIN_SPL_RAW_BY_MINT`] (see [`DEFAULT_SWEEP_MIN_SPL_RAW_DEFAULT`]).
@@ -130,6 +139,14 @@ pub const DEFAULT_SWEEP_CRON_COOLDOWN_SEC: u64 = 300;
 pub const DEFAULT_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC: u64 = 86_400;
 pub const DEFAULT_SWEEP_CRON_BATCH_LIMIT: u64 = 50;
 
+/// Fallback when `PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS` is unset.
+///
+/// 50 bps is the current operator convention for the `ipay.sh` deployment; it is applied
+/// when pr402 opens an escrow on behalf of a buyer and published as the advertised
+/// `oracleFeeBps` on `/capabilities`. Must remain ≤ `sla_escrow_api::consts::MAX_ORACLE_FEE_BPS`
+/// (currently 500).
+pub const DEFAULT_SLA_ESCROW_ORACLE_FEE_BPS: u16 = 50;
+
 /// Read cache then env (no async DB fetch). Call [`refresh_parameters_from_db`] before settle so cache is warm.
 pub fn resolve_string_sync(param_key: &str, env_key: &str) -> Option<String> {
     let from_cache = cache_store()
@@ -148,6 +165,35 @@ pub fn resolve_u64_sync(param_key: &str, env_key: &str, default: u64) -> u64 {
     resolve_string_sync(param_key, env_key)
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(default)
+}
+
+/// Resolve a `u16` basis-points parameter with an inclusive upper cap.
+///
+/// If the resolved value exceeds `max_inclusive`, the cap is returned instead and a one-time
+/// warning is emitted. This mirrors the on-chain bounds (e.g. `MAX_ORACLE_FEE_BPS = 500`) so
+/// a misconfigured env var can't advertise a value the program would reject.
+pub fn resolve_u16_bps_sync(
+    param_key: &str,
+    env_key: &str,
+    default: u16,
+    max_inclusive: u16,
+) -> u16 {
+    let raw = resolve_string_sync(param_key, env_key)
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(default);
+    if raw > max_inclusive {
+        warn!(
+            target: "server_log",
+            param = %param_key,
+            requested = raw,
+            cap = max_inclusive,
+            "{} exceeds program cap; clamping to cap",
+            param_key
+        );
+        max_inclusive
+    } else {
+        raw
+    }
 }
 
 /// Effective SPL sweep threshold for `mint` (per-mint JSON overrides default).

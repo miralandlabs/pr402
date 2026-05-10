@@ -633,6 +633,76 @@
         .ladder-body > p { margin: 0 0 0.75rem; color: var(--fg); }
         .ladder-body > .hint { margin-top: 0.5rem; }
 
+        /* Fees-at-a-glance strip above the seller lifecycle ladder. Compact, dense, and
+         * authoritative — shows the numbers the seller will see on their own payments.
+         * Grid collapses to single-column below 640px. */
+        .fee-schedule {
+            margin: 0 0 1.5rem;
+        }
+        .fee-schedule-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            padding: 0 0 0.5rem;
+        }
+        .fee-schedule-head h3 {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--fg-dim);
+        }
+        .fee-schedule-head h3 .hash { color: var(--fg-faint); margin-right: 0.4em; }
+        .fee-schedule-head .caption {
+            font-size: 11px;
+            color: var(--fg-faint);
+            letter-spacing: 0.04em;
+        }
+        .fee-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1px;
+            background: var(--rule);
+            border: 1px solid var(--rule);
+            margin: 0;
+        }
+        .fee-strip .cell {
+            background: var(--bg);
+            padding: 0.85rem 1rem;
+        }
+        .fee-strip .label {
+            font-size: 10px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--fg-dim);
+            font-weight: 600;
+        }
+        .fee-strip .value {
+            font-size: 14px;
+            color: var(--fg);
+            margin-top: 0.25rem;
+        }
+        .fee-strip .value .accent { color: var(--accent); }
+        .fee-strip .value .dim    { color: var(--fg-dim); }
+        .fee-strip .note {
+            font-size: 11px;
+            color: var(--fg-faint);
+            margin-top: 0.2rem;
+        }
+        .fee-schedule-footnote {
+            font-size: 11px;
+            color: var(--fg-faint);
+            padding: 0.5rem 0 0;
+            line-height: 1.5;
+        }
+        .fee-schedule-footnote code {
+            color: var(--fg-dim);
+            font-size: 11px;
+        }
+
         /* Optional discovery form inside Step 3 (Verify identity). A subtle tinted card
          * so the optional nature is obvious but the wash doesn't dominate the section —
          * the original 40% mix was visibly heavy in light mode. */
@@ -810,6 +880,55 @@
             <strong>Verify</strong> is optional and registers your wallet in the off-chain discovery index.
         </p>
 
+        <!-- Facilitator fee schedule · mirrors the live Universalsettle Config account on mainnet
+             and the sla-escrow Escrow parameters. Numbers here match what /capabilities returns;
+             treat /capabilities as authoritative if anything ever drifts. The protocol fee and
+             the oracle tip on sla-escrow are two independent deductions from the payment amount —
+             only the protocol fee respects the $0.10 USDC floor; the oracle tip is pure bps. -->
+        <section class="fee-schedule" aria-label="pr402 facilitator fee schedule">
+            <div class="fee-schedule-head">
+                <h3><span class="hash">§</span>facilitator fees · per payment transaction</h3>
+                <span class="caption">deducted from <code>payment.amount</code> at settlement</span>
+            </div>
+            <div class="fee-strip">
+                <div class="cell">
+                    <div class="label">exact · standard</div>
+                    <div class="value"><span class="accent">100 bps</span> <span class="dim">· 1.00%</span></div>
+                    <div class="note">JIT-provisioned sellers</div>
+                </div>
+                <div class="cell">
+                    <div class="label">exact · sovereign</div>
+                    <div class="value"><span class="accent">90 bps</span> <span class="dim">· 0.90%</span></div>
+                    <div class="note">Self-provisioned · 10 bps off</div>
+                </div>
+                <div class="cell">
+                    <div class="label">exact · min fee</div>
+                    <div class="value"><span class="accent">$0.01</span> <span class="dim">USDC</span></div>
+                    <div class="note">floor on protocol fee</div>
+                </div>
+                <div class="cell">
+                    <div class="label">sla-escrow · protocol</div>
+                    <div class="value"><span class="accent">100 bps</span> <span class="dim">/ $0.10</span></div>
+                    <div class="note">max(amount × bps, floor)</div>
+                </div>
+                <div class="cell">
+                    <div class="label">sla-escrow · oracle tip</div>
+                    <div class="value"><span class="accent">50 bps</span> <span class="dim">· 0.50%</span></div>
+                    <div class="note">pure bps · no floor · paid on verdict</div>
+                </div>
+            </div>
+            <p class="fee-schedule-footnote">
+                Seller receives <code>amount − protocol_fee − oracle_tip</code>. On <code>exact</code>
+                there is no oracle tip. On <code>sla-escrow</code> the oracle tip is paid only when
+                the oracle rendered a verdict (<code>resolution_state ≠ 0</code>) and is a
+                per-escrow field capped by the program at 500 bps; this deployment opens
+                escrows with the default shown above. The <code>exact · min fee</code> floor on
+                the SPL rail is <code>$0.01 USDC (10 000 raw units)</code>; SOL-rail floor is
+                <code>200 000 lamports</code>. See <a href="/api/v1/facilitator/capabilities">/capabilities</a>
+                for the authoritative live values.
+            </p>
+        </section>
+
         <!-- Shared wallet pubkey row -->
         <div class="lifecycle-wallet">
             <div class="input-row">
@@ -845,12 +964,12 @@
                 <span class="ladder-num">2</span>
                 <div class="ladder-title">
                     <h3>Activate</h3>
-                    <span class="ladder-sub">on-chain · wallet signs · sovereign 5 bps discount</span>
+                    <span class="ladder-sub">on-chain · wallet signs · sovereign 10 bps discount</span>
                 </div>
                 <span class="ladder-status" data-status="pending">pending</span>
             </header>
             <div class="ladder-body">
-                <p>Creates your <strong>SplitVault</strong> (and the vault ATA for SPL rails). Idempotent per <code>(wallet, asset)</code> — re-running is safe. Signing with the seller wallet itself is what unlocks the <span class="pill accent">5 bps</span> sovereign tier.</p>
+                <p>Creates your <strong>SplitVault</strong> (and the vault ATA for SPL rails). Idempotent per <code>(wallet, asset)</code> — re-running is safe. Signing with the seller wallet itself is what unlocks the <span class="pill accent">10 bps</span> sovereign discount (90 bps vs the standard 100 bps).</p>
                 <div class="input-row">
                     <span style="color: var(--accent);">asset &gt;</span>
                     <select id="provision-asset">

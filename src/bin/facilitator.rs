@@ -540,7 +540,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             };
 
-            let response = match (method.as_str(), path.as_str()) {
+            let effective_method = if method.as_str() == "HEAD" {
+                "GET"
+            } else {
+                method.as_str()
+            };
+            let response = match (effective_method, path.as_str()) {
                 ("OPTIONS", p) if p.starts_with("/api/v1/facilitator") => cors_preflight_response(),
                 ("POST", "/api/v1/facilitator/verify") => {
                     handle_verify(facilitator.clone(), body, correlation_hdr.as_deref()).await
@@ -577,15 +582,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     handle_capabilities(facilitator.clone()).await
                 }
                 ("GET", "/") => {
-                    if accept.contains("text/html") {
+                    if accept.contains("text/markdown") {
+                        Response::builder()
+                            .header("Content-Type", "text/markdown; charset=utf-8")
+                            .header("Link", "</openapi.json>; rel=\"service-desc\"")
+                            .body(Body::Text(
+                                include_str!("../../public/agent-integration.md").to_string(),
+                            ))
+                            .unwrap()
+                    } else if accept.contains("text/html") {
                         Response::builder()
                             .header("Content-Type", "text/html")
+                            .header("Link", "</openapi.json>; rel=\"service-desc\"")
                             .body(Body::Text(
                                 include_str!("../../public/index.html").to_string(),
                             ))
                             .unwrap()
                     } else {
-                        handle_capabilities(facilitator.clone()).await
+                        let mut res = handle_capabilities(facilitator.clone()).await;
+                        res.headers_mut().insert(
+                            http::header::LINK,
+                            http::HeaderValue::from_static("</openapi.json>; rel=\"service-desc\""),
+                        );
+                        res
                     }
                 }
                 ("GET", "/wallet.js") => {
