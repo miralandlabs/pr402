@@ -540,7 +540,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             };
 
-            let response = match (method.as_str(), path.as_str()) {
+            let effective_method = if method.as_str() == "HEAD" {
+                "GET"
+            } else {
+                method.as_str()
+            };
+            let response = match (effective_method, path.as_str()) {
                 ("OPTIONS", p) if p.starts_with("/api/v1/facilitator") => cors_preflight_response(),
                 ("POST", "/api/v1/facilitator/verify") => {
                     handle_verify(facilitator.clone(), body, correlation_hdr.as_deref()).await
