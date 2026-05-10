@@ -10,37 +10,65 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Apply persisted theme before CSS to avoid a flash of the wrong palette. -->
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('pr402-theme');
+                if (t === 'light' || t === 'dark') {
+                    document.documentElement.setAttribute('data-theme', t);
+                }
+            } catch (e) { /* private mode / disabled storage: fall through to auto */ }
+        })();
+    </script>
     <style>
+        /*
+         * Theme model
+         * -----------
+         * Default (`:root`, no data-theme) tracks the OS via `color-scheme: light dark`
+         * and CSS `light-dark()`, which returns the first value when the effective scheme
+         * is `light` and the second when it's `dark`.
+         *
+         * Explicit overrides (`:root[data-theme="light"]` / `[data-theme="dark"]`) pin
+         * `color-scheme` so `light-dark()` resolves deterministically even when the OS
+         * prefers the other theme. The inline head script above sets the attribute from
+         * localStorage before CSS applies; the theme toggle in the env strip updates it.
+         */
         :root {
+            color-scheme: light dark;
+
+            /* Fallback palette (single-color) for engines without light-dark(): the
+             * subsequent light-dark() declarations simply override when supported.
+             * Using the dark palette by default matches the original design. */
             --bg: #0a0a0a;
             --bg-alt: #101010;
             --fg: #e6e6e6;
             --fg-dim: #9a9a9a;
             --fg-faint: #5a5a5a;
             --rule: #1f1f1f;
-            --accent: #a3e635;       /* terminal green */
+            --accent: #a3e635;
             --accent-soft: rgba(163, 230, 53, 0.12);
             --amber: #f5b841;
             --red: #ef4444;
             --blue: #60a5fa;
+
+            --bg:          light-dark(#fdfdfb, #0a0a0a);
+            --bg-alt:      light-dark(#f4f3ee, #101010);
+            --fg:          light-dark(#1a1a1a, #e6e6e6);
+            --fg-dim:      light-dark(#4a4a4a, #9a9a9a);
+            --fg-faint:    light-dark(#8a8a8a, #5a5a5a);
+            --rule:        light-dark(#e5e4df, #1f1f1f);
+            --accent:      light-dark(#3a7d0c, #a3e635);   /* terminal green */
+            --accent-soft: light-dark(rgba(58, 125, 12, 0.08), rgba(163, 230, 53, 0.12));
+            --amber:       light-dark(#a16207, #f5b841);
+            --red:         light-dark(#b91c1c, #ef4444);
+            --blue:        light-dark(#1d4ed8, #60a5fa);
+
             --font-mono: "Berkeley Mono", "JetBrains Mono", "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
         }
 
-        @media (prefers-color-scheme: light) {
-            :root {
-                --bg: #fdfdfb;
-                --bg-alt: #f4f3ee;
-                --fg: #1a1a1a;
-                --fg-dim: #4a4a4a;
-                --fg-faint: #8a8a8a;
-                --rule: #e5e4df;
-                --accent: #3a7d0c;
-                --accent-soft: rgba(58, 125, 12, 0.08);
-                --amber: #a16207;
-                --red: #b91c1c;
-                --blue: #1d4ed8;
-            }
-        }
+        :root[data-theme="light"] { color-scheme: light; }
+        :root[data-theme="dark"]  { color-scheme: dark;  }
 
         * { box-sizing: border-box; }
 
@@ -498,6 +526,28 @@
         .pill.amber  { color: var(--amber);  border-color: var(--amber); }
         .pill.blue   { color: var(--blue);   border-color: var(--blue); }
 
+        /* Theme toggle in the env strip */
+        .theme-toggle {
+            appearance: none;
+            background: transparent;
+            border: 1px solid var(--rule);
+            color: var(--fg-dim);
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.25rem 0.6rem;
+            cursor: pointer;
+            line-height: 1.2;
+            transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+        }
+        .theme-toggle:hover  { color: var(--fg); border-color: var(--fg-dim); }
+        .theme-toggle:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .theme-toggle .glyph { margin-right: 0.35em; }
+
         @media (prefers-reduced-motion: reduce) {
             * { animation: none !important; transition: none !important; }
         }
@@ -512,8 +562,17 @@
             <span class="tag" id="env-tag">loading…</span>
             <span id="env-detail" style="margin-left: 0.5rem;"></span>
         </span>
-        <span class="muted">
+        <span style="display: inline-flex; align-items: center; gap: 1rem;">
             <span id="env-build" class="muted">schema v1.0.0</span>
+            <button
+                type="button"
+                id="theme-toggle"
+                class="theme-toggle"
+                aria-label="Switch theme"
+                title="Switch theme (auto → light → dark)"
+            >
+                <span class="glyph" id="theme-toggle-glyph" aria-hidden="true">◐</span><span id="theme-toggle-label">auto</span>
+            </button>
         </span>
     </div>
 </div>
@@ -1083,8 +1142,66 @@
         });
     }
 
+    // ---- theme toggle: auto → light → dark → auto, persisted in localStorage ----
+    function initThemeToggle() {
+        var btn   = document.getElementById('theme-toggle');
+        var glyph = document.getElementById('theme-toggle-glyph');
+        var label = document.getElementById('theme-toggle-label');
+        if (!btn) return;
+
+        // UI state: 'auto' means no data-theme attribute on <html>.
+        function currentMode() {
+            var t = document.documentElement.getAttribute('data-theme');
+            return t === 'light' || t === 'dark' ? t : 'auto';
+        }
+
+        function render(mode) {
+            // Pick the glyph that matches what the user will *see*.
+            var resolved = mode === 'auto'
+                ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                : mode;
+            // ☀ for light, ☾ for dark, ◐ when auto.
+            if (glyph) glyph.textContent = mode === 'auto' ? '◐' : (resolved === 'dark' ? '☾' : '☀');
+            if (label) label.textContent = mode;
+            btn.setAttribute('aria-label', 'Theme: ' + mode + ' (click to switch)');
+            btn.setAttribute('title', 'Theme: ' + mode + ' · click to cycle auto → light → dark');
+        }
+
+        function apply(mode, persist) {
+            if (mode === 'auto') {
+                document.documentElement.removeAttribute('data-theme');
+            } else {
+                document.documentElement.setAttribute('data-theme', mode);
+            }
+            try {
+                if (persist) {
+                    if (mode === 'auto') localStorage.removeItem('pr402-theme');
+                    else                 localStorage.setItem('pr402-theme', mode);
+                }
+            } catch (e) { /* ignore quota / disabled storage */ }
+            render(mode);
+        }
+
+        // Cycle auto → light → dark → auto.
+        btn.addEventListener('click', function () {
+            var next = { auto: 'light', light: 'dark', dark: 'auto' }[currentMode()];
+            apply(next, true);
+        });
+
+        // When in auto mode, re-render the glyph as the OS flips.
+        if (window.matchMedia) {
+            var mq = window.matchMedia('(prefers-color-scheme: dark)');
+            var onChange = function () { if (currentMode() === 'auto') render('auto'); };
+            if (mq.addEventListener) mq.addEventListener('change', onChange);
+            else if (mq.addListener) mq.addListener(onChange);
+        }
+
+        render(currentMode());
+    }
+
     // ---- boot ----
     document.addEventListener('DOMContentLoaded', function () {
+        initThemeToggle();
         rewriteDocsLinks();
         syncCurlProbe();
         initTabs();
