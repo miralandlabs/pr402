@@ -23,7 +23,7 @@ pub enum TxBudget {
     /// Observed: ~300 CUs.
     ExactSolTransfer,
 
-    /// `SPL TransferChecked` — USDC / USDT / WSOL payment.
+    /// `SPL TransferChecked` — USDC / USDT payment (any Token / Token-2022 SPL mint).
     /// Facilitator is fee payer (slot 0); buyer signs transfer authority.
     /// Observed: ~6 500 CUs.
     ExactSplTransfer,

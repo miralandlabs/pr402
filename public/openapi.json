@@ -513,7 +513,7 @@
           "pr402 Extension: Seller Onboarding"
         ],
         "summary": "Build seller provisioning transaction (per asset)",
-        "description": "Returns an unsigned base64-bincode `VersionedTransaction` to provision the UniversalSettle SplitVault (if needed) and the payment surface for the requested **asset**: native SOL uses the virtual mint `11111111111111111111111111111111`; SPL assets get an idempotent vault ATA create when missing. **Agent-oriented default:** callers often start with **`USDC`** (stablecoin settlements). **Idempotent:** repeat calls for the same `(wallet, asset)` return `alreadyProvisioned: true` and omit `transaction` when no on-chain work remains. **Aliases:** `SOL`, `USDC`, `WSOL`, `USDT` resolve to cluster-appropriate mints (on devnet, `USDT` requires an explicit mint). Mint must pass `PR402_ALLOWED_PAYMENT_MINTS` when configured.",
+        "description": "Returns an unsigned base64-bincode `VersionedTransaction` to provision the UniversalSettle SplitVault (if needed) and the payment surface for the requested **asset**: native SOL uses the virtual mint `11111111111111111111111111111111`; SPL assets get an idempotent vault ATA create when missing. **Agent-oriented default:** callers often start with **`USDC`** (stablecoin settlements). **Idempotent:** repeat calls for the same `(wallet, asset)` return `alreadyProvisioned: true` and omit `transaction` when no on-chain work remains. **Aliases:** `SOL`, `USDC`, `USDT` resolve to cluster-appropriate mints (on devnet, `USDT` requires an explicit mint). Mint must pass `PR402_ALLOWED_PAYMENT_MINTS` when configured. **Note:** `WSOL` is intentionally not a friendly alias on this facilitator — see /onboarding_guide for the rationale; use `SOL` or `USDC` instead.",
         "operationId": "facilitatorOnboardProvision",
         "requestBody": {
           "required": true,
@@ -1943,7 +1943,7 @@
           },
           "asset": {
             "type": "string",
-            "description": "Asset to provision: `SOL`, `USDC`, `WSOL`, `USDT`, or a base58 SPL mint (native SOL virtual mint `11111111111111111111111111111111` also accepted). Typical agent flows: **`USDC`** first."
+            "description": "Asset to provision: `SOL`, `USDC`, `USDT`, or a base58 SPL mint (native SOL virtual mint `11111111111111111111111111111111` also accepted). Typical agent flows: **`USDC`** first."
           }
         },
         "additionalProperties": false

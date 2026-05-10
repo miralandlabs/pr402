@@ -23,7 +23,6 @@ use crate::util::tx_builder::{
 /// Canonical “virtual mint” for native SOL in x402 / pr402 (matches payment `asset` conventions).
 pub const NATIVE_SOL_ASSET_MINT: Pubkey = pubkey!("11111111111111111111111111111111");
 
-const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
 const USDC_MAINNET: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 const USDC_DEVNET: Pubkey = pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
 const USDT_MAINNET: Pubkey = pubkey!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
@@ -49,7 +48,7 @@ pub enum SellerProvisionError {
 pub struct SellerProvisionTxResponse {
     pub schema_version: String,
     pub wallet: String,
-    /// Friendly label, e.g. `SOL`, `USDC`, `WSOL`, `USDT`, or `spl` for an arbitrary mint.
+    /// Friendly label, e.g. `SOL`, `USDC`, `USDT`, or `spl` for an arbitrary mint.
     pub asset: String,
     /// SPL mint base58; for native SOL, [`NATIVE_SOL_ASSET_MINT`] (all-ones pubkey per convention).
     pub asset_mint: String,
@@ -91,6 +90,18 @@ pub fn cluster_is_devnet(provider: &SolanaChainProvider) -> bool {
 }
 
 /// Resolve human-friendly asset names or a raw mint pubkey.
+///
+/// Supported friendly labels: `SOL`, `USDC`, `USDT`. Raw base58 SPL mints are accepted
+/// if the operator's `PR402_ALLOWED_PAYMENT_MINTS` allowlist includes them.
+///
+/// **WSOL is deliberately not supported** as a friendly label. The UniversalSettle
+/// on-chain program keeps **two** minimum-fee values — `min_fee_amount` (for SPL,
+/// assumed 6-decimals stablecoin) and `min_fee_amount_sol` (for native SOL, 9
+/// decimals) — and picks one via the `is_sol` flag on the Sweep instruction. WSOL
+/// is an SPL token with 9 decimals, so it would settle against the 6-decimal SPL
+/// floor, producing a ~11× undercharge at the floor boundary. Until the program
+/// supports per-mint floors, operators should keep WSOL out of the allowlist and
+/// sellers should use native `SOL` instead.
 pub fn resolve_seller_asset(
     asset: &str,
     devnet: bool,
@@ -98,7 +109,7 @@ pub fn resolve_seller_asset(
     let a = asset.trim();
     if a.is_empty() {
         return Err(SellerProvisionError::InvalidInput(
-            "asset is required (e.g. SOL, USDC, WSOL, USDT, or a mint address)".into(),
+            "asset is required (e.g. SOL, USDC, USDT, or a base58 mint address)".into(),
         ));
     }
     if let Ok(pk) = Pubkey::from_str(a) {
@@ -112,10 +123,14 @@ pub fn resolve_seller_asset(
     }
     match a.to_ascii_lowercase().as_str() {
         "sol" | "native" | "native_sol" | "lamports" => Ok(ResolvedSellerAsset::NativeSol),
-        "wsol" | "wrapped_sol" | "wrapped-sol" => Ok(ResolvedSellerAsset::Spl {
-            mint: WSOL_MINT,
-            label: "WSOL",
-        }),
+        "wsol" | "wrapped_sol" | "wrapped-sol" => Err(SellerProvisionError::InvalidInput(
+            "WSOL is not a supported seller rail on this facilitator. \
+             Use `SOL` (native) for SOL-denominated payments, or `USDC` for stable-unit payments. \
+             (WSOL would settle against the 6-decimal SPL fee floor but has 9 decimals; until \
+             per-mint floors are supported, the rail is disabled to avoid silently undercharging \
+             sellers.)"
+                .into(),
+        )),
         "usdc" => Ok(ResolvedSellerAsset::Spl {
             mint: if devnet { USDC_DEVNET } else { USDC_MAINNET },
             label: "USDC",
@@ -133,7 +148,7 @@ pub fn resolve_seller_asset(
             }
         }
         _ => Err(SellerProvisionError::InvalidInput(format!(
-            "Unknown asset {:?}; use SOL, USDC, USDT, WSOL, or a base58 mint address",
+            "Unknown asset {:?}; use SOL, USDC, USDT, or a base58 mint address",
             a
         ))),
     }
