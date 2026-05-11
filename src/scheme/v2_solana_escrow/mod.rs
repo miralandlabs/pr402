@@ -181,6 +181,13 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                     fee_bps: fee_bps.into(),
                     oracle_fee_bps: oracle_fee_bps.into(),
                     ttl_seconds: 3600.into(), // Default 1 hour
+                    // Advertise the CU envelope the facilitator actually enforces on
+                    // verify for the buyer-signed FundPayment tx.
+                    max_compute_unit_limit: (crate::chain::TxBudget::FundPayment.cu_limit() as u64)
+                        .into(),
+                    recommended_compute_unit_price: crate::chain::TxBudget::FundPayment
+                        .cu_price()
+                        .into(),
                     sla_fund_tx_network_fee_payer: Some("buyer".to_string()),
                     merchant_wallet: None,
                     beneficiary: None,
@@ -374,6 +381,12 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                         fee_bps: fee_bps.into(),
                         oracle_fee_bps: oracle_fee_bps.into(),
                         ttl_seconds: 3600.into(), // Default 1 hour
+                        max_compute_unit_limit: (crate::chain::TxBudget::FundPayment.cu_limit()
+                            as u64)
+                            .into(),
+                        recommended_compute_unit_price: crate::chain::TxBudget::FundPayment
+                            .cu_price()
+                            .into(),
                         sla_fund_tx_network_fee_payer: Some("buyer".to_string()),
                         merchant_wallet,
                         beneficiary,

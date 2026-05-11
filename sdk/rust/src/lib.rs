@@ -25,10 +25,7 @@ pub enum X402Error {
     /// This means the Resource Provider did not integrate with a Facilitator correctly.
     MissingCapabilitiesUrl,
     /// The Facilitator's `/build-exact-payment-tx` endpoint returned an error.
-    BuildFailed {
-        status: u16,
-        detail: String,
-    },
+    BuildFailed { status: u16, detail: String },
     /// The build response is missing the `verifyBodyTemplate` field.
     MissingVerifyTemplate,
     /// The build response is missing the `transaction` field.
@@ -36,13 +33,9 @@ pub enum X402Error {
     /// The agent's wallet pubkey was not found in the transaction's account keys.
     SignerNotInTransaction,
     /// The blockhash embedded in the transaction has expired. Request a fresh build.
-    BlockhashExpired {
-        expires_at: u64,
-    },
+    BlockhashExpired { expires_at: u64 },
     /// Rate limited by the Facilitator. Retry after the indicated duration.
-    RateLimited {
-        retry_after_secs: u64,
-    },
+    RateLimited { retry_after_secs: u64 },
     /// Network or serialization error.
     Transport(String),
 }
@@ -119,7 +112,11 @@ impl X402AgentClient {
 
     /// Access an API endpoint. If challenged with a 402, automatically routes to the Facilitator,
     /// builds the transaction, signs it, and retries the request fully authorized.
-    pub async fn fetch_with_auto_pay(&self, url: &str, preferred_mint: &str) -> Result<reqwest::Response, X402Error> {
+    pub async fn fetch_with_auto_pay(
+        &self,
+        url: &str,
+        preferred_mint: &str,
+    ) -> Result<reqwest::Response, X402Error> {
         let res = self.http.get(url).send().await?;
         if res.status() == StatusCode::OK {
             return Ok(res);
@@ -128,20 +125,32 @@ impl X402AgentClient {
         }
 
         let requirement: Value = res.json().await?;
-        let accepts = requirement.get("accepts").and_then(|a| a.as_array())
+        let accepts = requirement
+            .get("accepts")
+            .and_then(|a| a.as_array())
             .ok_or(X402Error::MissingAccepts)?;
 
-        let available_mints: Vec<String> = accepts.iter()
-            .filter_map(|a| a.get("asset").and_then(|x| x.as_str()).map(|s| s.to_string()))
+        let available_mints: Vec<String> = accepts
+            .iter()
+            .filter_map(|a| {
+                a.get("asset")
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string())
+            })
             .collect();
 
-        let rule = accepts.iter().find(|a| a.get("asset").and_then(|x| x.as_str()) == Some(preferred_mint))
+        let rule = accepts
+            .iter()
+            .find(|a| a.get("asset").and_then(|x| x.as_str()) == Some(preferred_mint))
             .ok_or_else(|| X402Error::MintNotAccepted {
                 requested_mint: preferred_mint.to_string(),
                 available_mints,
             })?;
 
-        let cap_url = rule.get("extra").and_then(|e| e.get("capabilitiesUrl")).and_then(|c| c.as_str())
+        let cap_url = rule
+            .get("extra")
+            .and_then(|e| e.get("capabilitiesUrl"))
+            .and_then(|c| c.as_str())
             .ok_or(X402Error::MissingCapabilitiesUrl)?;
 
         let fac_base_url = cap_url.replace("/capabilities", "");
@@ -155,26 +164,40 @@ impl X402AgentClient {
             "autoWrapSol": self.auto_wrap_sol
         });
 
-        let build_res = self.http.post(&build_url).json(&build_payload).send().await?;
+        let build_res = self
+            .http
+            .post(&build_url)
+            .json(&build_payload)
+            .send()
+            .await?;
         let build_status = build_res.status().as_u16();
 
         if build_status == 429 {
-            let retry_after = build_res.headers()
+            let retry_after = build_res
+                .headers()
                 .get("retry-after")
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(60);
-            return Err(X402Error::RateLimited { retry_after_secs: retry_after });
+            return Err(X402Error::RateLimited {
+                retry_after_secs: retry_after,
+            });
         }
         if !build_res.status().is_success() {
             let detail = build_res.text().await.unwrap_or_default();
-            return Err(X402Error::BuildFailed { status: build_status, detail });
+            return Err(X402Error::BuildFailed {
+                status: build_status,
+                detail,
+            });
         }
 
         let build_json: Value = build_res.json().await?;
 
         // BUY-3: Check blockhash expiry before signing
-        if let Some(expires_at) = build_json.get("recentBlockhashExpiresAt").and_then(|v| v.as_u64()) {
+        if let Some(expires_at) = build_json
+            .get("recentBlockhashExpiresAt")
+            .and_then(|v| v.as_u64())
+        {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
@@ -184,22 +207,30 @@ impl X402AgentClient {
             }
         }
 
-        let mut verify_body = build_json.get("verifyBodyTemplate").cloned()
+        let mut verify_body = build_json
+            .get("verifyBodyTemplate")
+            .cloned()
             .ok_or(X402Error::MissingVerifyTemplate)?;
 
-        let tx_b64 = build_json.get("transaction").and_then(|t| t.as_str())
+        let tx_b64 = build_json
+            .get("transaction")
+            .and_then(|t| t.as_str())
             .ok_or(X402Error::MissingTransaction)?;
 
         use base64::{engine::general_purpose::STANDARD, Engine};
         let mut vtx: VersionedTransaction = bincode::deserialize(&STANDARD.decode(tx_b64)?)?;
 
         // BUY-4: Use payerSignatureIndex if available, otherwise scan keys
-        let my_idx = if let Some(idx) = build_json.get("payerSignatureIndex").and_then(|v| v.as_u64()) {
+        let my_idx = if let Some(idx) = build_json
+            .get("payerSignatureIndex")
+            .and_then(|v| v.as_u64())
+        {
             idx as usize
         } else {
             let my_pubkey = self.wallet.pubkey();
             let keys = vtx.message.static_account_keys();
-            keys.iter().position(|k| k == &my_pubkey)
+            keys.iter()
+                .position(|k| k == &my_pubkey)
                 .ok_or(X402Error::SignerNotInTransaction)?
         };
 
@@ -215,9 +246,12 @@ impl X402AgentClient {
         // spl-token-balance-serverless, x402-seller-starter — reads only
         // `PAYMENT-SIGNATURE`, so emitting `X-PAYMENT` silently fails with a
         // repeated 402. Emit the canonical v2 header exclusively.
-        let final_res = self.http.get(url)
+        let final_res = self
+            .http
+            .get(url)
             .header("PAYMENT-SIGNATURE", proof_b64)
-            .send().await?;
+            .send()
+            .await?;
 
         Ok(final_res)
     }
