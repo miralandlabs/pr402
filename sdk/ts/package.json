@@ -1,5 +1,5 @@
 {
-  "name": "@miraland-labs/pr402-client",
+  "name": "@pr402/client",
   "version": "0.3.0",
   "description": "Lightweight NPM library + CLI for autonomous agents paying HTTP 402 APIs settled on Solana via pr402.",
   "main": "dist/index.js",

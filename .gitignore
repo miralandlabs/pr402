@@ -1,4 +1,6 @@
 target/
+node_modules/
+dist/
 docs/
 # Cargo.lock
 .env
@@ -7,15 +9,14 @@ docs/
 .env.local
 *.log
 scripts/
-sdk/ts/node_modules/
-sdk/ts/package-lock.json
-
-wallet-adapter/node_modules/
+# sdk/ts/node_modules/
+# sdk/ts/dist/
+# wallet-adapter/node_modules/
 test-wallets/
 
 .DS_Store
 
 # VitePress Docs
-docs-site/node_modules/
-docs-site/.vitepress/dist/
+# docs-site/node_modules/
+# docs-site/.vitepress/dist/
 docs-site/.vitepress/cache/

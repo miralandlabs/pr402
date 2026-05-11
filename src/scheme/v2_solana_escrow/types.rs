@@ -65,6 +65,12 @@ pub struct SLAEscrowPaymentRequirementsExtra {
     pub fee_bps: U16String,
     pub oracle_fee_bps: U16String,
     pub ttl_seconds: U64String,
+    /// Upper bound the facilitator will accept on `SetComputeUnitLimit` for this scheme's
+    /// FundPayment tx (the one the buyer signs). Buyers building from scratch can validate
+    /// locally; `/build-sla-escrow-payment-tx` encodes this into the tx automatically.
+    pub max_compute_unit_limit: U64String,
+    /// Micro-lamports per CU used on the facilitator's hot-path FundPayment build.
+    pub recommended_compute_unit_price: U64String,
     /// Who pays Solana **network** fees on the default `build-sla-escrow-payment-tx` shell:
     /// `"facilitator"` (recommended; aligns with `exact`) or `"buyer"` (legacy / CLI-shaped).
     #[serde(default, skip_serializing_if = "Option::is_none")]

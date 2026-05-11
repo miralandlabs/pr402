@@ -66,6 +66,14 @@ pub struct SupportedPaymentKindExtra {
     pub fee_bps: U16String,
     pub min_fee_amount: U64String,     // New: notify buyer of SPL floor
     pub min_fee_amount_sol: U64String, // New: notify buyer of SOL floor
+    /// Upper bound the facilitator will accept on `SetComputeUnitLimit` for this scheme.
+    /// Buyers building their own tx should set CU at or below this value; the recommended
+    /// approach is to call `/build-*-payment-tx` which encodes this cap into the tx for them.
+    pub max_compute_unit_limit: U64String,
+    /// Micro-lamports per CU the facilitator uses on its own hot-path builds. Buyers using
+    /// `/build-*-payment-tx` inherit this automatically; from-scratch builders should default
+    /// to this value unless they have a specific reason to deviate.
+    pub recommended_compute_unit_price: U64String,
     #[serde(default)]
     pub merchant_wallet: Option<Address>, // IDENTITY: Original wallet for sweep/audit
     #[serde(default)]
@@ -122,6 +130,14 @@ pub fn v2_upgrade(
                             fee_bps: us_config.fee_bps.unwrap_or(0).into(),
                             min_fee_amount: us_config.min_fee_amount.unwrap_or(0).into(),
                             min_fee_amount_sol: us_config.min_fee_amount_sol.unwrap_or(0).into(),
+                            // See `/supported` for the authoritative source; `/upgrade`
+                            // echoes the same envelope so agents don't need a second call.
+                            max_compute_unit_limit: (crate::chain::TxBudget::ExactSplTransfer
+                                .cu_limit()
+                                as u64)
+                                .into(),
+                            recommended_compute_unit_price:
+                                crate::chain::TxBudget::ExactSplTransfer.cu_price().into(),
                             merchant_wallet: Some(merchant_wallet.into()),
                             beneficiary: obj
                                 .get("beneficiary")

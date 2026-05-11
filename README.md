@@ -34,7 +34,7 @@ In-repo copies: [`public/openapi.json`](public/openapi.json), [`public/agent-int
 | Persona | Fastest path | Success signal |
 |---------|--------------|----------------|
 | **Seller / resource provider** | [`GET /quickstart-seller.md`](public/quickstart-seller.md) or [`x402-seller-starter`](https://github.com/miraland-labs/x402-seller-starter) | Your API returns a valid `402` and accepts a settled `PAYMENT-SIGNATURE`. |
-| **Buyer / agent developer** | [`GET /quickstart-buyer.md`](public/quickstart-buyer.md) or [`x402-buyer-starter`](https://github.com/miraland-labs/x402-buyer-starter) | Your agent builds, signs, verifies, settles, and retries with payment proof. |
+| **Buyer / agent developer** | `npm i @pr402/client` · `cargo install pr402-client` — both ship a `pr402-buy` CLI. Reference: [`x402-buyer-starter`](https://github.com/miraland-labs/x402-buyer-starter). | Your agent builds, signs, verifies, settles, and retries with payment proof. |
 | **API / SDK integrator** | `GET /openapi.json` on the exact facilitator host you call | Generated clients match the deployed schema and feature flags. |
 
 For production integrations, pick one facilitator origin per environment and keep it consistent across seller docs, buyer build requests, `/verify`, and `/settle`. Use `https://ipay.sh` for Mainnet and `https://preview.ipay.sh` for Devnet unless a seller explicitly documents another origin.
@@ -73,11 +73,10 @@ Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blo
 
 | Integration | What to use |
 |-------------|-------------|
-| **Step-by-step** | **[`public/agent-integration.md`](public/agent-integration.md)** (same static pattern as `openapi.json`; **`GET /agent-integration.md`**). Stub: [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). |
+| **Installable SDK (fastest)** | `npm i @pr402/client` (Node ≥ 18) or `cargo install pr402-client` (Rust). Both ship library types (`X402AgentClient`) and a `pr402-buy` CLI. One command: `pr402-buy --resource <url> --payer <keypair.json> --mint <mint>`. |
+| **Step-by-step protocol** | **[`public/agent-integration.md`](public/agent-integration.md)** (same static pattern as `openapi.json`; **`GET /agent-integration.md`**). Stub: [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). |
 | **Schema / codegen** | **`GET /openapi.json`** on the facilitator base URL (see `capabilities.httpEndpoints.openApi`). |
-| **TypeScript** | Copy or import [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts): `getCapabilities`, `buildExactPaymentTx`, `verifyPayment`, `settlePayment`, etc. (`fetch` only). |
-| **Rust** | Add **`pr402`** with feature **`facilitator-http`**, then use **`pr402::sdk::http`**: [`FacilitatorHttpClient`](src/sdk/http.rs) or the free async functions (same paths as the TS file). Omit this feature when **deploying** the `facilitator` binary. |
-| **Other stacks** | Call the same HTTPS paths; bodies match OpenAPI (`BuildExactPaymentTxRequest`, `X402V2VerifySettleBody`, …). |
+| **Other stacks** | Call the same HTTPS paths; bodies match OpenAPI (`BuildExactPaymentTxRequest`, `X402V2VerifySettleBody`, …). The zero-dependency file [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts) and Rust `facilitator-http` feature on [`src/sdk/http.rs`](src/sdk/http.rs) remain as alternatives for environments that cannot install packages. |
 
 ## 🧩 Protocol Overview
 This facilitator implements a tailored version of the [x402-rs](https://github.com/x402-rs/x402-rs) protocol, supporting:
@@ -98,7 +97,7 @@ Two settlement patterns (x402 v2):
 ---
 
 ## 📁 Project Structure
-- **Buyer SDKs:** see [For buyer agents](#for-buyer-agents-payers); TS [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts), Rust [`src/sdk/http.rs`](src/sdk/http.rs) (`facilitator-http` feature).
+- **Buyer SDKs:** installable as [`@pr402/client`](https://www.npmjs.com/package/@pr402/client) (npm) and [`pr402-client`](https://crates.io/crates/pr402-client) (crates.io); both ship `pr402-buy`. Source: [`sdk/ts/`](sdk/ts/) and [`sdk/rust/`](sdk/rust/). Zero-dependency alternative for other stacks: [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts).
 - [`src/bin/facilitator.rs`](src/bin/facilitator.rs) — Vercel serverless entrypoint handling HTTP requests.
 - [`src/chain/`](src/chain/) — Solana-specific chain provider and instruction builders for UniversalSettle and SLA-Escrow.
 - [`src/scheme/`](src/scheme/) — Protocol verification logic for Exact and Escrow schemes.

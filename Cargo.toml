@@ -118,15 +118,3 @@ path = "src/bin/facilitator.rs"
 [[bin]]
 name = "record_escrow_lifecycle"
 path = "src/bin/record_escrow_lifecycle.rs"
-
-# `pr402-buy` is a small Rust CLI that walks a buyer through the full x402 lifecycle:
-# fetch 402 → build unsigned tx → sign locally → POST /verify + /settle → retry.
-# It is seller-agnostic (no per-vendor logic) and lives alongside the facilitator binary
-# so it stays type-compatible with the wire contract and evolves with the protocol.
-#
-# Requires the `facilitator-http` feature so reqwest is linked. Build with:
-#   cargo build --bin pr402-buy --features facilitator-http --release
-[[bin]]
-name = "pr402-buy"
-path = "src/bin/pr402_buy.rs"
-required-features = ["facilitator-http"]

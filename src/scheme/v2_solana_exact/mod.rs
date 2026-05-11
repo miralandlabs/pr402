@@ -126,6 +126,15 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
                     fee_bps: us_config.fee_bps.unwrap_or(0).into(),
                     min_fee_amount: us_config.min_fee_amount.unwrap_or(0).into(),
                     min_fee_amount_sol: us_config.min_fee_amount_sol.unwrap_or(0).into(),
+                    // Advertise the CU envelope the facilitator actually enforces on verify.
+                    // Buyers building from scratch can validate locally; SDKs using
+                    // `/build-*-payment-tx` inherit these automatically.
+                    max_compute_unit_limit: (crate::chain::TxBudget::ExactSplTransfer.cu_limit()
+                        as u64)
+                        .into(),
+                    recommended_compute_unit_price: crate::chain::TxBudget::ExactSplTransfer
+                        .cu_price()
+                        .into(),
                     merchant_wallet: None,
                     beneficiary: None,
                 };
