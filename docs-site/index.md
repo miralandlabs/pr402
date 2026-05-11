@@ -28,7 +28,7 @@ features:
     link: /seller-quick-start
     linkText: Seller Quickstart
   - title: Buyers / Payer Agents
-    details: "`npm i @pr402/client` or `cargo install pr402-client` — both ship a `pr402-buy` CLI. Or call the facilitator's `/build-exact-payment-tx` + `/verify` + `/settle` directly."
+    details: "`npm i @pr402/client` or `cargo install pr402-client`. Both ship a `pr402-buy` CLI that delegates transaction assembly to pr402's `/build-*-payment-tx` endpoints — you sign once, the facilitator handles CU limits, token programs, and vault math."
     link: /quickstart-buyer
     linkText: Buyer Quickstart
   - title: Agent integration

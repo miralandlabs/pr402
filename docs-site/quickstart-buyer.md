@@ -49,6 +49,8 @@ From the seller's 402 body, save:
 
 ## Step 3 — Build an unsigned transaction
 
+> pr402's build endpoints do more than convenience — they're how the facilitator communicates its current tx shape (compute budget, token program, vault PDAs). Implementing transaction construction yourself means tracking pr402 policy changes manually.
+
 ### For `exact` (instant payment):
 ```bash
 curl -sS -X POST "$BASE/api/v1/facilitator/build-exact-payment-tx" \
