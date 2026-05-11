@@ -16,6 +16,9 @@ hero:
       text: Buyer Quickstart
       link: /quickstart-buyer
     - theme: alt
+      text: Install buyer CLI
+      link: /quickstart-buyer#install
+    - theme: alt
       text: Agent integration runbook
       link: /agent-integration
 
@@ -25,7 +28,7 @@ features:
     link: /seller-quick-start
     linkText: Seller Quickstart
   - title: Buyers / Payer Agents
-    details: "Match the resource's 402 offer, call unsigned-tx builders when needed, sign locally, verify and settle."
+    details: "`npm i @pr402/client` or `cargo install pr402-client` — both ship a `pr402-buy` CLI. Or call the facilitator's `/build-exact-payment-tx` + `/verify` + `/settle` directly."
     link: /quickstart-buyer
     linkText: Buyer Quickstart
   - title: Agent integration

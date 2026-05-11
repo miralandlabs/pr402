@@ -4,6 +4,29 @@
 
 > **Status.** pr402 and the `exact` rail are live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). For `sla-escrow`, the `oracle_authority` on the payment is chosen by the seller — trust that authority explicitly before funding.
 
+## Install {#install}
+
+**Fastest path — use the published SDK.** One command does the whole loop below.
+
+```bash
+# Node (≥ 18)
+npm i -g @pr402/client
+pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>
+
+# Rust (1.75+)
+cargo install pr402-client
+pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>
+
+# Zero-install (Node)
+npx @pr402/client pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>
+```
+
+Both packages also expose a library — `X402AgentClient` — for embedding in long-running agents. See the package READMEs ([npm](https://www.npmjs.com/package/@pr402/client), [crates.io](https://crates.io/crates/pr402-client)).
+
+The six steps below document the protocol underneath, for implementing from scratch in other languages or verifying the SDK's behavior.
+
+---
+
 Replace **`$BASE`** with the facilitator URL the seller documents. Run **`curl -sS "$BASE/api/v1/facilitator/health" | jq .solanaNetwork`** to confirm the cluster.
 
 Do not silently substitute a different facilitator origin than the seller documented. `payTo`, program ids, asset allowlists, and oracle authorities are deployment-specific.
