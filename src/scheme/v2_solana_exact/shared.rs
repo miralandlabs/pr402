@@ -22,6 +22,73 @@ use crate::util::{
 
 pub const ATA_PROGRAM_PUBKEY: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
+/// Attempt to read the `seller` field from an on-chain SplitVault account.
+///
+/// Returns `Some(seller_pubkey)` if:
+///   - The account exists on-chain
+///   - It is owned by the UniversalSettle program
+///   - Its data is exactly 8 (discriminator) + 56 (SplitVault) = 64 bytes
+///   - The derived vault PDA from the extracted seller matches the queried address
+///     (consistency check: prevents accepting a spoofed account at a non-PDA address)
+///
+/// Returns `None` if the account doesn't exist, isn't a vault, or fails validation.
+/// This function is intentionally conservative — a `None` result falls through to
+/// the legacy "treat payTo as merchant wallet" path.
+async fn resolve_seller_from_vault_account(
+    provider: &SolanaChainProvider,
+    candidate_vault: &Pubkey,
+) -> Option<Pubkey> {
+    let us_config = provider.universalsettle()?;
+    let program_id = us_config.program_id;
+
+    // Query the account
+    let account = provider
+        .rpc_client()
+        .get_account(candidate_vault)
+        .await
+        .ok()?;
+
+    // Must be owned by the UniversalSettle program
+    if account.owner != program_id {
+        return None;
+    }
+
+    // SplitVault on-chain layout: 8-byte discriminator + 56-byte struct = 64 bytes
+    const DISCRIMINATOR_LEN: usize = 8;
+    const SPLIT_VAULT_SIZE: usize = size_of::<solana_universalsettle::SplitVault>();
+    if account.data.len() != DISCRIMINATOR_LEN + SPLIT_VAULT_SIZE {
+        return None;
+    }
+
+    // Parse the seller pubkey (first 32 bytes after discriminator)
+    let vault_data = &account.data[DISCRIMINATOR_LEN..];
+    let vault: &solana_universalsettle::SplitVault =
+        bytemuck::from_bytes(&vault_data[..SPLIT_VAULT_SIZE]);
+    let seller = vault.seller;
+
+    // Consistency check: verify that find_program_address([b"vault", seller], program_id)
+    // actually produces the address we queried. This prevents accepting a maliciously
+    // placed account at an arbitrary address.
+    let (expected_vault_pda, _) =
+        Pubkey::find_program_address(&[b"vault", seller.as_ref()], &program_id);
+    if expected_vault_pda != *candidate_vault {
+        tracing::warn!(
+            candidate = %candidate_vault,
+            expected = %expected_vault_pda,
+            seller = %seller,
+            "resolve_seller_from_vault_account: PDA consistency check failed"
+        );
+        return None;
+    }
+
+    tracing::info!(
+        vault = %candidate_vault,
+        seller = %seller,
+        "resolve_seller_from_vault_account: extracted seller from on-chain vault"
+    );
+    Some(seller)
+}
+
 #[derive(Clone, Debug)]
 pub struct TransferRequirement<'a> {
     pub asset: &'a Address,
@@ -327,16 +394,30 @@ pub async fn verify_transaction(
     let (vault_from_pay_to, _) = provider.get_vault_pda(&pay_to_pk);
 
     // ADAPTIVE PDA RESOLUTION: resolve the authoritative merchant identity (wallet)
-    // and the target vault PDA in a single pass to avoid "Double-PDA" errors.
+    // and the target vault PDA in a single pass.
+    //
+    // Three cases:
+    //   1. `merchant_wallet` is explicitly provided in `accepts[].extra` → use it directly.
+    //   2. `merchant_wallet` is absent, but `payTo` is an existing SplitVault PDA on-chain →
+    //      read the `seller` field from the vault account data. This handles the common case
+    //      where sellers set `payTo = vault_pda` (correct x402 semantics) without also
+    //      providing `merchantWallet` in the extra.
+    //   3. `merchant_wallet` is absent and `payTo` is NOT a vault PDA → treat `payTo` as the
+    //      merchant wallet identity (backward-compatible for direct-wallet payTo).
+    //
+    // SAFETY: The on-chain `CreateVault` instruction validates that the vault PDA matches
+    // `find_program_address([b"vault", seller], program_id)`. So reading `vault.seller` from
+    // an account owned by the UniversalSettle program is authoritative — it cannot be spoofed.
     let (final_vault_pda, merchant_identity) =
         if let Some(identity) = transfer_requirement.merchant_wallet {
+            // Case 1: explicit merchant_wallet in accepts[].extra
             let (v, _) = provider.get_vault_pda(identity.pubkey());
             (v, *identity.pubkey())
-        } else if pay_to_pk == vault_from_pay_to {
-            // CASE: pay_to is ALREADY the PDA. This is the Double-PDA trap.
-            (pay_to_pk, pay_to_pk)
+        } else if let Some(seller) = resolve_seller_from_vault_account(provider, &pay_to_pk).await {
+            // Case 2: payTo is an existing SplitVault PDA — extract seller from on-chain data
+            (pay_to_pk, seller)
         } else {
-            // CASE: pay_to is the merchant wallet identity.
+            // Case 3: payTo is the merchant wallet identity (not a vault PDA)
             (vault_from_pay_to, pay_to_pk)
         };
 
