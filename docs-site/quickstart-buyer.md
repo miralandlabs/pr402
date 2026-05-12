@@ -33,6 +33,16 @@ Do not silently substitute a different facilitator origin than the seller docume
 
 ---
 
+## Step 0 — Find a seller (optional) {#discover}
+
+Already have a 402 response? Skip to Step 1. Looking for paid resources? The facilitator exposes a public directory of verified, opted-in sellers:
+
+```bash
+curl -sS "$BASE/api/v1/facilitator/providers?limit=50" | jq '.entries[] | {displayName, serviceUrl, tags, settlementMode, splMint}'
+```
+
+Each entry gives you `serviceUrl`, `tags[]`, `displayName`, and the rail pubkeys (`splitVaultPda`, `splMint`) — enough to build an `accepts[]` line without waiting for a 402. Single-wallet lookup: `GET /api/v1/facilitator/providers/{wallet}`. The facilitator verifies wallet control only; it does not vet the advertised service — treat listings as a directory, not a recommendation.
+
 ## Step 1 — Confirm the facilitator supports your scheme
 
 ```bash
@@ -48,6 +58,8 @@ From the seller's 402 body, save:
 - **`resource`** — the resource descriptor
 
 ## Step 3 — Build an unsigned transaction
+
+> pr402's build endpoints do more than convenience — they're how the facilitator communicates its current tx shape (compute budget, token program, vault PDAs). Implementing transaction construction yourself means tracking pr402 policy changes manually.
 
 ### For `exact` (instant payment):
 ```bash
