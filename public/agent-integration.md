@@ -143,6 +143,8 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 > `npm i -g @pr402/client && pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>`
 > or `cargo install pr402-client` for the Rust binary. Both ship `pr402-buy`, and both also expose a library (`X402AgentClient`) for embedding. The sections below document the protocol underneath — read them when implementing from scratch, debugging the CLI, or integrating in a language without a published SDK.
 
+> **Discover sellers.** `GET /api/v1/facilitator/providers` returns the public directory of verified, opted-in sellers (paginated via `?limit=&cursor=`). Each entry carries `serviceUrl`, `tags[]`, `displayName`, and the settlement rail pubkeys — enough to build an `accepts[]` line without a prior 402. Single-wallet lookup: `GET /api/v1/facilitator/providers/{wallet}`. The facilitator verifies wallet control only; it does not vet the advertised service.
+
 <a id="how-pr402-differs-from-the-generic-x402-spec"></a>
 
 ### How pr402 differs from the generic x402 spec
