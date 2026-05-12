@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "pr402"
   text: "x402 facilitator for Solana"
-  tagline: "HTTP 402 for machines. Settled on-chain via UniversalSettle (exact) and SLA-Escrow. Live on Mainnet and Devnet."
+  tagline: "HTTP 402 Payment Required for machines. Settled on-chain via UniversalSettle (exact) and SLA-Escrow(sla-escrow). Live on Mainnet and Devnet."
   image:
     src: /pr402.png
     alt: pr402
