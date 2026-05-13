@@ -15,6 +15,7 @@ pub mod onboard_auth;
 pub mod parameters;
 pub mod payment_attempt;
 pub mod proto;
+pub mod refund_tx_build;
 pub mod scheme;
 pub mod sdk;
 pub mod seller_provision;

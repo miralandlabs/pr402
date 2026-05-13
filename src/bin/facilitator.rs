@@ -242,6 +242,8 @@ struct CapabilitiesHttpEndpoints {
     build_exact_payment_tx: HttpEndpointInfo,
     build_sla_escrow_payment_tx: HttpEndpointInfo,
     build_oracle_confirm_tx: HttpEndpointInfo,
+    /// `POST` — build unsigned refund transaction (merchant → payer `TransferChecked`).
+    build_refund_tx: HttpEndpointInfo,
     sweep: HttpEndpointInfo,
     sweep_cron: HttpEndpointInfo,
     /// `GET` — read-only PDA preview across all schemes (the "preview" step in the
@@ -697,6 +699,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         limited
                     } else {
                         handle_build_sla_escrow_payment_tx(body).await
+                    }
+                }
+                ("POST", "/api/v1/facilitator/build-refund-tx") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handle_build_refund_tx(body).await
                     }
                 }
                 ("POST", "/api/v1/facilitator/sweep") => {
