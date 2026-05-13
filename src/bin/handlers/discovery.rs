@@ -97,6 +97,11 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/oracle/build-confirm",
                 auth: None,
             },
+            build_refund_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-refund-tx",
+                auth: None,
+            },
             sweep: HttpEndpointInfo {
                 method: "POST",
                 path: "/api/v1/facilitator/sweep",

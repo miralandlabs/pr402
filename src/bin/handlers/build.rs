@@ -156,3 +156,40 @@ pub async fn handle_build_oracle_confirm_tx(body: Body) -> Response<Body> {
         }
     }
 }
+
+/// Build an unsigned refund transaction (merchant → payer `TransferChecked`).
+/// See [`pr402::refund_tx_build`].
+pub async fn handle_build_refund_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+    };
+    let req: pr402::refund_tx_build::BuildRefundTxRequest = match serde_json::from_str(&body_str) {
+        Ok(r) => r,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
+    };
+    match pr402::refund_tx_build::build_refund_tx(&cp.solana, pr402_db(), req).await {
+        Ok(out) => facilitator_response!()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Body::Text(
+                serde_json::to_string(&out)
+                    .unwrap_or_else(|_| r#"{"error":"serialize failed"}"#.into()),
+            ))
+            .unwrap(),
+        Err(e) => {
+            let status = match &e {
+                pr402::refund_tx_build::RefundTxBuildError::InvalidRequest(_) => {
+                    StatusCode::BAD_REQUEST
+                }
+                pr402::refund_tx_build::RefundTxBuildError::Rpc(_) => StatusCode::BAD_GATEWAY,
+            };
+            error_response(status, &e.to_string())
+        }
+    }
+}
