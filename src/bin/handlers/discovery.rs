@@ -446,7 +446,7 @@ fn build_sla_escrow_oracle_profiles() -> Option<Vec<SlaEscrowOracleProfileInfo>>
     // (profile_id, repo_path, default_spec_url, pubkey_key, spec_url_key, registry_url_key, evidence_note_key)
     let cfg: &[(&str, &str, &str, &str, &str, &str, &str)] = &[
         (
-            "x402/oracle/api-quality/v1",
+            "x402/oracles/api-quality/v1",
             "oracle-api-quality/spec/api-quality-v1/NORMATIVE.md",
             "https://github.com/miraland-labs/oracles/blob/main/oracle-api-quality/spec/api-quality-v1/NORMATIVE.md",
             p::PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY,
@@ -455,7 +455,7 @@ fn build_sla_escrow_oracle_profiles() -> Option<Vec<SlaEscrowOracleProfileInfo>>
             p::PR402_SLA_ESCROW_API_QUALITY_EVIDENCE_REGISTRY_NOTE,
         ),
         (
-            "x402/oracle/onchain-transfer/v1",
+            "x402/oracles/onchain-transfer/v1",
             "oracle-onchain-transfer/spec/onchain-transfer-v1/NORMATIVE.md",
             "https://github.com/miraland-labs/oracles/blob/main/oracle-onchain-transfer/spec/onchain-transfer-v1/NORMATIVE.md",
             p::PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY,
@@ -464,7 +464,7 @@ fn build_sla_escrow_oracle_profiles() -> Option<Vec<SlaEscrowOracleProfileInfo>>
             p::PR402_SLA_ESCROW_ONCHAIN_TRANSFER_EVIDENCE_REGISTRY_NOTE,
         ),
         (
-            "x402/oracle/file-delivery/attestation/v1",
+            "x402/oracles/file-delivery/attestation/v1",
             "oracle-file-delivery/spec/file-delivery-attestation-v1/NORMATIVE.md",
             "https://github.com/miraland-labs/oracles/blob/main/oracle-file-delivery/spec/file-delivery-attestation-v1/NORMATIVE.md",
             p::PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY,

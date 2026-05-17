@@ -125,42 +125,42 @@ pub const PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS: &str = "PR402_SLA_ESCROW_DEFA
 /// When set, individual per-profile keys below are ignored.
 pub const PR402_SLA_ESCROW_ORACLE_PROFILES_JSON: &str = "PR402_SLA_ESCROW_ORACLE_PROFILES_JSON";
 
-/// `x402/oracle/api-quality/v1` — operator pubkey for the api-quality profile.
+/// `x402/oracles/api-quality/v1` — operator pubkey for the api-quality profile.
 pub const PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY: &str =
     "PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY";
-/// `x402/oracle/api-quality/v1` — normative spec URL override.
+/// `x402/oracles/api-quality/v1` — normative spec URL override.
 pub const PR402_SLA_ESCROW_API_QUALITY_NORMATIVE_SPEC_URL: &str =
     "PR402_SLA_ESCROW_API_QUALITY_NORMATIVE_SPEC_URL";
-/// `x402/oracle/api-quality/v1` — registry URL hint for sellers.
+/// `x402/oracles/api-quality/v1` — registry URL hint for sellers.
 pub const PR402_SLA_ESCROW_API_QUALITY_REGISTRY_URL: &str =
     "PR402_SLA_ESCROW_API_QUALITY_REGISTRY_URL";
-/// `x402/oracle/api-quality/v1` — free-form integrator note.
+/// `x402/oracles/api-quality/v1` — free-form integrator note.
 pub const PR402_SLA_ESCROW_API_QUALITY_EVIDENCE_REGISTRY_NOTE: &str =
     "PR402_SLA_ESCROW_API_QUALITY_EVIDENCE_REGISTRY_NOTE";
 
-/// `x402/oracle/onchain-transfer/v1` — operator pubkey.
+/// `x402/oracles/onchain-transfer/v1` — operator pubkey.
 pub const PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY: &str =
     "PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY";
-/// `x402/oracle/onchain-transfer/v1` — normative spec URL override.
+/// `x402/oracles/onchain-transfer/v1` — normative spec URL override.
 pub const PR402_SLA_ESCROW_ONCHAIN_TRANSFER_NORMATIVE_SPEC_URL: &str =
     "PR402_SLA_ESCROW_ONCHAIN_TRANSFER_NORMATIVE_SPEC_URL";
-/// `x402/oracle/onchain-transfer/v1` — registry URL hint for sellers.
+/// `x402/oracles/onchain-transfer/v1` — registry URL hint for sellers.
 pub const PR402_SLA_ESCROW_ONCHAIN_TRANSFER_REGISTRY_URL: &str =
     "PR402_SLA_ESCROW_ONCHAIN_TRANSFER_REGISTRY_URL";
-/// `x402/oracle/onchain-transfer/v1` — free-form integrator note.
+/// `x402/oracles/onchain-transfer/v1` — free-form integrator note.
 pub const PR402_SLA_ESCROW_ONCHAIN_TRANSFER_EVIDENCE_REGISTRY_NOTE: &str =
     "PR402_SLA_ESCROW_ONCHAIN_TRANSFER_EVIDENCE_REGISTRY_NOTE";
 
-/// `x402/oracle/file-delivery/attestation/v1` — operator pubkey.
+/// `x402/oracles/file-delivery/attestation/v1` — operator pubkey.
 pub const PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY: &str =
     "PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY";
-/// `x402/oracle/file-delivery/attestation/v1` — normative spec URL override.
+/// `x402/oracles/file-delivery/attestation/v1` — normative spec URL override.
 pub const PR402_SLA_ESCROW_FILE_DELIVERY_NORMATIVE_SPEC_URL: &str =
     "PR402_SLA_ESCROW_FILE_DELIVERY_NORMATIVE_SPEC_URL";
-/// `x402/oracle/file-delivery/attestation/v1` — registry URL hint for sellers.
+/// `x402/oracles/file-delivery/attestation/v1` — registry URL hint for sellers.
 pub const PR402_SLA_ESCROW_FILE_DELIVERY_REGISTRY_URL: &str =
     "PR402_SLA_ESCROW_FILE_DELIVERY_REGISTRY_URL";
-/// `x402/oracle/file-delivery/attestation/v1` — free-form integrator note.
+/// `x402/oracles/file-delivery/attestation/v1` — free-form integrator note.
 pub const PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE: &str =
     "PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE";
 

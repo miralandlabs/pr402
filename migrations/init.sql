@@ -250,9 +250,9 @@ ON CONFLICT (param_name) DO UPDATE SET
 -- INSERT INTO parameters (param_name, param_value) VALUES
 --   (
 --     'PR402_SLA_ESCROW_ORACLE_PROFILES_JSON',
---     '[{"profileId":"x402/oracle/api-quality/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."},
---       {"profileId":"x402/oracle/onchain-transfer/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."},
---       {"profileId":"x402/oracle/file-delivery/attestation/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."}]'
+--     '[{"profileId":"x402/oracles/api-quality/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."},
+--       {"profileId":"x402/oracles/onchain-transfer/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."},
+--       {"profileId":"x402/oracles/file-delivery/attestation/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."}]'
 --   )
 -- ON CONFLICT (param_name) DO UPDATE SET
 --   param_value = EXCLUDED.param_value,

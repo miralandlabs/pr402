@@ -194,7 +194,7 @@ struct CapabilitiesResponse {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SlaEscrowOracleProfileInfo {
-    /// Canonical profile id, e.g. `x402/oracle/api-quality/v1`.
+    /// Canonical profile id, e.g. `x402/oracles/api-quality/v1`.
     profile_id: String,
     /// URL of the normative spec (NORMATIVE.md) for this profile.
     normative_spec_url: String,
