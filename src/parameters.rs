@@ -111,6 +111,68 @@ pub const PR402_MAX_DAILY_PROVISION_COUNT: &str = "PR402_MAX_DAILY_PROVISION_COU
 /// operator config: DB `parameters` row wins, else env var, else [`DEFAULT_SLA_ESCROW_ORACLE_FEE_BPS`].
 pub const PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS: &str = "PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS";
 
+// --- SLA-Escrow oracle profiles (advertised on `GET /capabilities` as `slaEscrowOracleProfiles[]`) ---
+//
+// Each profile is published only when its `*_DEFAULT_PUBKEY` is set (DB `parameters` row wins,
+// else env var). The other three fields per profile are optional decoration.
+//
+// **Parameters-table-first convention:** every key below is read with
+// `resolve_string_sync(KEY, KEY)`. Operators may seed defaults in `parameters` (preferred for
+// Vercel deployments to avoid env size limits) or set them as env vars; the parameters row
+// wins when both are set.
+
+/// Full JSON override (top-priority): a JSON array of profile entries verbatim.
+/// When set, individual per-profile keys below are ignored.
+pub const PR402_SLA_ESCROW_ORACLE_PROFILES_JSON: &str = "PR402_SLA_ESCROW_ORACLE_PROFILES_JSON";
+
+/// `x402/oracles/api-quality/v1` — operator pubkey for the api-quality profile.
+pub const PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY: &str =
+    "PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY";
+/// `x402/oracles/api-quality/v1` — normative spec URL override.
+pub const PR402_SLA_ESCROW_API_QUALITY_NORMATIVE_SPEC_URL: &str =
+    "PR402_SLA_ESCROW_API_QUALITY_NORMATIVE_SPEC_URL";
+/// `x402/oracles/api-quality/v1` — registry URL hint for sellers.
+pub const PR402_SLA_ESCROW_API_QUALITY_REGISTRY_URL: &str =
+    "PR402_SLA_ESCROW_API_QUALITY_REGISTRY_URL";
+/// `x402/oracles/api-quality/v1` — free-form integrator note.
+pub const PR402_SLA_ESCROW_API_QUALITY_EVIDENCE_REGISTRY_NOTE: &str =
+    "PR402_SLA_ESCROW_API_QUALITY_EVIDENCE_REGISTRY_NOTE";
+
+/// `x402/oracles/onchain-transfer/v1` — operator pubkey.
+pub const PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY: &str =
+    "PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY";
+/// `x402/oracles/onchain-transfer/v1` — normative spec URL override.
+pub const PR402_SLA_ESCROW_ONCHAIN_TRANSFER_NORMATIVE_SPEC_URL: &str =
+    "PR402_SLA_ESCROW_ONCHAIN_TRANSFER_NORMATIVE_SPEC_URL";
+/// `x402/oracles/onchain-transfer/v1` — registry URL hint for sellers.
+pub const PR402_SLA_ESCROW_ONCHAIN_TRANSFER_REGISTRY_URL: &str =
+    "PR402_SLA_ESCROW_ONCHAIN_TRANSFER_REGISTRY_URL";
+/// `x402/oracles/onchain-transfer/v1` — free-form integrator note.
+pub const PR402_SLA_ESCROW_ONCHAIN_TRANSFER_EVIDENCE_REGISTRY_NOTE: &str =
+    "PR402_SLA_ESCROW_ONCHAIN_TRANSFER_EVIDENCE_REGISTRY_NOTE";
+
+/// `x402/oracles/file-delivery/attestation/v1` — operator pubkey.
+pub const PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY: &str =
+    "PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY";
+/// `x402/oracles/file-delivery/attestation/v1` — normative spec URL override.
+pub const PR402_SLA_ESCROW_FILE_DELIVERY_NORMATIVE_SPEC_URL: &str =
+    "PR402_SLA_ESCROW_FILE_DELIVERY_NORMATIVE_SPEC_URL";
+/// `x402/oracles/file-delivery/attestation/v1` — registry URL hint for sellers.
+pub const PR402_SLA_ESCROW_FILE_DELIVERY_REGISTRY_URL: &str =
+    "PR402_SLA_ESCROW_FILE_DELIVERY_REGISTRY_URL";
+/// `x402/oracles/file-delivery/attestation/v1` — free-form integrator note.
+pub const PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE: &str =
+    "PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE";
+
+/// Strict mode for the optional `accepts[].extra.oracleProfiles[]` cross-check
+/// at SLA-escrow build time. When set to a truthy value (`true` / `1` / `yes`
+/// / `on`, case-insensitive), `POST /build-sla-escrow-payment-tx` rejects a
+/// request whose chosen `oracleAuthority` resolves to a `profileId` that this
+/// facilitator does not advertise on `/capabilities`. Off by default to avoid
+/// breaking sellers that haven't migrated to the richer `oracleProfiles[]`
+/// shape yet.
+pub const PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH: &str = "PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH";
+
 /// Min spendable lamports in UniversalSettle SOL storage before submitting a Sweep (gas not worth dust).
 pub const PR402_SWEEP_MIN_SPENDABLE_LAMPORTS: &str = "PR402_SWEEP_MIN_SPENDABLE_LAMPORTS";
 /// Default min SPL raw amount when mint has no entry in [`PR402_SWEEP_MIN_SPL_RAW_BY_MINT`] (see [`DEFAULT_SWEEP_MIN_SPL_RAW_DEFAULT`]).

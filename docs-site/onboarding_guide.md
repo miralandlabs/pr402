@@ -11,7 +11,13 @@ Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Res
 
 ### SLA-Escrow: oracle profile and default operator hints
 
-For **`sla-escrow`**, the on-chain payment includes an **`oracle_authority`** that resolves delivery via **`ConfirmOracle`**. The **`oracle-qa`** reference implements profile **`x402/oracle-qa/api-quality/v1`**: **hash-bound** SLA and delivery JSON fetched from an HTTP evidence registry (see the normative spec linked from **`GET /api/v1/facilitator/capabilities`** under **`slaEscrowOracleQa`**). Set **`oracle_authority`** to your chosen operator’s pubkey (the keypair that runs `oracle-qa`). Deployments may advertise an optional default operator via facilitator env (`PR402_DEFAULT_SLA_ORACLE_PUBKEY`, etc.); integrators should still confirm the pubkey matches their trust model.
+For **`sla-escrow`**, the on-chain payment includes an **`oracle_authority`** that resolves delivery via **`ConfirmOracle`**. The x402 ecosystem ships three reference oracle profiles in the [`oracles/`](https://github.com/miraland-labs/oracles) workspace:
+
+- **`x402/oracles/api-quality/v1`** — JSON HTTP API delivery quality (status, latency, schema, required fields, body length). Hash-bound SLA + delivery JSON fetched from an HTTP evidence registry.
+- **`x402/oracles/onchain-transfer/v1`** — SPL token transfer / swap delivery, re-derived from `getTransaction(jsonParsed)` against the on-chain tx signature.
+- **`x402/oracles/file-delivery/attestation/v1`** — Large-file streaming delivery (video / dataset / artifact); SHA-256 + MIME sniff verification.
+
+Set **`oracle_authority`** to your chosen operator's pubkey (the keypair that runs the matching oracle binary). Deployments may advertise default operators per profile via `GET /api/v1/facilitator/capabilities` under **`slaEscrowOracleProfiles[]`**. Each profile is configured via two interchangeable mechanisms (DB `parameters` row wins, env var fallback so Vercel deployments avoid the env-size limit): the JSON override `PR402_SLA_ESCROW_ORACLE_PROFILES_JSON`, or per-profile keys `PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY`, `PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY`, `PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY`. Integrators should still confirm the pubkey matches their trust model.
 
 ### Policy: one payment asset per merchant wallet
 

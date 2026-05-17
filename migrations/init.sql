@@ -240,3 +240,34 @@ ON CONFLICT (param_name) DO UPDATE SET
 -- ON CONFLICT (param_name) DO UPDATE SET
 --   param_value = EXCLUDED.param_value,
 --   updated_at = NOW();
+
+-- =============================================================================
+-- SLA-Escrow oracle profiles (advertised on GET /capabilities as `slaEscrowOracleProfiles[]`)
+--
+-- Two configuration modes (mutually exclusive — JSON wins when set):
+--
+-- 1. Full JSON override:
+-- INSERT INTO parameters (param_name, param_value) VALUES
+--   (
+--     'PR402_SLA_ESCROW_ORACLE_PROFILES_JSON',
+--     '[{"profileId":"x402/oracles/api-quality/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."},
+--       {"profileId":"x402/oracles/onchain-transfer/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."},
+--       {"profileId":"x402/oracles/file-delivery/attestation/v1","defaultOperatorPubkey":"OracleAuthorityPubkey..."}]'
+--   )
+-- ON CONFLICT (param_name) DO UPDATE SET
+--   param_value = EXCLUDED.param_value,
+--   updated_at = NOW();
+--
+-- 2. Ergonomic per-profile keys (each profile only emitted when its DEFAULT_PUBKEY is set):
+-- INSERT INTO parameters (param_name, param_value) VALUES
+--   ('PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY',          '<api-quality oracle pubkey>'),
+--   ('PR402_SLA_ESCROW_API_QUALITY_NORMATIVE_SPEC_URL',      'https://github.com/miraland-labs/oracles/blob/main/oracle-api-quality/spec/api-quality-v1/NORMATIVE.md'),
+--   ('PR402_SLA_ESCROW_API_QUALITY_REGISTRY_URL',            'https://oracle-api.example.com/v1/registry'),
+--   ('PR402_SLA_ESCROW_API_QUALITY_EVIDENCE_REGISTRY_NOTE',  'Sellers POST hash-bound SLA + delivery JSON'),
+--   ('PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY',     '<onchain-transfer oracle pubkey>'),
+--   ('PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY',        '<file-delivery oracle pubkey>')
+-- ON CONFLICT (param_name) DO UPDATE SET
+--   param_value = EXCLUDED.param_value,
+--   updated_at = NOW();
+-- =============================================================================
+

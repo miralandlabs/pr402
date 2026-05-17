@@ -183,21 +183,35 @@ struct CapabilitiesResponse {
     features: CapabilitiesFeatures,
     http_endpoints: CapabilitiesHttpEndpoints,
     agent_manifest: AgentManifest,
-    /// Reference metadata for the default `oracle-qa` API-quality profile (SLA-Escrow).
+    /// Reference metadata for the SLA-Escrow oracle profiles (multi-category).
+    /// Plural array — one entry per advertised profile (api-quality / onchain-transfer / file-delivery).
     #[serde(skip_serializing_if = "Option::is_none")]
-    sla_escrow_oracle_qa: Option<SlaEscrowOracleQaInfo>,
+    sla_escrow_oracle_profiles: Option<Vec<SlaEscrowOracleProfileInfo>>,
 }
 
-/// Published pointers for the hash-bound `api-quality/v1` oracle profile (`oracle-qa` crate).
+/// Published pointers for one SLA-Escrow oracle profile (one entry of `slaEscrowOracleProfiles[]`).
+/// Generic across delivery categories (api-quality, onchain-transfer, file-delivery, future).
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SlaEscrowOracleQaInfo {
-    profile_id: &'static str,
+struct SlaEscrowOracleProfileInfo {
+    /// Canonical profile id, e.g. `x402/oracles/api-quality/v1`.
+    profile_id: String,
+    /// URL of the normative spec (NORMATIVE.md) for this profile.
     normative_spec_url: String,
-    repository_path: &'static str,
-    signed_delivery_v2_draft_path: &'static str,
+    /// Repository path (relative to the linked repo root) where the profile lives.
+    /// Empty string if the deployment doesn't want to advertise a specific path.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    repository_path: String,
+    /// Optional advertised default oracle authority pubkey for this profile.
+    /// Buyers may use this when the seller's `accepts[].extra.oracleProfiles[]` does
+    /// not list one. **Buyers MUST still confirm trust.**
     #[serde(skip_serializing_if = "Option::is_none")]
     default_operator_pubkey: Option<String>,
+    /// Optional registry URL hint for the seller's HMAC-bound upload flow
+    /// (`POST /v1/registry/sla|delivery|blob`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    registry_url: Option<String>,
+    /// Free-form note for integrators (e.g. evidence registry policy).
     #[serde(skip_serializing_if = "Option::is_none")]
     evidence_registry_note: Option<String>,
 }

@@ -8,7 +8,7 @@ title: "Seller shortcut · 5 steps"
 
 > **You have a Solana wallet and want to charge for API calls. Here's the fastest path.**
 
-> **Status.** The `exact` rail on pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); the same service is also served at `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). For `sla-escrow` you must choose an `oracle_authority` you trust — the reference oracle is [`oracle-qa`](https://github.com/miraland-labs/oracle-qa).
+> **Status.** The `exact` rail on pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); the same service is also served at `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). For `sla-escrow` you must choose an `oracle_authority` you trust — reference implementations ship in the [`oracles/`](https://github.com/miraland-labs/oracles) workspace (three sibling profiles: api-quality, onchain-transfer, file-delivery).
 
 Replace **`$BASE`** with your facilitator URL. Confirm the cluster with **`GET /api/v1/facilitator/health`** on that host.
 

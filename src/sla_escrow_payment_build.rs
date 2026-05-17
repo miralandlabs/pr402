@@ -257,6 +257,110 @@ pub async fn build_sla_escrow_fund_payment_tx(
         ));
     }
 
+    // OPTIONAL: cross-check `accepted.extra.oracleProfiles[]` when the seller
+    // advertises the richer per-profile shape. The chosen `oracleAuthority`
+    // MUST match an entry's `operatorPubkey`. This catches the common error
+    // of an authority pubkey that's allow-listed in the flat array but does
+    // not correspond to any advertised profile (e.g. seller listed two
+    // pubkeys but only one runs the right oracle binary).
+    //
+    // Strict mode (`PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH=true` via the
+    // parameters table or env) further requires the matched entry's
+    // `profileId` to be one of the profiles this facilitator advertises on
+    // `/capabilities`. Off by default to avoid breaking sellers who haven't
+    // migrated to the richer shape yet.
+    if let Some(profiles) = extra.get("oracleProfiles").and_then(|x| x.as_array()) {
+        let mut matched_profile_id: Option<String> = None;
+        for entry in profiles {
+            let op = entry
+                .get("operatorPubkey")
+                .and_then(|x| x.as_str())
+                .ok_or_else(|| {
+                    SlaEscrowPaymentBuildError::InvalidRequest(
+                        "accepted.extra.oracleProfiles[].operatorPubkey missing or not a string"
+                            .into(),
+                    )
+                })?;
+            let entry_pk = Pubkey::from_str(op).map_err(|e| {
+                SlaEscrowPaymentBuildError::InvalidRequest(format!(
+                    "oracleProfiles[].operatorPubkey: {}",
+                    e
+                ))
+            })?;
+            if entry_pk == oracle_pk {
+                matched_profile_id = entry
+                    .get("profileId")
+                    .and_then(|x| x.as_str())
+                    .map(str::to_string);
+                break;
+            }
+        }
+        if matched_profile_id.is_none() {
+            return Err(SlaEscrowPaymentBuildError::InvalidRequest(
+                "oracleAuthority is not listed in accepted.extra.oracleProfiles[].operatorPubkey"
+                    .into(),
+            ));
+        }
+        // Strict mode (opt-in).
+        let strict = crate::parameters::resolve_string_sync(
+            crate::parameters::PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH,
+            crate::parameters::PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH,
+        )
+        .map(|s| {
+            let v = s.trim().to_ascii_lowercase();
+            v == "true" || v == "1" || v == "yes" || v == "on"
+        })
+        .unwrap_or(false);
+        if strict {
+            if let Some(profile_id) = &matched_profile_id {
+                let advertised_json = crate::parameters::resolve_string_sync(
+                    crate::parameters::PR402_SLA_ESCROW_ORACLE_PROFILES_JSON,
+                    crate::parameters::PR402_SLA_ESCROW_ORACLE_PROFILES_JSON,
+                );
+                let mut found = false;
+                if let Some(raw) = advertised_json.as_deref() {
+                    if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(raw) {
+                        found = arr
+                            .iter()
+                            .filter_map(|v| v.get("profileId").and_then(|p| p.as_str()))
+                            .any(|p| p == profile_id);
+                    }
+                }
+                if !found {
+                    // Fallback: each profile family has a per-profile-key
+                    // `*_DEFAULT_PUBKEY` entry. If any of the three is set,
+                    // the corresponding canonical profile id is considered
+                    // advertised (matches discovery handler logic).
+                    let canonical_for = [
+                        (
+                            crate::parameters::PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY,
+                            "x402/oracles/api-quality/v1",
+                        ),
+                        (
+                            crate::parameters::PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY,
+                            "x402/oracles/onchain-transfer/v1",
+                        ),
+                        (
+                            crate::parameters::PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY,
+                            "x402/oracles/file-delivery/attestation/v1",
+                        ),
+                    ];
+                    found = canonical_for.iter().any(|(key, canonical_id)| {
+                        crate::parameters::resolve_string_sync(key, key).is_some()
+                            && profile_id == *canonical_id
+                    });
+                }
+                if !found {
+                    return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
+                        "oracleProfiles[].profileId ({}) is not advertised by this facilitator \
+                         (PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH=true)",
+                        profile_id
+                    )));
+                }
+            }
+        }
+    }
+
     let payment_uid = req
         .payment_uid
         .filter(|s| !s.is_empty())
