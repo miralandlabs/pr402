@@ -70,6 +70,10 @@ pub async fn handle_build_sla_escrow_payment_tx(body: Body) -> Response<Body> {
             "SLA-Escrow facilitator-paid Solana fees are disabled on this deployment. Set PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP to true (or 1) to allow facilitatorPaysTransactionFees: true.",
         );
     }
+    // Warm the parameters cache so the strict oracleProfiles[] check (when
+    // enabled via PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH) reads the current
+    // facilitator-advertised profile ids from the DB. No-op when no DB.
+    pr402::parameters::refresh_parameters_from_db(pr402_db()).await;
     match pr402::sla_escrow_payment_build::build_sla_escrow_fund_payment_tx(
         &cp.solana,
         pr402_db(),

@@ -164,6 +164,15 @@ pub const PR402_SLA_ESCROW_FILE_DELIVERY_REGISTRY_URL: &str =
 pub const PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE: &str =
     "PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE";
 
+/// Strict mode for the optional `accepts[].extra.oracleProfiles[]` cross-check
+/// at SLA-escrow build time. When set to a truthy value (`true` / `1` / `yes`
+/// / `on`, case-insensitive), `POST /build-sla-escrow-payment-tx` rejects a
+/// request whose chosen `oracleAuthority` resolves to a `profileId` that this
+/// facilitator does not advertise on `/capabilities`. Off by default to avoid
+/// breaking sellers that haven't migrated to the richer `oracleProfiles[]`
+/// shape yet.
+pub const PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH: &str = "PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH";
+
 /// Min spendable lamports in UniversalSettle SOL storage before submitting a Sweep (gas not worth dust).
 pub const PR402_SWEEP_MIN_SPENDABLE_LAMPORTS: &str = "PR402_SWEEP_MIN_SPENDABLE_LAMPORTS";
 /// Default min SPL raw amount when mint has no entry in [`PR402_SWEEP_MIN_SPL_RAW_BY_MINT`] (see [`DEFAULT_SWEEP_MIN_SPL_RAW_DEFAULT`]).
