@@ -12,6 +12,23 @@ pub mod db;
 pub mod exact_payment_build;
 pub mod facilitator;
 pub mod onboard_auth;
+#[cfg(feature = "facilitator-http")]
+pub mod oracle_health;
+#[cfg(not(feature = "facilitator-http"))]
+pub mod oracle_health {
+    //! Stub: Wave A §3.2 health gate is disabled when built without the
+    //! `facilitator-http` feature (no `reqwest` dependency). All entry points
+    //! return "no probe attempted" so the gate is a no-op.
+    pub fn gate_enabled() -> bool {
+        false
+    }
+    pub fn derive_health_url(_registry_url: &str) -> Option<String> {
+        None
+    }
+    pub async fn probe_unhealthy(_registry_url: Option<&str>) -> Option<String> {
+        None
+    }
+}
 pub mod parameters;
 pub mod payment_attempt;
 pub mod proto;

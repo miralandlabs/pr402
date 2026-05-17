@@ -80,6 +80,11 @@ pub enum SlaEscrowPaymentBuildError {
     NotConfigured,
     #[error("RPC error: {0}")]
     Rpc(String),
+    /// Wave A §3.2 — the facilitator's health gate is enabled and the chosen
+    /// oracle's `/health` probe failed within the last 30s. Caller surfaces
+    /// HTTP 503 so the buyer SDK retries another profile.
+    #[error("oracle unhealthy: {0}")]
+    OracleUnhealthy(String),
 }
 
 // compute_budget and associated_token_address helpers moved to crate::util::tx_builder
@@ -355,6 +360,22 @@ pub async fn build_sla_escrow_fund_payment_tx(
                         "oracleProfiles[].profileId ({}) is not advertised by this facilitator \
                          (PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH=true)",
                         profile_id
+                    )));
+                }
+            }
+        }
+
+        // Wave A §3.2 — health gate (default OFF). When
+        // `PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY` is truthy, probe the
+        // matched profile's oracle and refuse to bind escrow when the probe
+        // fails. The probe is cached for 30s and short-circuits when the gate
+        // is disabled, so this is no-op for existing deployments.
+        if let Some(profile_id) = matched_profile_id.as_deref() {
+            if let Some(registry_url) = registry_url_for_profile(profile_id) {
+                if let Some(err) = crate::oracle_health::probe_unhealthy(Some(&registry_url)).await
+                {
+                    return Err(SlaEscrowPaymentBuildError::OracleUnhealthy(format!(
+                        "{profile_id}: {err}"
                     )));
                 }
             }
@@ -703,4 +724,26 @@ pub async fn build_oracle_confirm_tx(
         program_id: program_id.to_string(),
         payment_pda: payment_pda.to_string(),
     })
+}
+
+/// Wave A §3.2 helper — look up the advertised `registry_url` for a given
+/// canonical `profile_id`. Reads the same per-profile parameter keys that
+/// `discovery::build_sla_escrow_oracle_profiles` consults so the gate sees
+/// exactly the URL we publish on `/capabilities`. Returns `None` when the
+/// profile id is unknown or no registry URL is configured (in which case the
+/// gate cannot probe and the build proceeds).
+fn registry_url_for_profile(profile_id: &str) -> Option<String> {
+    let key = match profile_id {
+        "x402/oracles/api-quality/v1" => {
+            crate::parameters::PR402_SLA_ESCROW_API_QUALITY_REGISTRY_URL
+        }
+        "x402/oracles/onchain-transfer/v1" => {
+            crate::parameters::PR402_SLA_ESCROW_ONCHAIN_TRANSFER_REGISTRY_URL
+        }
+        "x402/oracles/file-delivery/attestation/v1" => {
+            crate::parameters::PR402_SLA_ESCROW_FILE_DELIVERY_REGISTRY_URL
+        }
+        _ => return None,
+    };
+    crate::parameters::resolve_string_sync(key, key).filter(|s| !s.is_empty())
 }

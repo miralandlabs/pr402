@@ -225,7 +225,19 @@ INSERT INTO parameters (param_name, param_value) VALUES
         'PR402_SWEEP_MIN_SPL_RAW_BY_MINT',
         '{"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v":"3000000"}'
     ),
-    ('PR402_SWEEP_MIN_SPL_RAW_DEFAULT', '3000000')
+    ('PR402_SWEEP_MIN_SPL_RAW_DEFAULT', '3000000'),
+    -- SLA-Escrow strict cross-check at build time. When 'true', /build-sla-escrow-payment-tx
+    -- rejects requests whose chosen oracleAuthority resolves to a profileId not advertised
+    -- on /capabilities. Seeds 'false' so existing sellers that haven't migrated to the
+    -- richer oracleProfiles[] shape keep working unchanged. See pr402/.env.example.
+    ('PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH', 'false'),
+    -- Wave A §3.2 oracle health gate. When 'true', pr402 probes each advertised oracle's
+    -- /health endpoint (derived from its registry_url, 30s cache, 2s timeout) before
+    -- (a) advertising the profile on /capabilities (unhealthy → annotated, not removed)
+    -- and (b) building an SLA-Escrow FundPayment for that profile (unhealthy → 503).
+    -- Seeds 'false' so the gate is dormant until all advertised oracles publish a
+    -- registry_url and reliably respond 200 on /health. Flip to 'true' to activate.
+    ('PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY', 'false')
 ON CONFLICT (param_name) DO UPDATE SET
     param_value = EXCLUDED.param_value,
     updated_at = NOW();
@@ -266,6 +278,15 @@ ON CONFLICT (param_name) DO UPDATE SET
 --   ('PR402_SLA_ESCROW_API_QUALITY_EVIDENCE_REGISTRY_NOTE',  'Sellers POST hash-bound SLA + delivery JSON'),
 --   ('PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY',     '<onchain-transfer oracle pubkey>'),
 --   ('PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY',        '<file-delivery oracle pubkey>')
+-- ON CONFLICT (param_name) DO UPDATE SET
+--   param_value = EXCLUDED.param_value,
+--   updated_at = NOW();
+--
+-- 3. Activate the security gates once your oracles are live and reliable
+--    (each defaults to 'false' in the active seed above; uncomment to flip ON):
+-- INSERT INTO parameters (param_name, param_value) VALUES
+--   ('PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH',  'true'),
+--   ('PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY', 'true')
 -- ON CONFLICT (param_name) DO UPDATE SET
 --   param_value = EXCLUDED.param_value,
 --   updated_at = NOW();

@@ -173,6 +173,23 @@ pub const PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE: &str =
 /// shape yet.
 pub const PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH: &str = "PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH";
 
+/// Wave A §3.2 — opt-in oracle health gate. When set to a truthy value
+/// (`true` / `1` / `yes` / `on`, case-insensitive), pr402 probes each
+/// advertised oracle profile's `/health` endpoint (derived from
+/// `registry_url`) before:
+///
+/// 1. Including the profile in `GET /capabilities` (unhealthy profiles get an
+///    `unhealthy: true` annotation; healthy and unprobed profiles stay as-is).
+/// 2. Building an SLA-Escrow FundPayment for an oracle authority that maps to
+///    that profile (unhealthy → HTTP 503 `oracle_unhealthy`).
+///
+/// Default OFF. Probe results are cached in-process for 30s so a transient
+/// failure cannot keep a profile dark for long, and so the cost stays
+/// negligible under load. The gate is intentionally additive — turning it on
+/// can only *reduce* the set of profiles a buyer sees / can bind, never
+/// introduce new behavior.
+pub const PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY: &str = "PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY";
+
 /// Min spendable lamports in UniversalSettle SOL storage before submitting a Sweep (gas not worth dust).
 pub const PR402_SWEEP_MIN_SPENDABLE_LAMPORTS: &str = "PR402_SWEEP_MIN_SPENDABLE_LAMPORTS";
 /// Default min SPL raw amount when mint has no entry in [`PR402_SWEEP_MIN_SPL_RAW_BY_MINT`] (see [`DEFAULT_SWEEP_MIN_SPL_RAW_DEFAULT`]).

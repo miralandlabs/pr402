@@ -106,6 +106,9 @@ pub async fn handle_build_sla_escrow_payment_tx(body: Body) -> Response<Body> {
                 pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::Rpc(_) => {
                     StatusCode::BAD_GATEWAY
                 }
+                pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::OracleUnhealthy(_) => {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
             };
             error_response(status, &e.to_string())
         }
@@ -154,6 +157,11 @@ pub async fn handle_build_oracle_confirm_tx(body: Body) -> Response<Body> {
                 }
                 pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::Rpc(_) => {
                     StatusCode::BAD_GATEWAY
+                }
+                pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError::OracleUnhealthy(_) => {
+                    // The oracle confirm path doesn't currently emit this
+                    // variant; mapping is included for match exhaustiveness.
+                    StatusCode::SERVICE_UNAVAILABLE
                 }
             };
             error_response(status, &e.to_string())
