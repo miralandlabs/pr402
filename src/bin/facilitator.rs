@@ -214,6 +214,19 @@ struct SlaEscrowOracleProfileInfo {
     /// Free-form note for integrators (e.g. evidence registry policy).
     #[serde(skip_serializing_if = "Option::is_none")]
     evidence_registry_note: Option<String>,
+    /// Wave A §3.2 — when pr402 has probed this oracle's `/health` and the
+    /// probe failed, this field is `Some(true)` so buyers can skip the
+    /// profile. When `None`, the gate is either disabled (default) or no
+    /// `registry_url` is configured for probing. Health probes happen out of
+    /// band; the cache lifetime is short (30s) so a transient failure cannot
+    /// keep a profile dark for long.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unhealthy: Option<bool>,
+    /// Last-probe error string when `unhealthy = Some(true)`. Surfaced for
+    /// operator diagnostics; agents typically ignore this and fall back to
+    /// another profile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_health_error: Option<String>,
 }
 
 #[derive(serde::Serialize)]

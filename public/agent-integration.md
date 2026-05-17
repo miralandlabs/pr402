@@ -48,7 +48,7 @@ Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
 **Shape reminder (after build):** The object you POST to `/verify` and `/settle` matches **`verifyBodyTemplate`** from the build response (with signed tx). It has top-level **`x402Version`**, **`paymentPayload`** (includes nested **`accepted`**, **`payload.transaction`**, **`resource`**), and **`paymentRequirements`** — see **OpenAPI** schema **`X402V2VerifySettleBody`** and its **example** on `GET /openapi.json`.
 
-**SLA-Escrow** — Use **`POST /build-sla-escrow-payment-tx`** instead of step 4; include **`slaHash`** and **`oracleAuthority`** per OpenAPI. Do not use the exact builder for escrow lines.
+**SLA-Escrow** — Use **`POST /build-sla-escrow-payment-tx`** instead of step 4; include **`slaHash`** and **`oracleAuthority`** per OpenAPI. Do not use the exact builder for escrow lines. For the cross-actor flow (who authors the SLA bytes, when the seller uploads them, what the oracle compares against), see the **[SLA-Escrow protocol reference](https://github.com/miraland-labs/oracles/blob/main/docs/SLA_ESCROW_PROTOCOL.md)** in the oracles workspace — it's the single source of truth for the four-party interaction.
 
 ---
 

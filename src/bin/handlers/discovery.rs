@@ -40,7 +40,20 @@ pub async fn handle_capabilities(
         // Refresh the parameters cache so we read DB-backed overrides ahead of env vars.
         // The `parameters` table is the preferred source on Vercel (avoids the env size limit).
         pr402::parameters::refresh_parameters_from_db(pr402_db()).await;
-        build_sla_escrow_oracle_profiles()
+        let mut profiles = build_sla_escrow_oracle_profiles();
+        // Wave A §3.2 — annotate each profile with health status when the gate is on.
+        // The probe is cached for 30s so back-to-back capability requests are cheap.
+        if let Some(list) = profiles.as_mut() {
+            for entry in list.iter_mut() {
+                if let Some(err) =
+                    pr402::oracle_health::probe_unhealthy(entry.registry_url.as_deref()).await
+                {
+                    entry.unhealthy = Some(true);
+                    entry.last_health_error = Some(err);
+                }
+            }
+        }
+        profiles
     } else {
         None
     };
@@ -419,6 +432,8 @@ fn build_sla_escrow_oracle_profiles() -> Option<Vec<SlaEscrowOracleProfileInfo>>
                                 .and_then(|x| x.as_str())
                                 .map(|s| s.to_string())
                                 .filter(|s| !s.is_empty()),
+                            unhealthy: None,
+                            last_health_error: None,
                         })
                     })
                     .collect();
@@ -498,6 +513,8 @@ fn build_sla_escrow_oracle_profiles() -> Option<Vec<SlaEscrowOracleProfileInfo>>
             default_operator_pubkey: default_pubkey,
             registry_url: p::resolve_string_sync(registry_url_key, registry_url_key),
             evidence_registry_note: p::resolve_string_sync(evidence_note_key, evidence_note_key),
+            unhealthy: None,
+            last_health_error: None,
         });
     }
 
