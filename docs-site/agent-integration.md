@@ -22,7 +22,7 @@ Runbook for two kinds of autonomous clients:
 
 **Canonical contract:** OpenAPI 3.1 at **`GET /openapi.json`** on your facilitator base URL.
 
-> **Status.** pr402 is live on **Solana Mainnet** and **Devnet**; the `exact` rail is GA, and `sla-escrow` is available to integrators who operate or trust a production `oracle_authority` (reference: [`oracle-qa`](https://github.com/miraland-labs/oracle-qa)). Behavior and flags can evolve — `GET /capabilities` and `GET /openapi.json` on the host you actually call are the live contract.
+> **Status.** pr402 is live on **Solana Mainnet** and **Devnet**; the `exact` rail is GA, and `sla-escrow` is available to integrators who operate or trust a production `oracle_authority` (reference: the [`oracles/`](https://github.com/miraland-labs/oracles) workspace ships three sibling oracle profiles — api-quality, onchain-transfer, file-delivery). Behavior and flags can evolve — `GET /capabilities` and `GET /openapi.json` on the host you actually call are the live contract.
 
 | | **Recommended** | **Also available (same service)** |
 |--|-----------------|----------------|

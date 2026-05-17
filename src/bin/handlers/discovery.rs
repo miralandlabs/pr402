@@ -36,19 +36,11 @@ pub async fn handle_capabilities(
         );
     };
 
-    let sla_escrow_oracle_qa = if sla_escrow {
-        Some(SlaEscrowOracleQaInfo {
-            profile_id: "x402/oracle-qa/api-quality/v1",
-            normative_spec_url: std::env::var("PR402_ORACLE_QA_SPEC_URL").unwrap_or_else(|_| {
-                "https://github.com/miraland-labs/oracle-qa/blob/main/spec/api-quality-v1/NORMATIVE.md"
-                    .to_string()
-            }),
-            // Paths relative to https://github.com/miraland-labs/oracle-qa (standalone repo; not the x402 hub tree).
-            repository_path: "",
-            signed_delivery_v2_draft_path: "spec/signed-delivery-v2/DRAFT.md",
-            default_operator_pubkey: extract_optional_env("PR402_DEFAULT_SLA_ORACLE_PUBKEY"),
-            evidence_registry_note: extract_optional_env("PR402_ORACLE_EVIDENCE_REGISTRY_NOTE"),
-        })
+    let sla_escrow_oracle_profiles = if sla_escrow {
+        // Refresh the parameters cache so we read DB-backed overrides ahead of env vars.
+        // The `parameters` table is the preferred source on Vercel (avoids the env size limit).
+        pr402::parameters::refresh_parameters_from_db(pr402_db()).await;
+        build_sla_escrow_oracle_profiles()
     } else {
         None
     };
@@ -187,7 +179,7 @@ pub async fn handle_capabilities(
             buyer_quick_start: "/quickstart-buyer.md",
             x402_spec: "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md",
         },
-        sla_escrow_oracle_qa,
+        sla_escrow_oracle_profiles,
     };
 
     facilitator_response!()
@@ -362,9 +354,156 @@ pub async fn handle_upgrade(
     }
 }
 
-fn extract_optional_env(key: &str) -> Option<String> {
-    std::env::var(key)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+/// Build the `slaEscrowOracleProfiles[]` list advertised on `GET /capabilities`.
+///
+/// **Configuration precedence** — every key below follows pr402's parameters-first
+/// convention via [`pr402::parameters::resolve_string_sync`]: the DB `parameters` row
+/// wins (preferred for Vercel deployments to avoid the env-size limit), else the
+/// matching env var of the same name, else the per-key default.
+///
+/// **Two configuration modes** (mutually exclusive — JSON wins when set):
+///
+/// 1. **Full JSON override** —
+///    [`pr402::parameters::PR402_SLA_ESCROW_ORACLE_PROFILES_JSON`] holds a JSON array
+///    of objects with the same shape as the response. Highest flexibility (custom
+///    profile ids, multiple operators per profile, custom registry URLs).
+///
+/// 2. **Ergonomic per-profile keys** — when the JSON key is unset, three groups of
+///    four keys each (DEFAULT_PUBKEY / NORMATIVE_SPEC_URL / REGISTRY_URL /
+///    EVIDENCE_REGISTRY_NOTE) drive a default-shaped entry per profile. Profiles
+///    with no DEFAULT_PUBKEY are omitted (an entry with only metadata adds no
+///    actionable value to buyers).
+///
+/// Returns `None` when neither mode produces any entry — `/capabilities` then omits
+/// the field entirely (preserves field-presence semantics for integrators).
+///
+/// **Caller contract:** call [`pr402::parameters::refresh_parameters_from_db`] before
+/// invoking this so the DB cache is warm.
+fn build_sla_escrow_oracle_profiles() -> Option<Vec<SlaEscrowOracleProfileInfo>> {
+    use pr402::parameters as p;
+
+    // 1. JSON override.
+    if let Some(raw) = p::resolve_string_sync(
+        p::PR402_SLA_ESCROW_ORACLE_PROFILES_JSON,
+        p::PR402_SLA_ESCROW_ORACLE_PROFILES_JSON,
+    ) {
+        match serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
+            Ok(parsed) => {
+                let entries: Vec<SlaEscrowOracleProfileInfo> = parsed
+                    .into_iter()
+                    .filter_map(|v| {
+                        Some(SlaEscrowOracleProfileInfo {
+                            profile_id: v.get("profileId")?.as_str()?.to_string(),
+                            normative_spec_url: v
+                                .get("normativeSpecUrl")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            repository_path: v
+                                .get("repositoryPath")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            default_operator_pubkey: v
+                                .get("defaultOperatorPubkey")
+                                .and_then(|x| x.as_str())
+                                .map(|s| s.to_string())
+                                .filter(|s| !s.is_empty()),
+                            registry_url: v
+                                .get("registryUrl")
+                                .and_then(|x| x.as_str())
+                                .map(|s| s.to_string())
+                                .filter(|s| !s.is_empty()),
+                            evidence_registry_note: v
+                                .get("evidenceRegistryNote")
+                                .and_then(|x| x.as_str())
+                                .map(|s| s.to_string())
+                                .filter(|s| !s.is_empty()),
+                        })
+                    })
+                    .collect();
+                if !entries.is_empty() {
+                    return Some(entries);
+                }
+                // Empty/invalid JSON falls through to per-profile keys below.
+            }
+            Err(e) => {
+                // Bad JSON: log and fall through. We don't fail capabilities just
+                // because the operator's config is malformed — the per-profile path
+                // is still tried.
+                eprintln!(
+                    "warning: PR402_SLA_ESCROW_ORACLE_PROFILES_JSON parse failed ({}); \
+                     falling back to per-profile keys",
+                    e
+                );
+            }
+        }
+    }
+
+    // 2. Ergonomic per-profile keys (DB parameters row > env > default).
+    let mut entries: Vec<SlaEscrowOracleProfileInfo> = Vec::new();
+
+    // (profile_id, repo_path, default_spec_url, pubkey_key, spec_url_key, registry_url_key, evidence_note_key)
+    let cfg: &[(&str, &str, &str, &str, &str, &str, &str)] = &[
+        (
+            "x402/oracle/api-quality/v1",
+            "oracle-api-quality/spec/api-quality-v1/NORMATIVE.md",
+            "https://github.com/miraland-labs/oracles/blob/main/oracle-api-quality/spec/api-quality-v1/NORMATIVE.md",
+            p::PR402_SLA_ESCROW_API_QUALITY_DEFAULT_PUBKEY,
+            p::PR402_SLA_ESCROW_API_QUALITY_NORMATIVE_SPEC_URL,
+            p::PR402_SLA_ESCROW_API_QUALITY_REGISTRY_URL,
+            p::PR402_SLA_ESCROW_API_QUALITY_EVIDENCE_REGISTRY_NOTE,
+        ),
+        (
+            "x402/oracle/onchain-transfer/v1",
+            "oracle-onchain-transfer/spec/onchain-transfer-v1/NORMATIVE.md",
+            "https://github.com/miraland-labs/oracles/blob/main/oracle-onchain-transfer/spec/onchain-transfer-v1/NORMATIVE.md",
+            p::PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY,
+            p::PR402_SLA_ESCROW_ONCHAIN_TRANSFER_NORMATIVE_SPEC_URL,
+            p::PR402_SLA_ESCROW_ONCHAIN_TRANSFER_REGISTRY_URL,
+            p::PR402_SLA_ESCROW_ONCHAIN_TRANSFER_EVIDENCE_REGISTRY_NOTE,
+        ),
+        (
+            "x402/oracle/file-delivery/attestation/v1",
+            "oracle-file-delivery/spec/file-delivery-attestation-v1/NORMATIVE.md",
+            "https://github.com/miraland-labs/oracles/blob/main/oracle-file-delivery/spec/file-delivery-attestation-v1/NORMATIVE.md",
+            p::PR402_SLA_ESCROW_FILE_DELIVERY_DEFAULT_PUBKEY,
+            p::PR402_SLA_ESCROW_FILE_DELIVERY_NORMATIVE_SPEC_URL,
+            p::PR402_SLA_ESCROW_FILE_DELIVERY_REGISTRY_URL,
+            p::PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE,
+        ),
+    ];
+
+    for (
+        profile_id,
+        repo_path,
+        default_spec_url,
+        pubkey_key,
+        spec_url_key,
+        registry_url_key,
+        evidence_note_key,
+    ) in cfg
+    {
+        // Per-profile entries are only emitted when the operator wants to advertise a
+        // default. A "the profile exists somewhere" entry without a pubkey adds no value.
+        let default_pubkey = p::resolve_string_sync(pubkey_key, pubkey_key);
+        if default_pubkey.is_none() {
+            continue;
+        }
+        entries.push(SlaEscrowOracleProfileInfo {
+            profile_id: (*profile_id).to_string(),
+            normative_spec_url: p::resolve_string_sync(spec_url_key, spec_url_key)
+                .unwrap_or_else(|| (*default_spec_url).to_string()),
+            repository_path: (*repo_path).to_string(),
+            default_operator_pubkey: default_pubkey,
+            registry_url: p::resolve_string_sync(registry_url_key, registry_url_key),
+            evidence_registry_note: p::resolve_string_sync(evidence_note_key, evidence_note_key),
+        });
+    }
+
+    if entries.is_empty() {
+        None
+    } else {
+        Some(entries)
+    }
 }

@@ -1638,12 +1638,14 @@
                     <span class="pill accent">exact</span> GA on Mainnet.
                     <span class="pill amber">sla-escrow</span> available to
                     integrators who operate or trust a production
-                    <code>oracle_authority</code>; reference oracle is
+                    <code>oracle_authority</code>; reference oracles ship in the
                     <a
-                        href="https://github.com/miraland-labs/oracle-qa"
+                        href="https://github.com/miraland-labs/oracles"
                         rel="noopener"
-                        >oracle-qa</a
-                    >.
+                        >oracles</a
+                    >
+                    workspace (three sibling profiles: api-quality,
+                    onchain-transfer, file-delivery).
                 </p>
             </section>
 
@@ -1657,26 +1659,30 @@
                             SLA-Escrow needs oracles with domain expertise to
                             adjudicate delivery — API quality, ML model quality,
                             uptime, content moderation, financial data
-                            integrity. The first reference is open source.
+                            integrity. The first three references are open
+                            source.
                         </p>
                         <ul>
                             <li>
-                                <strong>Default API-quality oracle</strong>:
-                                fork
+                                <strong>Reference oracles</strong>: fork the
+                                closest sibling in the
                                 <a
-                                    href="https://github.com/miraland-labs/oracle-qa"
+                                    href="https://github.com/miraland-labs/oracles"
                                     rel="noopener"
-                                    >oracle-qa</a
+                                    >oracles</a
                                 >
-                                as your starting point; it ships the
-                                chain-monitor → fetch → evaluate → settle
-                                pipeline.
+                                workspace (api-quality / onchain-transfer /
+                                file-delivery); each ships the chain-monitor →
+                                fetch → evaluate → settle pipeline.
                             </li>
                             <li>
-                                <strong>Profile</strong>:
-                                <code>x402/oracle-qa/api-quality/v1</code> —
-                                hash-bound SLA + delivery JSON, JSON Schema
-                                evaluation, on-chain verdict with deterministic
+                                <strong>Profiles</strong>:
+                                <code>x402/oracle/api-quality/v1</code>,
+                                <code>x402/oracle/onchain-transfer/v1</code>,
+                                <code
+                                    >x402/oracle/file-delivery/attestation/v1</code
+                                >
+                                — hash-bound SLA + delivery, deterministic
                                 <code>resolution_hash</code>.
                             </li>
                             <li>

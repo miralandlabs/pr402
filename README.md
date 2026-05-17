@@ -2,7 +2,7 @@
 
 **A minimal, x402-compliant facilitator for Solana, optimized for Vercel Serverless Functions. It bridges agent/human requests with on-chain settlement engines like `UniversalSettle` and `SLA-Escrow`.**
 
-> **Status.** pr402 and the `exact` (UniversalSettle) rail are **live on Solana Mainnet and Devnet**. The `sla-escrow` program is also deployed on both clusters; general availability of the `sla-escrow` scheme depends on the seller or buyer choosing an `oracle_authority` they trust — the reference oracle is [`oracle-qa`](https://github.com/miraland-labs/oracle-qa). Behavior, fees, and feature flags can evolve; treat **`GET /capabilities`** and **`GET /openapi.json`** as the live contract.
+> **Status.** pr402 and the `exact` (UniversalSettle) rail are **live on Solana Mainnet and Devnet**. The `sla-escrow` program is also deployed on both clusters; general availability of the `sla-escrow` scheme depends on the seller or buyer choosing an `oracle_authority` they trust — reference implementations ship in the [`oracles/`](https://github.com/miraland-labs/oracles) workspace (three sibling profiles: api-quality, onchain-transfer, file-delivery). Behavior, fees, and feature flags can evolve; treat **`GET /capabilities`** and **`GET /openapi.json`** as the live contract.
 
 ## Official deployments
 
