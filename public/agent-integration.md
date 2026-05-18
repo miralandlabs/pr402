@@ -50,6 +50,56 @@ Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
 **SLA-Escrow** — Use **`POST /build-sla-escrow-payment-tx`** instead of step 4; include **`slaHash`** and **`oracleAuthority`** per OpenAPI. Do not use the exact builder for escrow lines. For the cross-actor flow (who authors the SLA bytes, when the seller uploads them, what the oracle compares against), see the **[SLA-Escrow protocol reference](https://github.com/miraland-labs/oracles/blob/main/docs/SLA_ESCROW_PROTOCOL.md)** in the oracles workspace — it's the single source of truth for the four-party interaction.
 
+### Built-in oracle: `x402/oracles/onchain-transfer/v1`
+
+This pr402 deployment ships and operates **one** oracle itself: an
+[`oracle-onchain-transfer`](https://github.com/miraland-labs/oracles)
+instance that adjudicates SPL token transfers and swaps by re-deriving
+pre/post token deltas directly from `getTransaction(jsonParsed)` on the
+configured cluster. When the deployment's
+`PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY` is set, this oracle
+appears in **`GET /capabilities → slaEscrowOracleProfiles[]`** as the
+default for token-transfer scenarios. Buyers MAY use it directly without
+finding their own oracle operator.
+
+The built-in oracle is **operationally distinct** from the facilitator:
+
+- It runs on its own host (or hosts) with its own keypair, Postgres
+  database, and registry storage. A regression in the oracle does NOT
+  regress facilitator endpoints (`/verify`, `/settle`, `/build-*-payment-tx`,
+  onboard flows). Conversely a facilitator restart does not affect the
+  oracle's chain monitor or settlement queue.
+- The pr402 operator MAY disable the built-in oracle at any time by
+  clearing the `PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY`
+  parameter (DB row or env var, whichever the deployment uses). The
+  profile then disappears from `slaEscrowOracleProfiles[]` per the
+  existing pr402 advertise-only-when-pubkey-is-set semantics. Buyers and
+  sellers fall back to ecosystem oracles with no facilitator-side change.
+- When the optional health gate (`PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY`)
+  is `true`, pr402 probes the oracle's `/health` endpoint and refuses to
+  bind escrow to it during transient outages (HTTP 503
+  `oracle_unhealthy` from `/build-sla-escrow-payment-tx`). The gate is
+  off by default; flip on after the oracle has demonstrated reliable
+  uptime in your deployment.
+
+**For other delivery shapes** (`api-quality/v1`,
+`file-delivery/attestation/v1`, future profiles), this pr402 deployment
+does NOT operate the oracle itself. Sellers naming a non-built-in oracle
+in `accepts[].extra.oracleProfiles[]` are responsible for choosing an
+operator they (and their buyers) trust. pr402 reviews and lists ecosystem
+oracles via the editorial registration template
+([`register-oracle.md`](https://github.com/miralandlabs/pr402/issues/new?template=register-oracle.md));
+listing is endorsement only of *configuration consistency* (the operator
+pubkey is reachable and the profile id is canonical), not endorsement of
+the operator's reliability or honesty.
+
+**Trust extended to the built-in oracle is the trust extended to the
+pr402 operator.** Trust extended to ecosystem oracles is the trust
+extended to that oracle's listed operator. Buyers concerned about the
+adjudication path SHOULD verify `Payment.resolution_hash` independently
+after settlement; the recipe is in
+[`SLA_ESCROW_PROTOCOL.md` §5](https://github.com/miraland-labs/oracles/blob/main/docs/SLA_ESCROW_PROTOCOL.md#5-trust-boundaries).
+
 ---
 
 **Important (pr402 ≠ simple wallet `payTo`):** This facilitator settles through **UniversalSettle** (`v2:solana:exact`) and/or **SLA-Escrow** (`v2:solana:sla-escrow`). Your 402 **`payTo`** (and matching proof destinations) must be the **on-chain PDA** your buyers pay into—not a bare seller wallet for settlement proofs:
