@@ -6,6 +6,7 @@ use std::str::FromStr;
 use url::Url;
 
 use crate::chain::ChainId;
+use crate::parameters;
 use sla_escrow_api::state::Bank as EscrowBank;
 use solana_pubkey::Pubkey;
 use universalsettle_api::state::Config as USConfig;
@@ -77,6 +78,7 @@ impl Config {
     /// - `SOLANA_PUBSUB_URL`: WebSocket URL for pubsub (default: None)
     /// - `UNIVERSALSETTLE_PROGRAM_ID`: Enables `v2:solana:exact` with UniversalSettle (vault, fees, sweep). Omit only if you do not serve that scheme.
     /// - `ESCROW_PROGRAM_ID`: Registers `v2:solana:sla-escrow`. Omit if you do not serve escrow. At least one settlement program should match what RPs advertise.
+    /// - `PR402_ORACLE_AUTHORITIES` (DB row preferred — see [`crate::parameters::PR402_ORACLE_AUTHORITIES`]) **or** legacy `ORACLE_AUTHORITIES` env: comma-separated allow-list of trusted oracle authority pubkeys for the SLA-Escrow scheme. The DB row beats the env var so operators can grow the list past Vercel's env-size limit; both fall back to an empty list.
     /// - `PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`: If `1`/`true`/`yes`, clients may request facilitator-paid Solana fees on SLA-Escrow build (`facilitatorPaysTransactionFees: true`). Default: disabled (such requests return 400).
     pub fn from_env() -> Result<Self, ConfigError> {
         let solana_rpc_url = std::env::var("SOLANA_RPC_URL")
@@ -121,19 +123,21 @@ impl Config {
                 ConfigError::InvalidPubkey("ESCROW_PROGRAM_ID".to_string(), e.to_string())
             })?;
 
-            // Oracle candidate list (comma-separated pubkeys)
-            let oracle_authorities = std::env::var("ORACLE_AUTHORITIES")
-                .unwrap_or_default()
-                .split(',')
-                .filter_map(|s| {
-                    let s = s.trim();
-                    if s.is_empty() {
-                        None
-                    } else {
-                        Pubkey::from_str(s).ok()
-                    }
-                })
-                .collect::<Vec<Pubkey>>();
+            // Trusted oracle authorities — comma-separated pubkeys.
+            //
+            // Resolution: `parameters` row [`PR402_ORACLE_AUTHORITIES`]
+            // (preferred — survives the Vercel env-var size limit as the
+            // operator's oracle ecosystem grows) → legacy `ORACLE_AUTHORITIES`
+            // env var → empty list. The DB cache was already warmed by
+            // `refresh_parameters_from_db` in `bin/facilitator.rs` before
+            // this function ran, so `resolve_string_sync` returns DB values
+            // when present.
+            let oracle_authorities_raw = parameters::resolve_string_sync(
+                parameters::PR402_ORACLE_AUTHORITIES,
+                "ORACLE_AUTHORITIES",
+            )
+            .unwrap_or_default();
+            let oracle_authorities = parse_oracle_authorities(&oracle_authorities_raw);
 
             Some(SLAEscrowConfig {
                 program_id,
@@ -288,4 +292,78 @@ pub enum ConfigError {
     InvalidPubkey(String, String),
     #[error("Account read failure for {0}: {1}")]
     AccountReadFailure(String, String),
+}
+
+/// Parse a comma-separated allow-list of base58 oracle pubkeys.
+///
+/// - Whitespace around each entry is trimmed.
+/// - Empty entries are silently dropped (so a trailing comma is harmless).
+/// - Entries that fail base58 decode are silently dropped (so a typo in
+///   the middle of a long list cannot brick the facilitator at boot).
+/// - The output preserves operator-supplied order; pr402's
+///   `oracle_authorities.contains(...)` check is order-insensitive but
+///   keeping the order makes the published `accepts[].extra.oracleAuthorities`
+///   array match the operator's intent.
+fn parse_oracle_authorities(raw: &str) -> Vec<Pubkey> {
+    raw.split(',')
+        .filter_map(|s| {
+            let s = s.trim();
+            if s.is_empty() {
+                None
+            } else {
+                Pubkey::from_str(s).ok()
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One known-good base58 pubkey from the demo wallets — keeps the
+    /// fixture self-contained so test runs don't depend on any external
+    /// keypair file.
+    const PK_A: &str = "FaciLFwHjbW9V1PtF3vAweL1K1hgin9mvXNXatEQKJdu";
+    const PK_B: &str = "oraG62Mr5hDYeSbAtKMpEYFw22SLpZdebXvDe2Qr7xV";
+
+    #[test]
+    fn parse_oracle_authorities_empty_returns_empty() {
+        assert!(parse_oracle_authorities("").is_empty());
+        assert!(parse_oracle_authorities("   ").is_empty());
+        assert!(parse_oracle_authorities(",,").is_empty());
+    }
+
+    #[test]
+    fn parse_oracle_authorities_single_pubkey() {
+        let v = parse_oracle_authorities(PK_A);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0], Pubkey::from_str(PK_A).unwrap());
+    }
+
+    #[test]
+    fn parse_oracle_authorities_multiple_with_whitespace() {
+        let v = parse_oracle_authorities(&format!("  {}  , {}  ", PK_A, PK_B));
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0], Pubkey::from_str(PK_A).unwrap());
+        assert_eq!(v[1], Pubkey::from_str(PK_B).unwrap());
+    }
+
+    #[test]
+    fn parse_oracle_authorities_drops_invalid_entries() {
+        // The middle entry is malformed — a typo in a long allow-list must
+        // not bring the facilitator down. Valid entries on either side
+        // survive in their declared order.
+        let raw = format!("{},not-a-pubkey,{}", PK_A, PK_B);
+        let v = parse_oracle_authorities(&raw);
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0], Pubkey::from_str(PK_A).unwrap());
+        assert_eq!(v[1], Pubkey::from_str(PK_B).unwrap());
+    }
+
+    #[test]
+    fn parse_oracle_authorities_trailing_comma_is_harmless() {
+        let v = parse_oracle_authorities(&format!("{},", PK_A));
+        assert_eq!(v.len(), 1);
+    }
 }

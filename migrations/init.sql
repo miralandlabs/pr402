@@ -290,5 +290,13 @@ ON CONFLICT (param_name) DO UPDATE SET
 -- ON CONFLICT (param_name) DO UPDATE SET
 --   param_value = EXCLUDED.param_value,
 --   updated_at = NOW();
+
+-- 4. Oracle authorities (comma-separated list; no whitespace; order not important):
+-- INSERT INTO parameters (param_name, param_value)
+-- VALUES ('PR402_ORACLE_AUTHORITIES',
+--         'FaciLFwHjbW9V1PtF3vAweL1K1hgin9mvXNXatEQKJdu,oraG62Mr5hDYeSbAtKMpEYFw22SLpZdebXvDe2Qr7xV')
+-- ON CONFLICT (param_name) DO UPDATE
+--   SET param_value = EXCLUDED.param_value, updated_at = NOW();
+
 -- =============================================================================
 

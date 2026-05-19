@@ -173,6 +173,31 @@ pub const PR402_SLA_ESCROW_FILE_DELIVERY_EVIDENCE_REGISTRY_NOTE: &str =
 /// shape yet.
 pub const PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH: &str = "PR402_SLA_ESCROW_REQUIRE_PROFILE_MATCH";
 
+/// Comma-separated list of trusted oracle authority pubkeys (base58),
+/// advertised on every `accepts[].extra.oracleAuthorities[]` for the
+/// SLA-Escrow scheme and enforced at `verify_and_settle` time.
+///
+/// **Resolution order**: `parameters` row (preferred — see `resolve_string_sync`)
+/// → legacy `ORACLE_AUTHORITIES` env var → empty list. The DB row wins so
+/// operators can grow the allow-list past the Vercel env-var size limit
+/// without redeploying. The legacy env var keeps existing deployments
+/// working untouched.
+///
+/// **Hot-reload caveat**: this list is read **once at facilitator boot**
+/// inside [`crate::config::Config::from_env`], after
+/// [`refresh_parameters_from_db`] has populated the cache. Updating the row
+/// after boot requires a redeploy (or any restart of the Vercel function)
+/// to pick up — the `oracleAuthorities` are baked into `escrow_config`
+/// for the lifetime of the process. This is intentional: the allow-list
+/// is a security boundary, and changing it without an explicit redeploy
+/// would obscure the deployment audit trail.
+///
+/// **Format**: `Pubkey1,Pubkey2,Pubkey3` (commas, optional whitespace
+/// around each pubkey). Empty entries and entries that fail base58 decode
+/// are silently dropped so a typo in the middle of the list cannot bring
+/// the whole facilitator down at boot.
+pub const PR402_ORACLE_AUTHORITIES: &str = "PR402_ORACLE_AUTHORITIES";
+
 /// Wave A §3.2 — opt-in oracle health gate. When set to a truthy value
 /// (`true` / `1` / `yes` / `on`, case-insensitive), pr402 probes each
 /// advertised oracle profile's `/health` endpoint (derived from
