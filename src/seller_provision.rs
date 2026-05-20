@@ -23,8 +23,10 @@ use crate::util::tx_builder::{
 /// Canonical “virtual mint” for native SOL in x402 / pr402 (matches payment `asset` conventions).
 pub const NATIVE_SOL_ASSET_MINT: Pubkey = pubkey!("11111111111111111111111111111111");
 
-const USDC_MAINNET: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-const USDC_DEVNET: Pubkey = pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+/// Canonical USDC mint on Solana mainnet-beta (Circle USDC).
+pub const USDC_MAINNET: Pubkey = pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+/// Canonical USDC mint on Solana devnet (Circle devnet faucet).
+pub const USDC_DEVNET: Pubkey = pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
 const USDT_MAINNET: Pubkey = pubkey!("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
 
 #[derive(Debug, Clone)]
@@ -87,6 +89,33 @@ pub fn cluster_is_devnet(provider: &SolanaChainProvider) -> bool {
             .to_string()
             .to_lowercase()
             .contains("devnet")
+}
+
+/// Canonical USDC mint for a given cluster. `None` for testnet (no
+/// canonical USDC). Used by the `/onboard` preview to pre-compute the
+/// per-mint escrow PDAs callers will most often want.
+pub fn canonical_usdc_mint(provider: &SolanaChainProvider) -> Option<Pubkey> {
+    if cluster_is_devnet(provider) {
+        Some(USDC_DEVNET)
+    } else {
+        let id = provider.chain_id().to_string().to_lowercase();
+        if id.contains("testnet") {
+            None
+        } else {
+            Some(USDC_MAINNET)
+        }
+    }
+}
+
+/// Friendly suffix to label the cluster's USDC entry in
+/// `/onboard.schemes[*].vaultPdaPreviews`. Mainnet returns just
+/// `"USDC"`, devnet returns `"USDC (devnet)"`.
+pub fn canonical_usdc_label(provider: &SolanaChainProvider) -> &'static str {
+    if cluster_is_devnet(provider) {
+        "USDC (devnet)"
+    } else {
+        "USDC"
+    }
 }
 
 /// Resolve human-friendly asset names or a raw mint pubkey.

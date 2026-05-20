@@ -237,17 +237,52 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
         })?;
         let fee_bps = escrow_config.fee_bps.unwrap_or(0);
 
-        // Preview: per-mint escrow PDA for the facilitator's default mint (native path uses default pubkey).
-        let preview_mint = Pubkey::default();
-        let (escrow_pda, _) = self.provider.get_escrow_pda(preview_mint, bank_pda);
+        // Pre-compute the per-asset escrow PDAs we expect dashboards
+        // and `payTo` resolvers to want most: native SOL plus the
+        // cluster's canonical USDC mint. The legacy single-mint
+        // `vault_pda` field continues to point at the SOL preview for
+        // back-compat; new clients should iterate `vault_pda_previews`.
+        let sol_mint = Pubkey::default();
+        let (sol_escrow_pda, _) = self.provider.get_escrow_pda(sol_mint, bank_pda);
         let (sol_storage_pda, _) =
             self.provider
-                .get_sla_escrow_sol_storage_pda(preview_mint, bank_pda, escrow_pda);
+                .get_sla_escrow_sol_storage_pda(sol_mint, bank_pda, sol_escrow_pda);
+
+        let mut previews = vec![crate::facilitator::VaultPdaPreview {
+            label: "SOL".to_string(),
+            mint: sol_mint.to_string(),
+            vault_pda: sol_escrow_pda.to_string(),
+            sol_storage_pda: sol_storage_pda.to_string(),
+        }];
+
+        if let Some(usdc_mint) =
+            crate::seller_provision::canonical_usdc_mint(self.provider.as_ref())
+        {
+            let (usdc_escrow_pda, _) = self.provider.get_escrow_pda(usdc_mint, bank_pda);
+            let (usdc_sol_storage_pda, _) =
+                self.provider
+                    .get_sla_escrow_sol_storage_pda(usdc_mint, bank_pda, usdc_escrow_pda);
+            previews.push(crate::facilitator::VaultPdaPreview {
+                label: crate::seller_provision::canonical_usdc_label(self.provider.as_ref())
+                    .to_string(),
+                mint: usdc_mint.to_string(),
+                vault_pda: usdc_escrow_pda.to_string(),
+                sol_storage_pda: usdc_sol_storage_pda.to_string(),
+            });
+        }
 
         Ok(crate::facilitator::SchemeOnboardInfo {
-            label: "SLA Escrow (preview)".to_string(),
+            // The "(preview)" suffix used to confuse operators (it
+            // suggested the staging/production split implied by
+            // preview.ipay.sh, not the "pre-computed PDA" meaning of
+            // preview math). Clearer: just "SLA Escrow", with each
+            // entry in `vault_pda_previews` carrying its own per-asset
+            // label.
+            label: "SLA Escrow".to_string(),
             role: "Institutional Escrow".to_string(),
-            vault_pda: escrow_pda.to_string(),
+            // Legacy single-mint surface — points at the SOL preview.
+            // New callers should iterate `vault_pda_previews`.
+            vault_pda: sol_escrow_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
             token_pda: None,
             fee_bps: fee_bps.into(),
@@ -257,7 +292,8 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             bank_pda: Some(bank_pda.to_string()),
             pay_to_kind: Some("escrowPda".to_string()),
             pay_to_resolve: Some("discovery.vaultPda".to_string()),
-            vault_pda_preview_mint: Some(preview_mint.to_string()),
+            vault_pda_preview_mint: Some(sol_mint.to_string()),
+            vault_pda_previews: Some(previews),
         })
     }
 
@@ -321,6 +357,11 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             pay_to_kind: Some("escrowPda".to_string()),
             pay_to_resolve: Some("this.vaultPda".to_string()),
             vault_pda_preview_mint: Some(mint.to_string()),
+            // `discovery` answers a single mint per call; the `previews`
+            // surface is only meaningful on the multi-asset `onboard`
+            // path. Leave `None` so clients reading this response know
+            // the lone `vault_pda` field is the authoritative answer.
+            vault_pda_previews: None,
         })
     }
 

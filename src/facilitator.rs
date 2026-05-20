@@ -61,6 +61,24 @@ pub trait Facilitator: Send + Sync {
 }
 
 /// Information returned after onboarding a wallet for a specific scheme.
+/// Per-mint preview entry surfaced under
+/// [`SchemeOnboardInfo::vault_pda_previews`]. Each entry is the result
+/// of pre-computing a per-asset PDA (e.g. the SLA-Escrow `Escrow`
+/// account for native SOL or for the cluster's USDC mint) so dashboards
+/// don't have to hit `/discovery` per mint.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultPdaPreview {
+    /// Friendly name (e.g. `"SOL"`, `"USDC (devnet)"`).
+    pub label: String,
+    /// Mint pubkey base58. `Pubkey::default()` (`11111…`) means native SOL.
+    pub mint: String,
+    /// Per-mint vault PDA (escrow PDA for sla-escrow; SplitVault for exact).
+    pub vault_pda: String,
+    /// SOL storage PDA derived from the mint + vault.
+    pub sol_storage_pda: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemeOnboardInfo {
@@ -82,9 +100,20 @@ pub struct SchemeOnboardInfo {
     /// How agents should resolve `payTo`: `onboard.vaultPda` | `discovery.vaultPda` (query includes `asset` mint).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pay_to_resolve: Option<String>,
-    /// When `pay_to_kind` is `escrowPda`, mint (base58) that `vaultPda` was derived for; omit if N/A (exact).
+    /// When `pay_to_kind` is `escrowPda`, mint (base58) that the
+    /// top-level `vault_pda` was derived for. Kept for back-compat with
+    /// older clients that read this single-mint preview. Newer clients
+    /// should consult [`Self::vault_pda_previews`] for the full
+    /// per-asset list (SOL + USDC + …).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vault_pda_preview_mint: Option<String>,
+    /// Multi-asset PDA preview list. For `sla-escrow` we surface SOL
+    /// AND the cluster's canonical USDC mint so dashboards can show
+    /// both without an extra `/discovery?asset=…` call. The first entry
+    /// matches the legacy single-mint `vault_pda` field. Empty/omitted
+    /// for schemes (like `exact`) whose vault PDA is mint-agnostic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vault_pda_previews: Option<Vec<VaultPdaPreview>>,
 }
 
 /// Recovery progress for JIT provisioned vaults.
