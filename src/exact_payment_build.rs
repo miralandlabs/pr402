@@ -429,6 +429,7 @@ pub async fn build_exact_spl_payment_tx(
         payer_signature_index,
         signer_pubkeys,
         payment_uid: None,
+        payment_uid_hex: None,
         verify_body_template,
         notes,
     })

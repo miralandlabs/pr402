@@ -24,7 +24,9 @@ use solana_transaction::{
 };
 
 use crate::chain::solana::{SolanaChainProvider, SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID};
-use crate::chain::solana_sla_escrow::build_fund_payment_instruction;
+use crate::chain::solana_sla_escrow::{
+    build_fund_payment_instruction_from_uid_bytes, parse_payment_uid_hex, sanitize_uid,
+};
 use crate::chain::TxBudget;
 use crate::scheme::v2_solana_escrow::types::SLAEscrowScheme;
 use crate::util::tx_builder::{
@@ -52,8 +54,26 @@ pub struct BuildSlaEscrowPaymentTxRequest {
     /// Oracle pubkey; must be listed in `accepted.extra.oracleAuthorities`.
     pub oracle_authority: String,
     /// Unique id for this payment (PDA seed). Generated if omitted.
+    ///
+    /// Legacy "string" path: pr402 ASCII-encodes the value with
+    /// `sanitize_uid` (strip `-`, take the first 32 bytes, zero-pad)
+    /// and uses those bytes as the PDA seed and on-chain
+    /// `Payment.payment_uid`. This is the historical default; new
+    /// callers should prefer `payment_uid_hex` so the on-chain bytes
+    /// equal the hex they own — no implicit text encoding step.
     #[serde(default)]
     pub payment_uid: Option<String>,
+    /// Buyer-controlled 32-byte `payment_uid` as exactly 64 lowercase
+    /// hex characters. When set, pr402 uses these bytes verbatim — no
+    /// `sanitize_uid` mangling — for both the PDA seed and the
+    /// on-chain `Payment.payment_uid` field. The same hex string MUST
+    /// appear in the SLA's `payment_uid` field; the oracle binds them
+    /// at evaluation time.
+    ///
+    /// If both `payment_uid` (string) and `payment_uid_hex` (hex) are
+    /// set, the request is rejected with 400 to prevent ambiguity.
+    #[serde(default)]
+    pub payment_uid_hex: Option<String>,
     /// If `false` (default), require payer source ATA to exist and hold enough tokens.
     #[serde(default)]
     pub skip_source_balance_check: bool,
@@ -382,10 +402,61 @@ pub async fn build_sla_escrow_fund_payment_tx(
         }
     }
 
-    let payment_uid = req
+    // Resolve the payment uid using strict precedence:
+    //   - both `payment_uid` and `payment_uid_hex` set → 400 (ambiguous)
+    //   - `payment_uid_hex` set → use those raw 32 bytes verbatim
+    //   - `payment_uid` (string) set → legacy `sanitize_uid` path
+    //   - neither set → mint a fresh ULID and run it through `sanitize_uid`
+    //
+    // The string form is what we surface to back-compat callers in the
+    // response (`payment_uid` field). The bytes form is what we actually
+    // use to derive PDAs and write into FundPayment data — so a hex
+    // caller's on-chain bytes equal the hex they own, no implicit text
+    // encoding step.
+    let str_uid_set = req
         .payment_uid
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| ulid::Ulid::new().to_string());
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    let hex_uid_set = req
+        .payment_uid_hex
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    let (payment_uid_str, payment_uid_bytes) = match (str_uid_set, hex_uid_set) {
+        (true, true) => {
+            return Err(SlaEscrowPaymentBuildError::InvalidRequest(
+                "payment_uid and payment_uid_hex are mutually exclusive; set at most one".into(),
+            ));
+        }
+        (false, true) => {
+            // SAFETY: hex_uid_set guarantees the field is Some + non-empty.
+            let hex = req.payment_uid_hex.as_deref().unwrap();
+            let bytes =
+                parse_payment_uid_hex(hex).map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
+            (hex.to_string(), bytes)
+        }
+        (true, false) => {
+            let s = req.payment_uid.as_deref().unwrap();
+            (s.to_string(), sanitize_uid(s))
+        }
+        (false, false) => {
+            let s = ulid::Ulid::new().to_string();
+            let bytes = sanitize_uid(&s);
+            (s, bytes)
+        }
+    };
+    // Lower-hex of the on-chain 32-byte payment_uid — surfaced in the
+    // response so clients that did NOT pass `payment_uid_hex` can read
+    // back the canonical bytes without re-running `sanitize_uid`.
+    let payment_uid_canonical_hex: String = {
+        let mut s = String::with_capacity(64);
+        use std::fmt::Write;
+        for b in payment_uid_bytes {
+            let _ = write!(&mut s, "{b:02x}");
+        }
+        s
+    };
 
     let sla_hash = parse_sla_hash_hex(&req.sla_hash)?;
 
@@ -529,14 +600,14 @@ pub async fn build_sla_escrow_fund_payment_tx(
         ));
     }
 
-    let fund_ix = build_fund_payment_instruction(
+    let fund_ix = build_fund_payment_instruction_from_uid_bytes(
         program_id,
         payer_pk,
         seller_pk,
         mint,
         amount,
         ttl_seconds_i64,
-        &payment_uid,
+        &payment_uid_bytes,
         sla_hash,
         oracle_pk,
         token_program,
@@ -628,7 +699,8 @@ pub async fn build_sla_escrow_fund_payment_tx(
         recent_blockhash_expires_at,
         fee_payer: fee_payer_pk.to_string(),
         payer: payer_pk.to_string(),
-        payment_uid: Some(payment_uid),
+        payment_uid: Some(payment_uid_str),
+        payment_uid_hex: Some(payment_uid_canonical_hex),
         payer_signature_index,
         signer_pubkeys,
         verify_body_template,

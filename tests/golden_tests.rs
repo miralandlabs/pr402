@@ -15,6 +15,9 @@ fn test_build_payment_tx_response_golden() {
         // slot→pubkey mapping without decoding the transaction bytes.
         signer_pubkeys: vec!["fee_payer_pubkey".to_string(), "payer_pubkey".to_string()],
         payment_uid: Some("uid_123".to_string()),
+        payment_uid_hex: Some(
+            "7569645f3132330000000000000000000000000000000000000000000000000000".to_string(),
+        ),
         verify_body_template: json!({ "template": "test" }),
         notes: vec!["Test note".to_string()],
     };
@@ -31,6 +34,7 @@ fn test_build_payment_tx_response_golden() {
         "payerSignatureIndex": 0,
         "signerPubkeys": ["fee_payer_pubkey", "payer_pubkey"],
         "paymentUid": "uid_123",
+        "paymentUidHex": "7569645f3132330000000000000000000000000000000000000000000000000000",
         "verifyBodyTemplate": {
             "template": "test"
         },
@@ -57,6 +61,7 @@ fn test_build_payment_tx_response_omitted_optionals() {
         // unexpected key. Matches the existing `paymentUid` / `notes` omission contract.
         signer_pubkeys: vec![],
         payment_uid: None,
+        payment_uid_hex: None,
         verify_body_template: json!({ "template": "test" }),
         notes: vec![],
     };
@@ -65,6 +70,7 @@ fn test_build_payment_tx_response_omitted_optionals() {
 
     // paymentUid should be omitted because of skip_serializing_if = "Option::is_none"
     assert!(serialized.get("paymentUid").is_none());
+    assert!(serialized.get("paymentUidHex").is_none());
     // signerPubkeys (empty) and notes (empty) should be omitted via skip_serializing_if.
     assert!(serialized.get("signerPubkeys").is_none());
     assert!(serialized.get("notes").is_none());

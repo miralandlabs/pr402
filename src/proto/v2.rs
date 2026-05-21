@@ -143,6 +143,14 @@ pub struct BuildPaymentTxResponse {
     pub signer_pubkeys: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payment_uid: Option<String>,
+    /// Lower-hex of the on-chain 32-byte `Payment.payment_uid`. For
+    /// `payment_uid_hex` callers this echoes the input verbatim. For
+    /// legacy string callers (and the ULID auto-mint default) this is
+    /// the hex of `sanitize_uid(payment_uid)` — the actual bytes the
+    /// builder wrote into FundPayment, suitable for use as the SLA's
+    /// `payment_uid` field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_uid_hex: Option<String>,
     pub verify_body_template: serde_json::Value,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<String>,

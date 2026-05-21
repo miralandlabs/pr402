@@ -1174,8 +1174,8 @@
                         <div class="cell">
                             <div class="label">sla-escrow · oracle tip</div>
                             <div class="value">
-                                <span class="accent">50 bps</span>
-                                <span class="dim">· 0.50%</span>
+                                <span class="accent">100 bps</span>
+                                <span class="dim">· 1.00%</span>
                             </div>
                             <div class="note">
                                 pure bps · no floor · paid on verdict
@@ -2180,17 +2180,49 @@
                                         : ""),
                             );
                             lines.push("  role         : " + (info.role || ""));
-                            if (info.label)
+                            // SLA-Escrow surfaces a per-asset preview list
+                            // (`vaultPdaPreviews`) so dashboards can show both
+                            // SOL and the cluster's USDC PDA without an extra
+                            // /discovery?asset=… call. Older clients (and the
+                            // exact rail) get the single legacy `vaultPda` line.
+                            var previews = Array.isArray(info.vaultPdaPreviews)
+                                ? info.vaultPdaPreviews
+                                : null;
+                            if (previews && previews.length > 0) {
+                                previews.forEach(function (entry) {
+                                    var label =
+                                        (entry && entry.label) || "preview";
+                                    lines.push(
+                                        "  " +
+                                            String(
+                                                "vault " + label,
+                                            ).padEnd(13) +
+                                            ": " +
+                                            (entry.vaultPda || ""),
+                                    );
+                                    if (entry.solStoragePda)
+                                        lines.push(
+                                            "  " +
+                                                String(
+                                                    "sol storage",
+                                                ).padEnd(13) +
+                                                ": " +
+                                                entry.solStoragePda,
+                                        );
+                                });
+                            } else if (info.label) {
                                 lines.push(
                                     "  " +
                                         String(info.label).padEnd(13) +
                                         ": " +
                                         info.vaultPda,
                                 );
-                            if (info.solStoragePda)
-                                lines.push(
-                                    "  sol storage  : " + info.solStoragePda,
-                                );
+                                if (info.solStoragePda)
+                                    lines.push(
+                                        "  sol storage  : " +
+                                            info.solStoragePda,
+                                    );
+                            }
                             if (info.tokenPda)
                                 lines.push("  token ata    : " + info.tokenPda);
                             if (info.feeBps != null)

@@ -1666,6 +1666,57 @@
           "provisioningStatus": {
             "$ref": "#/components/schemas/ProvisioningStatus",
             "nullable": true
+          },
+          "bankPda": {
+            "type": "string",
+            "description": "SLA-Escrow bank PDA (omitted for exact).",
+            "nullable": true
+          },
+          "payToKind": {
+            "type": "string",
+            "description": "`splitVault` (exact) or `escrowPda` (sla-escrow). The on-chain `payTo` MUST match this kind.",
+            "enum": ["splitVault", "escrowPda"],
+            "nullable": true
+          },
+          "payToResolve": {
+            "type": "string",
+            "description": "How agents should resolve `payTo`: `onboard.vaultPda` (exact, mint-agnostic) or `discovery.vaultPda` (sla-escrow, mint-specific).",
+            "nullable": true
+          },
+          "vaultPdaPreviewMint": {
+            "type": "string",
+            "description": "Legacy single-mint preview marker. Equals the mint that the top-level `vaultPda` was derived for; for sla-escrow this is `Pubkey::default()` (native SOL). New clients should iterate `vaultPdaPreviews` instead.",
+            "nullable": true
+          },
+          "vaultPdaPreviews": {
+            "type": "array",
+            "description": "Multi-asset PDA preview list. For sla-escrow we surface SOL plus the cluster's canonical USDC mint so dashboards can show every commonly-used `payTo` without an extra `/discovery?asset=…` round-trip. Empty / omitted on schemes whose vault PDA is mint-agnostic (e.g. exact / SplitVault).",
+            "items": {
+              "$ref": "#/components/schemas/VaultPdaPreview"
+            },
+            "nullable": true
+          }
+        }
+      },
+      "VaultPdaPreview": {
+        "type": "object",
+        "required": ["label", "mint", "vaultPda", "solStoragePda"],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Friendly name like `SOL`, `USDC (devnet)`, `USDC`."
+          },
+          "mint": {
+            "type": "string",
+            "description": "Mint pubkey base58. `11111111111111111111111111111111` (Pubkey::default) means native SOL."
+          },
+          "vaultPda": {
+            "type": "string",
+            "description": "Per-mint vault PDA (escrow PDA for sla-escrow, SplitVault for exact)."
+          },
+          "solStoragePda": {
+            "type": "string",
+            "description": "SOL storage PDA derived from the vault and mint."
           }
         }
       },

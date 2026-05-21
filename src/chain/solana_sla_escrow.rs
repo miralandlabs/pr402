@@ -59,6 +59,39 @@ pub fn sanitize_uid(uid: &str) -> [u8; 32] {
     uid_bytes
 }
 
+/// Parse a 64-lowercase-hex string into the canonical 32-byte
+/// `Payment.payment_uid` representation. Strict: rejects mixed case,
+/// `0x` prefixes, dashes, spaces, or anything not in `[0-9a-f]`.
+///
+/// Use this when the caller wants the on-chain `payment_uid` bytes to
+/// be the exact 32 bytes whose hex they own — no implicit string
+/// sanitization. Pairs with the buyer-authored `TransferSla` whose
+/// `payment_uid` field is the same hex (see oracle profile docs).
+pub fn parse_payment_uid_hex(s: &str) -> Result<[u8; 32], String> {
+    if s.len() != 64 {
+        return Err(format!(
+            "payment_uid_hex must be exactly 64 chars, got {}",
+            s.len()
+        ));
+    }
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        let pair = &s.as_bytes()[i * 2..i * 2 + 2];
+        for &c in pair {
+            if !matches!(c, b'0'..=b'9' | b'a'..=b'f') {
+                return Err(format!(
+                    "payment_uid_hex must be lowercase hex (`[0-9a-f]`), invalid byte at offset {}",
+                    i * 2
+                ));
+            }
+        }
+        let hi = (pair[0] as char).to_digit(16).unwrap() as u8;
+        let lo = (pair[1] as char).to_digit(16).unwrap() as u8;
+        *byte = (hi << 4) | lo;
+    }
+    Ok(out)
+}
+
 // ----------------------------------------------------------------------------
 // PDA Derivations
 // ----------------------------------------------------------------------------
@@ -81,7 +114,18 @@ pub fn derive_payment_pda(
     payment_uid: &str,
 ) -> (Pubkey, u8) {
     let uid_bytes = sanitize_uid(payment_uid);
-    Pubkey::find_program_address(&[b"payment", &uid_bytes, bank_pda.as_ref()], program_id)
+    derive_payment_pda_from_bytes(program_id, bank_pda, &uid_bytes)
+}
+
+/// Derive the `Payment` PDA for a 32-byte `payment_uid` (raw bytes,
+/// not a string). Used by callers that own canonical hex-encoded uids
+/// and don't want the implicit `sanitize_uid` text encoding step.
+pub fn derive_payment_pda_from_bytes(
+    program_id: &Pubkey,
+    bank_pda: &Pubkey,
+    payment_uid: &[u8; 32],
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[b"payment", payment_uid, bank_pda.as_ref()], program_id)
 }
 
 pub fn derive_sol_storage_pda(
@@ -124,10 +168,42 @@ pub fn build_fund_payment_instruction(
     oracle_authority: Pubkey,
     token_program: Pubkey,
 ) -> Instruction {
+    build_fund_payment_instruction_from_uid_bytes(
+        program_id,
+        buyer,
+        seller,
+        mint,
+        amount,
+        ttl_seconds,
+        &sanitize_uid(payment_uid),
+        sla_hash,
+        oracle_authority,
+        token_program,
+    )
+}
+
+/// Variant of [`build_fund_payment_instruction`] that takes the raw
+/// 32-byte `payment_uid` directly. Use this when the caller wants the
+/// on-chain `Payment.payment_uid` to be a specific 32-byte value (e.g.
+/// the bytes whose hex appears in a buyer-authored
+/// `TransferSla.payment_uid` field).
+#[allow(clippy::too_many_arguments)]
+pub fn build_fund_payment_instruction_from_uid_bytes(
+    program_id: Pubkey,
+    buyer: Pubkey,
+    seller: Pubkey,
+    mint: Pubkey,
+    amount: u64,
+    ttl_seconds: i64,
+    payment_uid: &[u8; 32],
+    sla_hash: [u8; 32],
+    oracle_authority: Pubkey,
+    token_program: Pubkey,
+) -> Instruction {
     let (bank_pda, _) = derive_bank_pda(&program_id);
     let (config_pda, _) = derive_config_pda(&program_id);
     let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
-    let (payment_pda, _) = derive_payment_pda(&program_id, &bank_pda, payment_uid);
+    let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
 
     let is_sol = mint == Pubkey::default();
 
@@ -136,7 +212,7 @@ pub fn build_fund_payment_instruction(
         mint,
         amount: amount.to_le_bytes(),
         ttl_seconds: ttl_seconds.to_le_bytes(),
-        payment_uid: sanitize_uid(payment_uid),
+        payment_uid: *payment_uid,
         sla_hash,
         oracle_authority,
     };
@@ -239,5 +315,51 @@ pub fn build_confirm_oracle_instruction(
         program_id,
         accounts,
         data: instruction_data,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_payment_uid_hex_round_trips_known_value() {
+        let hex_in = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let bytes = parse_payment_uid_hex(hex_in).expect("valid hex");
+        assert_eq!(bytes.len(), 32);
+        let mut hex_out = String::with_capacity(64);
+        use std::fmt::Write;
+        for b in bytes {
+            write!(&mut hex_out, "{b:02x}").unwrap();
+        }
+        assert_eq!(hex_out, hex_in);
+    }
+
+    #[test]
+    fn parse_payment_uid_hex_rejects_short() {
+        assert!(parse_payment_uid_hex("abc").is_err());
+    }
+
+    #[test]
+    fn parse_payment_uid_hex_rejects_uppercase() {
+        let s = "ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+        assert!(parse_payment_uid_hex(s).is_err());
+    }
+
+    #[test]
+    fn parse_payment_uid_hex_rejects_non_hex() {
+        let s = "g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert!(parse_payment_uid_hex(s).is_err());
+    }
+
+    #[test]
+    fn derive_payment_pda_string_and_bytes_agree_when_canonical() {
+        // sanitize_uid("uid_123") == ASCII "uid_123" + 25 zero bytes.
+        let program_id = Pubkey::new_from_array([1u8; 32]);
+        let bank_pda = Pubkey::new_from_array([2u8; 32]);
+        let s_pda = derive_payment_pda(&program_id, &bank_pda, "uid_123").0;
+        let b_pda =
+            derive_payment_pda_from_bytes(&program_id, &bank_pda, &sanitize_uid("uid_123")).0;
+        assert_eq!(s_pda, b_pda);
     }
 }

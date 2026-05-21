@@ -275,6 +275,9 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
             pay_to_kind: Some("splitVault".to_string()),
             pay_to_resolve: Some("onboard.vaultPda".to_string()),
             vault_pda_preview_mint: None,
+            // SplitVault is mint-agnostic — there's no per-asset PDA to
+            // pre-compute, so leave the multi-mint preview list empty.
+            vault_pda_previews: None,
         })
     }
 
