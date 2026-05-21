@@ -245,11 +245,14 @@ pub const DEFAULT_SWEEP_CRON_BATCH_LIMIT: u64 = 50;
 
 /// Fallback when `PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS` is unset.
 ///
-/// 50 bps is the current operator convention for the `ipay.sh` deployment; it is applied
+/// 100 bps (1%) is the current operator convention for the `ipay.sh` deployment; it is applied
 /// when pr402 opens an escrow on behalf of a buyer and published as the advertised
-/// `oracleFeeBps` on `/capabilities`. Must remain ≤ `sla_escrow_api::consts::MAX_ORACLE_FEE_BPS`
-/// (currently 500).
-pub const DEFAULT_SLA_ESCROW_ORACLE_FEE_BPS: u16 = 50;
+/// `oracleFeeBps` on `/capabilities`. The default was raised from 50 → 100 bps to ensure the
+/// oracle tip covers Solana base + priority fees on small payments without forcing operators
+/// to subsidize verdicts. Must remain ≤ `sla_escrow_api::consts::MAX_ORACLE_FEE_BPS`
+/// (currently 500). See `oracles/docs/ORACLE_DEVELOPER_GUIDE.md#operator-economics` for tier
+/// guidance.
+pub const DEFAULT_SLA_ESCROW_ORACLE_FEE_BPS: u16 = 100;
 
 /// Read cache then env (no async DB fetch). Call [`refresh_parameters_from_db`] before settle so cache is warm.
 pub fn resolve_string_sync(param_key: &str, env_key: &str) -> Option<String> {
