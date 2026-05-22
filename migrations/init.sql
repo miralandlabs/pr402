@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS escrow_details (
     resolution_state     SMALLINT DEFAULT 0, -- 0: Pending, 1: Approved, 2: Denied
     sla_hash             TEXT,
     delivery_hash        TEXT,
+    payment_uid_hex      TEXT, -- 64 lowercase hex (32-byte on-chain Payment.payment_uid); NULL for legacy rows
     completed_at         TIMESTAMPTZ,
     refunded_at          TIMESTAMPTZ,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -129,6 +130,9 @@ ALTER TABLE escrow_details ENABLE ROW LEVEL SECURITY;
 
 CREATE INDEX IF NOT EXISTS idx_escrow_details_pda ON escrow_details (escrow_pda ASC);
 CREATE INDEX IF NOT EXISTS idx_escrow_details_oracle ON escrow_details (oracle_authority ASC);
+CREATE INDEX IF NOT EXISTS idx_escrow_details_payment_uid
+    ON escrow_details (payment_uid_hex ASC)
+    WHERE payment_uid_hex IS NOT NULL;
 
 -- Append-only lifecycle steps after FundPayment (see Pr402Db::apply_escrow_lifecycle_step).
 

@@ -780,6 +780,10 @@ struct EscrowAuditMetadata {
     bank_pda: String,
     oracle: String,
     sla_hash: Option<String>,
+    /// 64-char lowercase hex of the on-chain `Payment.payment_uid`. The
+    /// settlement cron uses this to derive the Payment PDA without
+    /// re-decoding the FundPayment instruction.
+    payment_uid_hex: Option<String>,
 }
 
 /// Re-extract on-chain derivations and instruction details specifically for the audit log.
@@ -838,11 +842,17 @@ fn extract_escrow_audit_metadata(
         write!(&mut sla_hex, "{b:02x}").unwrap();
     }
 
+    let mut uid_hex = String::with_capacity(64);
+    for b in fund_payment.payment_uid {
+        write!(&mut uid_hex, "{b:02x}").unwrap();
+    }
+
     Ok(EscrowAuditMetadata {
         escrow_pda: escrow_pda.to_string(),
         bank_pda: bank_pda.to_string(),
         oracle: Pubkey::from(fund_payment.oracle_authority.to_bytes()).to_string(),
         sla_hash: Some(sla_hex),
+        payment_uid_hex: Some(uid_hex),
     })
 }
 
@@ -885,6 +895,7 @@ pub async fn persist_escrow_audit_after_verify(
             &metadata.oracle,
             metadata.sla_hash.as_deref(),
             None,
+            metadata.payment_uid_hex.as_deref(),
         )
         .await
     {
@@ -937,6 +948,7 @@ pub async fn persist_escrow_audit_after_settle(
             &metadata.oracle,
             metadata.sla_hash.as_deref(),
             fund_signature,
+            metadata.payment_uid_hex.as_deref(),
         )
         .await
     {

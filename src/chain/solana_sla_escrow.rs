@@ -318,6 +318,253 @@ pub fn build_confirm_oracle_instruction(
     }
 }
 
+// ----------------------------------------------------------------------------
+// Settlement instruction builders (post-v0.4.0 permissionless paths)
+// ----------------------------------------------------------------------------
+//
+// These build `ReleasePayment` (discriminator 1) and `RefundPayment`
+// (discriminator 2) per `oracles/spec/sla-escrow-onchain-abi/v1/NORMATIVE.md`
+// §5.3 and §5.4. The instructions carry no body bytes — only the 1-byte
+// discriminator. PDA seeds and account orderings follow §2.1 and §5.3 / §5.4.
+//
+// Hand-rolled (rather than using the `sla-escrow-api` SDK) for the same
+// multi-cluster reason as `oracle-common::settler.rs`: the SDK pins
+// `declare_id!` at compile time, but pr402 needs to support both mainnet
+// and devnet from one Vercel deployment by passing `program_id` at runtime.
+
+/// Token program ID for SPL Token (classic). Token-2022 not yet
+/// supported on the settlement path; integrators MUST pass classic SPL
+/// or call out to a different builder when adding Token-2022 support.
+const SPL_TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+/// Associated token account program.
+const SPL_ATA_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
+/// Build an SLAEscrow `ReleasePayment` instruction. Sends `payment.amount`
+/// (less protocol fee and oracle tip) to `payment.seller`.
+///
+/// Permissionless once `payment.resolution_state == 1` (oracle approved)
+/// or once `now > expires_at` AND delivery was submitted AND not rejected.
+/// pr402 runs as the fee-payer signer — no privileged key required.
+///
+/// `seller` MUST equal the on-chain `payment.seller` (read from the
+/// Payment PDA before calling). `mint == Pubkey::default()` selects the
+/// SOL path; otherwise SPL.
+///
+/// `oracle_authority` is REQUIRED in this builder iff `payment.oracle_fee_bps > 0`
+/// AND `payment.resolution_state != 0` (a tip will be paid). Pass `None`
+/// to omit the optional oracle-tip accounts; pass `Some(authority)` to
+/// include them.
+#[allow(clippy::too_many_arguments)]
+pub fn build_release_payment_instruction(
+    program_id: Pubkey,
+    caller: Pubkey,
+    seller: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+    oracle_authority: Option<Pubkey>,
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+
+    let is_sol = mint == Pubkey::default();
+
+    let data = vec![SLAEscrowInstruction::ReleasePayment as u8];
+
+    let mut accounts = vec![
+        AccountMeta::new(caller, true), // 0: caller (signer, writable)
+        AccountMeta::new_readonly(bank_pda, false),
+        AccountMeta::new_readonly(config_pda, false),
+        AccountMeta::new(escrow_pda, false),
+        AccountMeta::new(payment_pda, false),
+        AccountMeta::new_readonly(mint, false),
+    ];
+
+    if is_sol {
+        // SOL path per ABI §5.3:
+        // [caller, bank, config, escrow, payment, mint, sol_storage, seller, system_program]
+        // optional [oracle_authority] when oracle tip due
+        let (sol_storage_pda, _) =
+            derive_sol_storage_pda(&program_id, &bank_pda, &mint, &escrow_pda);
+        accounts.push(AccountMeta::new(sol_storage_pda, false));
+        accounts.push(AccountMeta::new(seller, false));
+        accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some(oracle) = oracle_authority {
+            accounts.push(AccountMeta::new(oracle, false));
+        }
+    } else {
+        // SPL path per ABI §5.3:
+        // [caller, bank, config, escrow, payment, mint, escrow_tokens, seller_tokens, seller,
+        //  token_program, ata_program, system_program]
+        // optional [oracle_tokens, oracle_authority] when oracle tip due
+        let escrow_tokens =
+            associated_token_address_with_program(&escrow_pda, &mint, &SPL_TOKEN_PROGRAM_ID);
+        let seller_tokens =
+            associated_token_address_with_program(&seller, &mint, &SPL_TOKEN_PROGRAM_ID);
+        accounts.push(AccountMeta::new(escrow_tokens, false));
+        accounts.push(AccountMeta::new(seller_tokens, false));
+        accounts.push(AccountMeta::new(seller, false));
+        accounts.push(AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false));
+        accounts.push(AccountMeta::new_readonly(SPL_ATA_PROGRAM_ID, false));
+        accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some(oracle) = oracle_authority {
+            let oracle_tokens =
+                associated_token_address_with_program(&oracle, &mint, &SPL_TOKEN_PROGRAM_ID);
+            accounts.push(AccountMeta::new(oracle_tokens, false));
+            accounts.push(AccountMeta::new(oracle, false));
+        }
+    }
+
+    Instruction {
+        program_id,
+        accounts,
+        data,
+    }
+}
+
+/// Build an SLAEscrow `RefundPayment` instruction. Returns `payment.amount`
+/// (less oracle tip if applicable) to `payment.buyer`.
+///
+/// Permissionless once `payment.resolution_state == 2` (oracle rejected),
+/// or once `now > expires_at` with no delivery submitted, or once
+/// `now > expires_at` AND `resolution_state == 2`. pr402 MUST NOT call
+/// this on the pre-outcome buyer-cooldown path (that's restricted to
+/// buyer/seller/admin per ABI §5.4); the cron handler enforces this at
+/// the dispatch decision.
+///
+/// `buyer` MUST equal the on-chain `payment.buyer`. SOL vs SPL selected
+/// by `mint == Pubkey::default()`. `oracle_authority` semantics match
+/// `build_release_payment_instruction` above.
+#[allow(clippy::too_many_arguments)]
+pub fn build_refund_payment_instruction(
+    program_id: Pubkey,
+    caller: Pubkey,
+    buyer: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+    oracle_authority: Option<Pubkey>,
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+
+    let is_sol = mint == Pubkey::default();
+
+    let data = vec![SLAEscrowInstruction::RefundPayment as u8];
+
+    let mut accounts = vec![
+        AccountMeta::new(caller, true), // 0: caller (signer, writable)
+        AccountMeta::new_readonly(bank_pda, false),
+        AccountMeta::new_readonly(config_pda, false),
+        AccountMeta::new(escrow_pda, false),
+        AccountMeta::new(payment_pda, false),
+        AccountMeta::new_readonly(mint, false),
+    ];
+
+    if is_sol {
+        // SOL path per ABI §5.4:
+        // [caller, bank, config, escrow, payment, mint, sol_storage, buyer, system_program]
+        // optional [oracle_authority] when oracle tip due
+        let (sol_storage_pda, _) =
+            derive_sol_storage_pda(&program_id, &bank_pda, &mint, &escrow_pda);
+        accounts.push(AccountMeta::new(sol_storage_pda, false));
+        accounts.push(AccountMeta::new(buyer, false));
+        accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some(oracle) = oracle_authority {
+            accounts.push(AccountMeta::new(oracle, false));
+        }
+    } else {
+        // SPL path per ABI §5.4:
+        // [caller, bank, config, escrow, payment, mint, escrow_tokens, buyer_tokens, token_program]
+        // optional [oracle_tokens, oracle_authority, ata_program, system_program] when oracle tip due
+        let escrow_tokens =
+            associated_token_address_with_program(&escrow_pda, &mint, &SPL_TOKEN_PROGRAM_ID);
+        let buyer_tokens =
+            associated_token_address_with_program(&buyer, &mint, &SPL_TOKEN_PROGRAM_ID);
+        accounts.push(AccountMeta::new(escrow_tokens, false));
+        accounts.push(AccountMeta::new(buyer_tokens, false));
+        accounts.push(AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false));
+        if let Some(oracle) = oracle_authority {
+            let oracle_tokens =
+                associated_token_address_with_program(&oracle, &mint, &SPL_TOKEN_PROGRAM_ID);
+            accounts.push(AccountMeta::new(oracle_tokens, false));
+            accounts.push(AccountMeta::new(oracle, false));
+            accounts.push(AccountMeta::new_readonly(SPL_ATA_PROGRAM_ID, false));
+            accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        }
+    }
+
+    Instruction {
+        program_id,
+        accounts,
+        data,
+    }
+}
+
+#[cfg(test)]
+mod tests_settlement {
+    use super::*;
+
+    #[test]
+    fn release_sol_no_oracle_tip_account_count() {
+        let pid = Pubkey::new_unique();
+        let caller = Pubkey::new_unique();
+        let seller = Pubkey::new_unique();
+        let mint = Pubkey::default();
+        let uid = [1u8; 32];
+        let ix = build_release_payment_instruction(pid, caller, seller, mint, &uid, None);
+        // SOL path: 9 accounts + 0 optional = 9
+        assert_eq!(ix.accounts.len(), 9);
+        assert_eq!(ix.data, vec![SLAEscrowInstruction::ReleasePayment as u8]);
+    }
+
+    #[test]
+    fn release_sol_with_oracle_tip_account_count() {
+        let pid = Pubkey::new_unique();
+        let caller = Pubkey::new_unique();
+        let seller = Pubkey::new_unique();
+        let oracle = Pubkey::new_unique();
+        let ix = build_release_payment_instruction(
+            pid,
+            caller,
+            seller,
+            Pubkey::default(),
+            &[1u8; 32],
+            Some(oracle),
+        );
+        // SOL path: 9 + 1 oracle = 10
+        assert_eq!(ix.accounts.len(), 10);
+    }
+
+    #[test]
+    fn refund_spl_no_oracle_tip_account_count() {
+        let pid = Pubkey::new_unique();
+        let caller = Pubkey::new_unique();
+        let buyer = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let ix = build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], None);
+        // SPL path: 9 accounts + 0 optional = 9
+        assert_eq!(ix.accounts.len(), 9);
+        assert_eq!(ix.data, vec![SLAEscrowInstruction::RefundPayment as u8]);
+    }
+
+    #[test]
+    fn refund_spl_with_oracle_tip_account_count() {
+        let pid = Pubkey::new_unique();
+        let caller = Pubkey::new_unique();
+        let buyer = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let oracle = Pubkey::new_unique();
+        let ix =
+            build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], Some(oracle));
+        // SPL path: 9 + 4 (oracle_tokens, oracle_authority, ata_program, system_program) = 13
+        assert_eq!(ix.accounts.len(), 13);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

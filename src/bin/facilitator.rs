@@ -102,6 +102,39 @@ struct SweepItemResult {
     error: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct SlaEscrowSettleRequest {
+    limit: Option<u64>,
+    cooldown_seconds: Option<u64>,
+    deadline_seconds: Option<u64>,
+    lookback_seconds: Option<u64>,
+    dry_run: Option<bool>,
+}
+
+/// One per-candidate result row in the settlement cron response.
+///
+/// `action` is one of:
+/// - `"release_payment"` — `ReleasePayment` tx was submitted.
+/// - `"refund_payment"`  — `RefundPayment` tx was submitted.
+/// - `"skip_pre_outcome"` — payment is funded but oracle hasn't yet
+///   rendered a verdict and the payment isn't yet expired; settlement
+///   is not the cron's job.
+/// - `"skip_already_settled"` — on-chain `payment.state != Funded`.
+/// - `"skip_pre_outcome_buyer_only"` — expired+delivered+not-rejected+admin-blocked
+///   path, which the cron explicitly does NOT touch.
+/// - `"error"` — RPC, build, or send failure (see `error` field).
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SlaEscrowSettleItemResult {
+    correlation_id: String,
+    payment_uid_hex: String,
+    action: String,
+    status: String,
+    signature: Option<String>,
+    error: Option<String>,
+}
+
 impl BuildRateState {
     fn new() -> Self {
         let limit = std::env::var("PR402_BUILD_RATE_LIMIT_PER_MIN")
@@ -273,6 +306,13 @@ struct CapabilitiesHttpEndpoints {
     build_refund_tx: HttpEndpointInfo,
     sweep: HttpEndpointInfo,
     sweep_cron: HttpEndpointInfo,
+    /// `POST` — drive permissionless `ReleasePayment` / `RefundPayment` for funded
+    /// sla-escrow payments whose oracle has rendered a verdict or whose TTL has expired.
+    /// Mirrors the existing `sweep` shape for the sla-escrow rail. Bearer-authenticated.
+    sla_escrow_settle: HttpEndpointInfo,
+    /// `GET` — Vercel cron entry point for the sla-escrow settlement loop. Same auth
+    /// + behavior as `sla_escrow_settle` with default request parameters.
+    sla_escrow_settle_cron: HttpEndpointInfo,
     /// `GET` — read-only PDA preview across all schemes (the "preview" step in the
     /// seller lifecycle; no wallet, no signature, no DB/chain writes).
     onboard_preview: HttpEndpointInfo,
@@ -740,6 +780,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 ("GET", "/api/v1/facilitator/sweep-cron") => {
                     handle_sweep_cron(authorization_hdr.as_deref()).await
+                }
+                ("POST", "/api/v1/facilitator/sla-escrow-settle") => {
+                    handle_sla_escrow_settle(body, authorization_hdr.as_deref()).await
+                }
+                ("GET", "/api/v1/facilitator/sla-escrow-settle-cron") => {
+                    handle_sla_escrow_settle_cron(authorization_hdr.as_deref()).await
                 }
                 _ => {
                     warn!(
