@@ -274,6 +274,26 @@ pub struct SweepCandidate {
     pub sweep_threshold: Option<u64>,
 }
 
+/// One funded sla-escrow payment that may be eligible for permissionless
+/// settlement (`ReleasePayment` / `RefundPayment`) per
+/// `oracles/spec/sla-escrow-onchain-abi/v1/NORMATIVE.md` §5.3 / §5.4.
+///
+/// pr402 reads each candidate's on-chain `Payment` PDA before deciding
+/// what action to take; this struct is just the DB selection result.
+#[derive(Debug, Clone)]
+pub struct SlaEscrowSettleCandidate {
+    pub correlation_id: String,
+    /// On-chain `Payment.payment_uid` as 64-char lowercase hex.
+    pub payment_uid_hex: String,
+    pub escrow_pda: String,
+    pub bank_pda: String,
+    /// Mint pubkey (base58). `None` for native SOL escrows.
+    pub mint: Option<String>,
+    pub buyer_wallet: Option<String>,
+    pub seller_wallet: Option<String>,
+    pub oracle_authority: String,
+}
+
 impl Pr402Db {
     const WAIT: Duration = Duration::from_secs(15);
     const CREATE: Duration = Duration::from_secs(10);
@@ -1339,6 +1359,7 @@ impl Pr402Db {
     ///
     /// Matches `escrow_details.escrow_details_one_row_per_payment_attempt`: upsert conflict target is
     /// **`payment_attempt_id`** (not `escrow_pda`; many payments share the same escrow PDA).
+    #[allow(clippy::too_many_arguments)]
     pub async fn upsert_escrow_detail(
         &self,
         correlation_id: &str,
@@ -1347,19 +1368,22 @@ impl Pr402Db {
         oracle_authority: &str,
         sla_hash: Option<&str>,
         fund_signature: Option<&str>,
+        payment_uid_hex: Option<&str>,
     ) -> Result<(), DbError> {
         const SELECT_ID: &str = r#"SELECT id FROM payment_attempts WHERE correlation_id = $1"#;
         const SQL: &str = r#"
                 INSERT INTO escrow_details (
-                    payment_attempt_id, escrow_pda, bank_pda, oracle_authority, sla_hash, fund_signature, updated_at
+                    payment_attempt_id, escrow_pda, bank_pda, oracle_authority,
+                    sla_hash, fund_signature, payment_uid_hex, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
                 ON CONFLICT (payment_attempt_id) DO UPDATE SET
                     escrow_pda = EXCLUDED.escrow_pda,
                     bank_pda = EXCLUDED.bank_pda,
                     oracle_authority = EXCLUDED.oracle_authority,
                     sla_hash = COALESCE(EXCLUDED.sla_hash, escrow_details.sla_hash),
                     fund_signature = COALESCE(EXCLUDED.fund_signature, escrow_details.fund_signature),
+                    payment_uid_hex = COALESCE(EXCLUDED.payment_uid_hex, escrow_details.payment_uid_hex),
                     updated_at = NOW()
                 "#;
 
@@ -1414,6 +1438,7 @@ impl Pr402Db {
                     &oracle_authority,
                     &sla_hash,
                     &fund_signature,
+                    &payment_uid_hex,
                 ],
             ),
         )
@@ -1889,6 +1914,144 @@ impl Pr402Db {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(e)) => {
                 error!(target: "server_log", error = %format_err_chain(&e), "record_sweep_attempt failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        if result.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        result
+    }
+
+    /// List funded sla-escrow payments that may be eligible for the
+    /// permissionless settlement cron. The handler then reads each
+    /// candidate's on-chain `Payment` PDA to make the actual decision
+    /// per `oracles/spec/sla-escrow-onchain-abi/v1/NORMATIVE.md` §5.3 / §5.4.
+    ///
+    /// Selection criteria:
+    /// - `escrow_details.fund_signature IS NOT NULL` (FundPayment landed
+    ///   per pr402's record).
+    /// - `escrow_details.completed_at IS NULL` AND `refunded_at IS NULL`
+    ///   (pr402 has not yet recorded a successful settlement).
+    /// - `escrow_details.payment_uid_hex IS NOT NULL` (pre-migration
+    ///   rows are skipped; the cron needs the uid to derive the Payment
+    ///   PDA).
+    /// - `updated_at < NOW() - cooldown_sec` (per-row cooldown).
+    /// - `created_at > NOW() - lookback_sec` (bound the search; older
+    ///   payments may have been settled outside pr402's view).
+    pub async fn list_sla_escrow_settle_candidates(
+        &self,
+        cooldown_sec: u64,
+        lookback_sec: u64,
+        limit: u64,
+    ) -> Result<Vec<SlaEscrowSettleCandidate>, DbError> {
+        const SQL: &str = r#"
+            SELECT
+                pa.correlation_id,
+                ed.payment_uid_hex,
+                ed.escrow_pda,
+                ed.bank_pda,
+                ed.oracle_authority,
+                pa.payer_wallet,
+                pa.asset
+            FROM escrow_details ed
+            INNER JOIN payment_attempts pa ON pa.id = ed.payment_attempt_id
+            WHERE ed.fund_signature IS NOT NULL
+              AND ed.completed_at IS NULL
+              AND ed.refunded_at IS NULL
+              AND ed.payment_uid_hex IS NOT NULL
+              AND ed.updated_at < NOW() - ($1::BIGINT * INTERVAL '1 second')
+              AND ed.created_at > NOW() - ($2::BIGINT * INTERVAL '1 second')
+            ORDER BY ed.updated_at ASC
+            LIMIT $3
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query(
+                SQL,
+                &[
+                    &(cooldown_sec as i64),
+                    &(lookback_sec as i64),
+                    &(limit as i64),
+                ],
+            ),
+        )
+        .await
+        {
+            Ok(Ok(rows)) => {
+                let mut out = Vec::with_capacity(rows.len());
+                for row in rows {
+                    let mint: Option<String> = row.get("asset");
+                    out.push(SlaEscrowSettleCandidate {
+                        correlation_id: row.get("correlation_id"),
+                        payment_uid_hex: row.get("payment_uid_hex"),
+                        escrow_pda: row.get("escrow_pda"),
+                        bank_pda: row.get("bank_pda"),
+                        oracle_authority: row.get("oracle_authority"),
+                        // `pa.payer_wallet` is the buyer (sender of FundPayment).
+                        // The seller comes from the on-chain Payment PDA.
+                        buyer_wallet: row.get("payer_wallet"),
+                        seller_wallet: None,
+                        mint,
+                    });
+                }
+                Ok(out)
+            }
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "list_sla_escrow_settle_candidates failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+
+        if result.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        result
+    }
+
+    /// Bump `escrow_details.updated_at` after a settlement-cron attempt
+    /// (success or failure). Drives the per-row cooldown enforced by
+    /// `list_sla_escrow_settle_candidates`.
+    pub async fn touch_sla_escrow_settle_attempt(
+        &self,
+        correlation_id: &str,
+    ) -> Result<(), DbError> {
+        const SQL: &str = r#"
+            UPDATE escrow_details
+            SET updated_at = NOW()
+            WHERE payment_attempt_id = (
+                SELECT id FROM payment_attempts WHERE correlation_id = $1
+            )
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client.transaction().await.map_err(|e| {
+            error!(target: "server_log", error = %e, "Transaction start failed");
+            DbError::TransactionFailed
+        })?;
+
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = match timeout(Self::QUERY_TIMEOUT, tx.execute(SQL, &[&correlation_id])).await {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "touch_sla_escrow_settle_attempt failed");
                 Err(DbError::Query(format_err_chain(&e)))
             }
             Err(_) => Err(DbError::Timeout),

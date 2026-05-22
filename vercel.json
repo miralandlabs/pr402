@@ -252,6 +252,50 @@
         "POST",
         "OPTIONS"
       ]
+    },
+    {
+      "src": "/api/v1/facilitator/sweep",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/sweep-cron",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/sla-escrow-settle",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/sla-escrow-settle-cron",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/v1/facilitator/sweep-cron",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/v1/facilitator/sla-escrow-settle-cron",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

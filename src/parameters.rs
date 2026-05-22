@@ -231,6 +231,33 @@ pub const PR402_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC: &str =
 /// Max provider rails processed per cron sweep run.
 pub const PR402_SWEEP_CRON_BATCH_LIMIT: &str = "PR402_SWEEP_CRON_BATCH_LIMIT";
 
+// SLA-Escrow settlement cron — drives ReleasePayment / RefundPayment on
+// post-outcome paths now that v0.4.0 made them permissionless. See
+// `oracles/spec/sla-escrow-onchain-abi/v1/NORMATIVE.md` §5.3 (Release) and
+// §5.4 (Refund) for the on-chain authorization rules.
+
+/// Bearer token for the authenticated SLA-Escrow settlement cron endpoint.
+/// Separate from `PR402_SWEEP_CRON_TOKEN` so blast radius and rotation
+/// schedule are independent.
+pub const PR402_SLA_ESCROW_SETTLE_CRON_TOKEN: &str = "PR402_SLA_ESCROW_SETTLE_CRON_TOKEN";
+/// Minimum seconds between settlement attempts on the same payment_uid
+/// when the cron settler runs.
+pub const PR402_SLA_ESCROW_SETTLE_CRON_COOLDOWN_SEC: &str =
+    "PR402_SLA_ESCROW_SETTLE_CRON_COOLDOWN_SEC";
+/// Max candidates fetched per cron settlement run. Keep modest so the
+/// run fits well within Vercel's 60s function timeout (default 15).
+pub const PR402_SLA_ESCROW_SETTLE_CRON_BATCH_LIMIT: &str =
+    "PR402_SLA_ESCROW_SETTLE_CRON_BATCH_LIMIT";
+/// Wall-clock budget (seconds) for one cron settlement run. The handler
+/// stops dispatching new candidates once this elapses; remaining ones
+/// are picked up next tick.
+pub const PR402_SLA_ESCROW_SETTLE_CRON_DEADLINE_SEC: &str =
+    "PR402_SLA_ESCROW_SETTLE_CRON_DEADLINE_SEC";
+/// Lookback window (seconds) for candidate selection. Older
+/// `escrow_details` rows are presumed stale and ignored.
+pub const PR402_SLA_ESCROW_SETTLE_CRON_LOOKBACK_SEC: &str =
+    "PR402_SLA_ESCROW_SETTLE_CRON_LOOKBACK_SEC";
+
 /// Fallback when `PR402_SWEEP_MIN_SPENDABLE_LAMPORTS` is unset (0.03 SOL).
 pub const DEFAULT_SWEEP_MIN_SPENDABLE_LAMPORTS: u64 = 30_000_000;
 
@@ -242,6 +269,12 @@ pub const DEFAULT_MAX_DAILY_PROVISION_COUNT: u64 = 50;
 pub const DEFAULT_SWEEP_CRON_COOLDOWN_SEC: u64 = 300;
 pub const DEFAULT_SWEEP_CRON_RECENT_SETTLE_WINDOW_SEC: u64 = 86_400;
 pub const DEFAULT_SWEEP_CRON_BATCH_LIMIT: u64 = 50;
+
+// SLA-Escrow settlement cron defaults. See accompanying constants above.
+pub const DEFAULT_SLA_ESCROW_SETTLE_CRON_COOLDOWN_SEC: u64 = 300;
+pub const DEFAULT_SLA_ESCROW_SETTLE_CRON_BATCH_LIMIT: u64 = 15;
+pub const DEFAULT_SLA_ESCROW_SETTLE_CRON_DEADLINE_SEC: u64 = 45;
+pub const DEFAULT_SLA_ESCROW_SETTLE_CRON_LOOKBACK_SEC: u64 = 7 * 24 * 60 * 60; // 7 days
 
 /// Fallback when `PR402_SLA_ESCROW_DEFAULT_ORACLE_FEE_BPS` is unset.
 ///
@@ -534,6 +567,70 @@ pub async fn resolve_sweep_cron_batch_limit(db: Option<&Pr402Db>, default: u64) 
         db,
         PR402_SWEEP_CRON_BATCH_LIMIT,
         Some(PR402_SWEEP_CRON_BATCH_LIMIT),
+    )
+    .await
+    .and_then(|s| s.parse::<u64>().ok())
+    .unwrap_or(default)
+}
+
+// ── SLA-Escrow settlement cron resolvers ───────────────────────────────────
+
+pub async fn resolve_sla_escrow_settle_cron_token(db: Option<&Pr402Db>) -> Option<String> {
+    resolve_string(
+        db,
+        PR402_SLA_ESCROW_SETTLE_CRON_TOKEN,
+        Some(PR402_SLA_ESCROW_SETTLE_CRON_TOKEN),
+    )
+    .await
+}
+
+pub async fn resolve_sla_escrow_settle_cron_cooldown_sec(
+    db: Option<&Pr402Db>,
+    default: u64,
+) -> u64 {
+    resolve_string(
+        db,
+        PR402_SLA_ESCROW_SETTLE_CRON_COOLDOWN_SEC,
+        Some(PR402_SLA_ESCROW_SETTLE_CRON_COOLDOWN_SEC),
+    )
+    .await
+    .and_then(|s| s.parse::<u64>().ok())
+    .unwrap_or(default)
+}
+
+pub async fn resolve_sla_escrow_settle_cron_batch_limit(db: Option<&Pr402Db>, default: u64) -> u64 {
+    resolve_string(
+        db,
+        PR402_SLA_ESCROW_SETTLE_CRON_BATCH_LIMIT,
+        Some(PR402_SLA_ESCROW_SETTLE_CRON_BATCH_LIMIT),
+    )
+    .await
+    .and_then(|s| s.parse::<u64>().ok())
+    .unwrap_or(default)
+}
+
+pub async fn resolve_sla_escrow_settle_cron_deadline_sec(
+    db: Option<&Pr402Db>,
+    default: u64,
+) -> u64 {
+    resolve_string(
+        db,
+        PR402_SLA_ESCROW_SETTLE_CRON_DEADLINE_SEC,
+        Some(PR402_SLA_ESCROW_SETTLE_CRON_DEADLINE_SEC),
+    )
+    .await
+    .and_then(|s| s.parse::<u64>().ok())
+    .unwrap_or(default)
+}
+
+pub async fn resolve_sla_escrow_settle_cron_lookback_sec(
+    db: Option<&Pr402Db>,
+    default: u64,
+) -> u64 {
+    resolve_string(
+        db,
+        PR402_SLA_ESCROW_SETTLE_CRON_LOOKBACK_SEC,
+        Some(PR402_SLA_ESCROW_SETTLE_CRON_LOOKBACK_SEC),
     )
     .await
     .and_then(|s| s.parse::<u64>().ok())

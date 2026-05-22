@@ -117,6 +117,16 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/sweep-cron",
                 auth: Some("bearer"),
             },
+            sla_escrow_settle: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/sla-escrow-settle",
+                auth: Some("bearer"),
+            },
+            sla_escrow_settle_cron: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/sla-escrow-settle-cron",
+                auth: Some("bearer"),
+            },
             onboard_preview: HttpEndpointInfo {
                 method: "GET",
                 path: "/api/v1/facilitator/onboard",
