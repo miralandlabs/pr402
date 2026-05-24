@@ -413,7 +413,7 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                         .and_then(|w| Pubkey::from_str(w).ok())
                         .map(Address::new);
 
-                    let extra = types::SLAEscrowPaymentRequirementsExtra {
+                    let institutional = types::SLAEscrowPaymentRequirementsExtra {
                         fee_payer: self.provider.fee_payer().into(),
                         oracle_authorities,
                         escrow_program_id: escrow_config.program_id.into(),
@@ -432,7 +432,24 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                         merchant_wallet,
                         beneficiary,
                     };
-                    obj.insert("extra".to_string(), serde_json::to_value(extra).unwrap());
+
+                    // Merge facilitator institutional fields into the seller's
+                    // existing `extra` so delegated-authoring keys (`commitMaterial`,
+                    // `intentContractUrl`, `oracleProfiles`, …) survive elevation.
+                    let mut merged = obj
+                        .get("extra")
+                        .and_then(|e| e.as_object())
+                        .cloned()
+                        .unwrap_or_default();
+                    if let Some(inst) = serde_json::to_value(institutional)
+                        .ok()
+                        .and_then(|v| v.as_object().cloned())
+                    {
+                        for (k, v) in inst {
+                            merged.insert(k, v);
+                        }
+                    }
+                    obj.insert("extra".to_string(), serde_json::Value::Object(merged));
 
                     tracing::info!(
                         index = i,
@@ -635,6 +652,14 @@ pub async fn verify_transfer(
     if extra.bank_address.pubkey() != &bank_pda {
         return Err(PaymentVerificationError::InvalidFormat(
             "paymentRequirements.extra.bankAddress does not match facilitator escrow bank".into(),
+        ));
+    }
+
+    let (expected_config_pda, _) = provider.get_config_pda(&escrow_config.program_id);
+    if extra.config_address.pubkey() != &expected_config_pda {
+        return Err(PaymentVerificationError::InvalidFormat(
+            "paymentRequirements.extra.configAddress does not match facilitator escrow config"
+                .into(),
         ));
     }
 

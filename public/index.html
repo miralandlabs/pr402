@@ -2194,18 +2194,18 @@
                                         (entry && entry.label) || "preview";
                                     lines.push(
                                         "  " +
-                                            String(
-                                                "vault " + label,
-                                            ).padEnd(13) +
+                                            String("vault " + label).padEnd(
+                                                13,
+                                            ) +
                                             ": " +
                                             (entry.vaultPda || ""),
                                     );
                                     if (entry.solStoragePda)
                                         lines.push(
                                             "  " +
-                                                String(
-                                                    "sol storage",
-                                                ).padEnd(13) +
+                                                String("sol storage").padEnd(
+                                                    13,
+                                                ) +
                                                 ": " +
                                                 entry.solStoragePda,
                                         );
@@ -2231,11 +2231,11 @@
                                 lines.push("  deployment   : " + info.status);
                             if (name === "exact") {
                                 lines.push(
-                                    "  note         : exact/UniversalSettle — x402 payTo = SplitVault (vaultPda).",
+                                    "  note         : x402 exact rail — payTo = SplitVault (vaultPda).",
                                 );
                             } else if (name === "sla-escrow") {
                                 lines.push(
-                                    "  note         : sla-escrow — x402 payTo = escrow PDA per mint; see /agent-payTo-semantics.json.",
+                                    "  note         : x402 sla-escrow rail — payTo = Escrow PDA per mint(vault SOL, vault USDC, etc.); see /agent-payTo-semantics.json.",
                                 );
                             }
                         });
