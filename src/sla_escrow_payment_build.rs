@@ -255,13 +255,10 @@ pub async fn build_sla_escrow_fund_payment_tx(
         .get("bankAddress")
         .and_then(|x| x.as_str())
         .ok_or_else(|| {
-            SlaEscrowPaymentBuildError::InvalidRequest(
-                "accepted.extra.bankAddress missing".into(),
-            )
+            SlaEscrowPaymentBuildError::InvalidRequest("accepted.extra.bankAddress missing".into())
         })?;
-    let extra_bank = Pubkey::from_str(bank_str).map_err(|e| {
-        SlaEscrowPaymentBuildError::InvalidRequest(format!("bankAddress: {e}"))
-    })?;
+    let extra_bank = Pubkey::from_str(bank_str)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("bankAddress: {e}")))?;
     let loaded_bank = escrow_cfg.bank_address.unwrap_or(expected_bank_pda);
     if extra_bank != loaded_bank {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
@@ -278,9 +275,8 @@ pub async fn build_sla_escrow_fund_payment_tx(
                 "accepted.extra.configAddress missing".into(),
             )
         })?;
-    let extra_config = Pubkey::from_str(config_str).map_err(|e| {
-        SlaEscrowPaymentBuildError::InvalidRequest(format!("configAddress: {e}"))
-    })?;
+    let extra_config = Pubkey::from_str(config_str)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("configAddress: {e}")))?;
     if extra_config != expected_config_pda {
         return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
             "accepted.extra.configAddress ({extra_config}) does not match facilitator escrow config ({expected_config_pda})"
