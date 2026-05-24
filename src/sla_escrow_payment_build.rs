@@ -250,6 +250,43 @@ pub async fn build_sla_escrow_fund_payment_tx(
         )));
     }
 
+    let (expected_bank_pda, _) = provider.get_bank_pda(&program_id);
+    let bank_str = extra
+        .get("bankAddress")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| {
+            SlaEscrowPaymentBuildError::InvalidRequest(
+                "accepted.extra.bankAddress missing".into(),
+            )
+        })?;
+    let extra_bank = Pubkey::from_str(bank_str).map_err(|e| {
+        SlaEscrowPaymentBuildError::InvalidRequest(format!("bankAddress: {e}"))
+    })?;
+    let loaded_bank = escrow_cfg.bank_address.unwrap_or(expected_bank_pda);
+    if extra_bank != loaded_bank {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
+            "accepted.extra.bankAddress ({extra_bank}) does not match facilitator escrow bank ({loaded_bank})"
+        )));
+    }
+
+    let (expected_config_pda, _) = provider.get_config_pda(&program_id);
+    let config_str = extra
+        .get("configAddress")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| {
+            SlaEscrowPaymentBuildError::InvalidRequest(
+                "accepted.extra.configAddress missing".into(),
+            )
+        })?;
+    let extra_config = Pubkey::from_str(config_str).map_err(|e| {
+        SlaEscrowPaymentBuildError::InvalidRequest(format!("configAddress: {e}"))
+    })?;
+    if extra_config != expected_config_pda {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
+            "accepted.extra.configAddress ({extra_config}) does not match facilitator escrow config ({expected_config_pda})"
+        )));
+    }
+
     let oracle_pk = Pubkey::from_str(&req.oracle_authority).map_err(|e| {
         SlaEscrowPaymentBuildError::InvalidRequest(format!("oracleAuthority: {}", e))
     })?;
@@ -296,6 +333,7 @@ pub async fn build_sla_escrow_fund_payment_tx(
     // migrated to the richer shape yet.
     if let Some(profiles) = extra.get("oracleProfiles").and_then(|x| x.as_array()) {
         let mut matched_profile_id: Option<String> = None;
+        let mut seen_operator_pubkeys = std::collections::HashSet::new();
         for entry in profiles {
             let op = entry
                 .get("operatorPubkey")
@@ -306,12 +344,26 @@ pub async fn build_sla_escrow_fund_payment_tx(
                             .into(),
                     )
                 })?;
+            if !seen_operator_pubkeys.insert(op.to_string()) {
+                return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
+                    "duplicate oracleProfiles[].operatorPubkey: {op}"
+                )));
+            }
             let entry_pk = Pubkey::from_str(op).map_err(|e| {
                 SlaEscrowPaymentBuildError::InvalidRequest(format!(
                     "oracleProfiles[].operatorPubkey: {}",
                     e
                 ))
             })?;
+            if !authorities.iter().any(|v| {
+                v.as_str()
+                    .and_then(|s| Pubkey::from_str(s).ok())
+                    .is_some_and(|p| p == entry_pk)
+            }) {
+                return Err(SlaEscrowPaymentBuildError::InvalidRequest(format!(
+                    "oracleProfiles[].operatorPubkey ({op}) is not listed in accepted.extra.oracleAuthorities"
+                )));
+            }
             if entry_pk == oracle_pk {
                 matched_profile_id = entry
                     .get("profileId")
