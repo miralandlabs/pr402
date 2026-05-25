@@ -11,12 +11,22 @@
 #
 # Production is also triggered by Vercel built-in crons; both are safe but redundant.
 # Disable the production-cron job below if you rely on Vercel crons alone for prod.
+#
+# RPC note: preview + production share the same Helius API key quota. Jobs run
+# sequentially (production after preview) with pauses between keeper endpoints
+# to reduce 429 Too Many Requests on devnet/mainnet.
 name: Settlement Keeper Cron
 
 on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+  # Run once when this workflow is updated on main (e.g. develop → main merge).
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/settlement-keeper-cron.yml
 
 jobs:
   preview-cron:
@@ -41,19 +51,21 @@ jobs:
             exit 1
           fi
           echo "Target: ${TARGET} (${BASE})"
-          curl -sfS --retry 2 --retry-delay 5 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE}/api/v1/facilitator/sweep-cron"
-          curl -sfS --retry 2 --retry-delay 5 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE}/api/v1/facilitator/sla-escrow-settle-cron"
-          curl -sfS --retry 2 --retry-delay 5 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE}/api/v1/facilitator/sla-escrow-close-cron" \
+          invoke() {
+            curl -sfS --retry 2 --retry-delay 5 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "$1"
+          }
+          invoke "${BASE}/api/v1/facilitator/sweep-cron"
+          sleep 20
+          invoke "${BASE}/api/v1/facilitator/sla-escrow-settle-cron"
+          sleep 20
+          invoke "${BASE}/api/v1/facilitator/sla-escrow-close-cron" \
             || echo "close cron skipped (endpoint may be disabled on this deployment)"
 
   production-cron:
     name: Production cron
+    needs: preview-cron
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -74,13 +86,14 @@ jobs:
             exit 1
           fi
           echo "Target: ${TARGET} (${BASE})"
-          curl -sfS --retry 2 --retry-delay 5 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE}/api/v1/facilitator/sweep-cron"
-          curl -sfS --retry 2 --retry-delay 5 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE}/api/v1/facilitator/sla-escrow-settle-cron"
-          curl -sfS --retry 2 --retry-delay 5 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${BASE}/api/v1/facilitator/sla-escrow-close-cron" \
+          invoke() {
+            curl -sfS --retry 2 --retry-delay 5 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "$1"
+          }
+          invoke "${BASE}/api/v1/facilitator/sweep-cron"
+          sleep 20
+          invoke "${BASE}/api/v1/facilitator/sla-escrow-settle-cron"
+          sleep 20
+          invoke "${BASE}/api/v1/facilitator/sla-escrow-close-cron" \
             || echo "close cron skipped (endpoint may be disabled on this deployment)"
