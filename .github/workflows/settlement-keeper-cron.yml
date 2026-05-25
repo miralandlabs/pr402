@@ -1,0 +1,45 @@
+# External Settlement Keeper scheduler fallback when Vercel crons are unavailable
+# or for deployments that do not use Vercel's built-in cron.
+#
+# Required repository secrets:
+#   PR402_BASE_URL  — e.g. https://preview.ipay.sh
+#   CRON_SECRET     — same value as Vercel CRON_SECRET / PR402_*_CRON_TOKEN
+name: Settlement Keeper Cron
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Vault sweep cron
+        run: |
+          curl -sfS --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${PR402_BASE_URL}/api/v1/facilitator/sweep-cron"
+        env:
+          PR402_BASE_URL: ${{ secrets.PR402_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: SLA-Escrow settle cron
+        run: |
+          curl -sfS --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${PR402_BASE_URL}/api/v1/facilitator/sla-escrow-settle-cron"
+        env:
+          PR402_BASE_URL: ${{ secrets.PR402_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+      - name: SLA-Escrow close cron
+        run: |
+          curl -sfS --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${PR402_BASE_URL}/api/v1/facilitator/sla-escrow-close-cron" \
+            || echo "close cron skipped (endpoint may be disabled on this deployment)"
+        env:
+          PR402_BASE_URL: ${{ secrets.PR402_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

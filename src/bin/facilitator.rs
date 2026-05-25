@@ -15,7 +15,6 @@ use pr402::{
 };
 use serde::Deserialize;
 use std::io::LineWriter;
-use std::mem::size_of;
 use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use subtle::ConstantTimeEq;
@@ -88,53 +87,6 @@ struct SweepRequest {
     dry_run: Option<bool>,
 }
 
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SweepItemResult {
-    wallet: String,
-    settlement_mode: String,
-    spl_mint: Option<String>,
-    available_raw: u64,
-    threshold_raw: u64,
-    status: String,
-    action: String,
-    signature: Option<String>,
-    error: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct SlaEscrowSettleRequest {
-    limit: Option<u64>,
-    cooldown_seconds: Option<u64>,
-    deadline_seconds: Option<u64>,
-    lookback_seconds: Option<u64>,
-    dry_run: Option<bool>,
-}
-
-/// One per-candidate result row in the settlement cron response.
-///
-/// `action` is one of:
-/// - `"release_payment"` — `ReleasePayment` tx was submitted.
-/// - `"refund_payment"`  — `RefundPayment` tx was submitted.
-/// - `"skip_pre_outcome"` — payment is funded but oracle hasn't yet
-///   rendered a verdict and the payment isn't yet expired; settlement
-///   is not the cron's job.
-/// - `"skip_already_settled"` — on-chain `payment.state != Funded`.
-/// - `"skip_pre_outcome_buyer_only"` — expired+delivered+not-rejected+admin-blocked
-///   path, which the cron explicitly does NOT touch.
-/// - `"error"` — RPC, build, or send failure (see `error` field).
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct SlaEscrowSettleItemResult {
-    correlation_id: String,
-    payment_uid_hex: String,
-    action: String,
-    status: String,
-    signature: Option<String>,
-    error: Option<String>,
-}
-
 impl BuildRateState {
     fn new() -> Self {
         let limit = std::env::var("PR402_BUILD_RATE_LIMIT_PER_MIN")
@@ -191,6 +143,14 @@ fn check_build_rate_limit() -> Option<Response<Body>> {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+struct SettlementKeeperHealth {
+    vault_sweep_cron_configured: bool,
+    sla_escrow_settle_cron_configured: bool,
+    database_connected: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 struct HealthResponse {
     status: &'static str,
     schema_version: &'static str,
@@ -201,6 +161,7 @@ struct HealthResponse {
     solana_network: String,
     /// HTTP RPC URL for browser `Connection` (e.g. `sendRawTransaction`). Same as facilitator `SOLANA_RPC_URL` when not localhost; otherwise the public cluster URL for `solanaNetwork`.
     solana_wallet_rpc_url: String,
+    settlement_keeper: SettlementKeeperHealth,
 }
 
 /// Typed capabilities discovery response — stabilizes the contract for agents.
@@ -786,6 +747,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 ("GET", "/api/v1/facilitator/sla-escrow-settle-cron") => {
                     handle_sla_escrow_settle_cron(authorization_hdr.as_deref()).await
+                }
+                ("POST", "/api/v1/facilitator/sla-escrow-close") => {
+                    handle_sla_escrow_close(body, authorization_hdr.as_deref()).await
+                }
+                ("GET", "/api/v1/facilitator/sla-escrow-close-cron") => {
+                    handle_sla_escrow_close_cron(authorization_hdr.as_deref()).await
+                }
+                ("POST", "/api/v1/facilitator/build-sla-escrow-settle-tx") => {
+                    handle_build_sla_escrow_settle_tx(body).await
                 }
                 _ => {
                     warn!(

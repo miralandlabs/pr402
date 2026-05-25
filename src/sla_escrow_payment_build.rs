@@ -227,6 +227,16 @@ pub async fn build_sla_escrow_fund_payment_tx(
             MAX_TTL_SECONDS
         )));
     }
+    let cutoff = crate::sla_escrow_ttl::resolve_delivery_cutoff_seconds();
+    let budget = crate::sla_escrow_ttl::resolve_delivery_budget_seconds();
+    if let Err(e) = crate::sla_escrow_ttl::validate_fund_payment_ttl(
+        ttl_seconds_i64 as u64,
+        ttl_seconds_i64 as u64,
+        cutoff,
+        budget,
+    ) {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(e.to_string()));
+    }
 
     let extra = req.accepted.extra.as_ref().ok_or_else(|| {
         SlaEscrowPaymentBuildError::InvalidRequest("accepted.extra missing".into())

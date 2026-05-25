@@ -14,3 +14,7 @@ pub mod sweep;
 pub use sweep::*;
 pub mod sla_escrow_settle;
 pub use sla_escrow_settle::*;
+pub mod sla_escrow_close;
+pub use sla_escrow_close::*;
+pub mod build_sla_escrow_settle_tx;
+pub use build_sla_escrow_settle_tx::*;

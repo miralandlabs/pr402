@@ -40,6 +40,14 @@ impl AsRef<str> for SLAEscrowScheme {
     }
 }
 
+fn default_delivery_cutoff_seconds() -> U64String {
+    (crate::sla_escrow_ttl::resolve_delivery_cutoff_seconds().max(0) as u64).into()
+}
+
+fn default_delivery_budget_seconds() -> U64String {
+    (crate::sla_escrow_ttl::resolve_delivery_budget_seconds().max(0) as u64).into()
+}
+
 impl fmt::Display for SLAEscrowScheme {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("sla-escrow")
@@ -65,6 +73,12 @@ pub struct SLAEscrowPaymentRequirementsExtra {
     pub fee_bps: U16String,
     pub oracle_fee_bps: U16String,
     pub ttl_seconds: U64String,
+    /// On-chain `Config.delivery_cutoff_seconds` for this deployment (`SubmitDelivery` window).
+    #[serde(default = "default_delivery_cutoff_seconds")]
+    pub delivery_cutoff_seconds: U64String,
+    /// Reference post-funding work budget; providers SHOULD quote `maxTimeoutSeconds ≥ cutoff + budget`.
+    #[serde(default = "default_delivery_budget_seconds")]
+    pub delivery_budget_seconds: U64String,
     /// Upper bound the facilitator will accept on `SetComputeUnitLimit` for this scheme's
     /// FundPayment tx (the one the buyer signs). Buyers building from scratch can validate
     /// locally; `/build-sla-escrow-payment-tx` encodes this into the tx automatically.

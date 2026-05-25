@@ -258,6 +258,16 @@ pub const PR402_SLA_ESCROW_SETTLE_CRON_DEADLINE_SEC: &str =
 pub const PR402_SLA_ESCROW_SETTLE_CRON_LOOKBACK_SEC: &str =
     "PR402_SLA_ESCROW_SETTLE_CRON_LOOKBACK_SEC";
 
+/// On-chain `Config.delivery_cutoff_seconds` mirror for TTL validation and `/supported` hints.
+/// Resolution: DB `parameters` row → env var → [`sla_escrow_api::consts::DEFAULT_DELIVERY_CUTOFF_SECONDS`].
+pub const PR402_SLA_ESCROW_DELIVERY_CUTOFF_SECONDS: &str =
+    "PR402_SLA_ESCROW_DELIVERY_CUTOFF_SECONDS";
+
+/// Post-funding work budget (verify/settle + delivery + registry + SubmitDelivery) for TTL validation.
+/// Resolution: DB `parameters` row → env var → [`crate::sla_escrow_ttl::DEFAULT_DELIVERY_BUDGET_SECONDS`].
+pub const PR402_SLA_ESCROW_DELIVERY_BUDGET_SECONDS: &str =
+    "PR402_SLA_ESCROW_DELIVERY_BUDGET_SECONDS";
+
 /// Fallback when `PR402_SWEEP_MIN_SPENDABLE_LAMPORTS` is unset (0.03 SOL).
 pub const DEFAULT_SWEEP_MIN_SPENDABLE_LAMPORTS: u64 = 30_000_000;
 
