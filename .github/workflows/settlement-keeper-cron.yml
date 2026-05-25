@@ -1,9 +1,16 @@
-# External Settlement Keeper scheduler fallback when Vercel crons are unavailable
-# or for deployments that do not use Vercel's built-in cron.
+# Settlement Keeper — external cron scheduler for preview and production.
+#
+# Vercel vercel.json crons run on Production only. This workflow drives:
+#   - Preview (develop / devnet): PR402_PREVIEW_BASE_URL, e.g. https://preview.ipay.sh
+#   - Production (main / mainnet): PR402_BASE_URL, e.g. https://ipay.sh
 #
 # Required repository secrets:
-#   PR402_BASE_URL  — e.g. https://preview.ipay.sh
-#   CRON_SECRET     — same value as Vercel CRON_SECRET / PR402_*_CRON_TOKEN
+#   PR402_PREVIEW_BASE_URL — preview facilitator origin (no trailing slash)
+#   PR402_BASE_URL         — production facilitator origin (no trailing slash)
+#   CRON_SECRET            — bearer token (Vercel CRON_SECRET / PR402_*_CRON_TOKEN)
+#
+# Production is also triggered by Vercel built-in crons; both are safe but redundant.
+# Disable the production-cron job below if you rely on Vercel crons alone for prod.
 name: Settlement Keeper Cron
 
 on:
@@ -12,34 +19,68 @@ on:
   workflow_dispatch:
 
 jobs:
-  trigger:
+  preview-cron:
+    name: Preview cron
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Vault sweep cron
-        run: |
-          curl -sfS --retry 2 --retry-delay 5 \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${PR402_BASE_URL}/api/v1/facilitator/sweep-cron"
+      - name: Trigger settlement keeper (preview)
         env:
-          PR402_BASE_URL: ${{ secrets.PR402_BASE_URL }}
+          PR402_BASE_URL: ${{ secrets.PR402_PREVIEW_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-
-      - name: SLA-Escrow settle cron
+          TARGET: preview
         run: |
+          set -euo pipefail
+          BASE="${PR402_BASE_URL%/}"
+          if [[ -z "$BASE" ]]; then
+            echo "::warning::PR402_PREVIEW_BASE_URL not set — skipping preview crons"
+            exit 0
+          fi
+          if [[ -z "${CRON_SECRET:-}" ]]; then
+            echo "::error::CRON_SECRET not set"
+            exit 1
+          fi
+          echo "Target: ${TARGET} (${BASE})"
           curl -sfS --retry 2 --retry-delay 5 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${PR402_BASE_URL}/api/v1/facilitator/sla-escrow-settle-cron"
-        env:
-          PR402_BASE_URL: ${{ secrets.PR402_BASE_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-
-      - name: SLA-Escrow close cron
-        run: |
+            "${BASE}/api/v1/facilitator/sweep-cron"
           curl -sfS --retry 2 --retry-delay 5 \
             -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${PR402_BASE_URL}/api/v1/facilitator/sla-escrow-close-cron" \
+            "${BASE}/api/v1/facilitator/sla-escrow-settle-cron"
+          curl -sfS --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE}/api/v1/facilitator/sla-escrow-close-cron" \
             || echo "close cron skipped (endpoint may be disabled on this deployment)"
+
+  production-cron:
+    name: Production cron
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger settlement keeper (production)
         env:
           PR402_BASE_URL: ${{ secrets.PR402_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TARGET: production
+        run: |
+          set -euo pipefail
+          BASE="${PR402_BASE_URL%/}"
+          if [[ -z "$BASE" ]]; then
+            echo "::warning::PR402_BASE_URL not set — skipping production crons"
+            exit 0
+          fi
+          if [[ -z "${CRON_SECRET:-}" ]]; then
+            echo "::error::CRON_SECRET not set"
+            exit 1
+          fi
+          echo "Target: ${TARGET} (${BASE})"
+          curl -sfS --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE}/api/v1/facilitator/sweep-cron"
+          curl -sfS --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE}/api/v1/facilitator/sla-escrow-settle-cron"
+          curl -sfS --retry 2 --retry-delay 5 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE}/api/v1/facilitator/sla-escrow-close-cron" \
+            || echo "close cron skipped (endpoint may be disabled on this deployment)"
