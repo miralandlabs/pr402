@@ -22,6 +22,13 @@ impl CandidateSourceKind {
             _ => Self::Pr402Db,
         }
     }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pr402Db => "pr402_db",
+            Self::ChainScan => "chain_scan",
+        }
+    }
 }
 
 #[async_trait]

@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use solana_transaction::Instruction;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::chain::solana::SolanaChainProvider;
 use crate::chain::solana_sla_escrow::{
@@ -21,6 +21,7 @@ use crate::settlement_keeper::sources::{
 use crate::settlement_keeper::types::{
     SlaEscrowSettleItemResult, SlaEscrowSettleOutcome, SlaEscrowSettleRequest,
 };
+use crate::settlement_keeper::LOG_SERVER_LOG;
 
 pub struct SlaEscrowSettleConfig<'a> {
     pub chain: &'a ChainProvider,
@@ -66,6 +67,19 @@ pub async fn run_sla_escrow_settle(
                 .await?
         }
     };
+
+    info!(
+        target: LOG_SERVER_LOG,
+        task = "sla_escrow_settle",
+        dry_run,
+        limit,
+        cooldown_sec,
+        lookback_sec,
+        deadline_sec,
+        candidate_source = source_kind.as_str(),
+        candidates = candidates.len(),
+        "settlement keeper sla-escrow settle cron started"
+    );
 
     let deadline = Instant::now() + Duration::from_secs(deadline_sec);
     let mut items = Vec::with_capacity(candidates.len());
@@ -132,6 +146,13 @@ pub async fn run_sla_escrow_settle(
     for ((idx, uid_bytes, _), account_opt) in prepared.iter().zip(accounts.iter()) {
         if Instant::now() >= deadline {
             budget_exhausted = (candidates.len() - *idx) as u64;
+            info!(
+                target: LOG_SERVER_LOG,
+                task = "sla_escrow_settle",
+                processed = items.len(),
+                remaining = budget_exhausted,
+                "settlement keeper sla-escrow settle cron deadline reached"
+            );
             break;
         }
 
@@ -247,6 +268,18 @@ pub async fn run_sla_escrow_settle(
         }
     }
 
+    info!(
+        target: LOG_SERVER_LOG,
+        task = "sla_escrow_settle",
+        dry_run,
+        considered = candidates.len(),
+        succeeded,
+        skipped,
+        failed,
+        budget_exhausted_remaining = budget_exhausted,
+        "settlement keeper sla-escrow settle cron finished"
+    );
+
     Ok(SlaEscrowSettleOutcome {
         considered: candidates.len(),
         succeeded,
@@ -296,6 +329,15 @@ async fn process_settlement_ix(args: ProcessSettlementIx<'_>) {
     match send_settlement_tx(&args.chain.solana, args.ix).await {
         Ok(sig) => {
             *args.succeeded += 1;
+            info!(
+                target: LOG_SERVER_LOG,
+                task = "sla_escrow_settle",
+                correlation_id = %args.correlation_id,
+                payment_uid_hex = %args.payment_uid_hex,
+                action = %args.action_label,
+                signature = %sig,
+                "settlement keeper sla-escrow settle tx submitted"
+            );
             args.items.push(SlaEscrowSettleItemResult {
                 correlation_id: args.correlation_id.to_string(),
                 payment_uid_hex: args.payment_uid_hex.to_string(),
@@ -311,6 +353,15 @@ async fn process_settlement_ix(args: ProcessSettlementIx<'_>) {
         }
         Err(e) => {
             *args.failed += 1;
+            warn!(
+                target: LOG_SERVER_LOG,
+                task = "sla_escrow_settle",
+                correlation_id = %args.correlation_id,
+                payment_uid_hex = %args.payment_uid_hex,
+                action = %args.action_label,
+                error = %e,
+                "settlement keeper sla-escrow settle tx failed"
+            );
             args.items.push(SlaEscrowSettleItemResult {
                 correlation_id: args.correlation_id.to_string(),
                 payment_uid_hex: args.payment_uid_hex.to_string(),
@@ -373,6 +424,7 @@ async fn record_lifecycle(
         .await
     {
         warn!(
+            target: LOG_SERVER_LOG,
             error = %e,
             correlation_id = %correlation_id,
             step,

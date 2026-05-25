@@ -4,7 +4,7 @@ use std::mem::size_of;
 use std::str::FromStr;
 
 use solana_commitment_config::CommitmentConfig;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::chain::ChainProvider;
 use crate::chain::TxBudget;
@@ -13,6 +13,7 @@ use crate::settlement_keeper::sources::{
     CandidateSourceKind, Pr402DbSweepSource, VaultSweepCandidateSource,
 };
 use crate::settlement_keeper::types::{VaultSweepItemResult, VaultSweepOutcome, VaultSweepRequest};
+use crate::settlement_keeper::LOG_SERVER_LOG;
 
 pub struct VaultSweepConfig<'a> {
     pub chain: &'a ChainProvider,
@@ -63,8 +64,9 @@ pub async fn run_vault_sweep(
         .unwrap_or(cfg.recent_settle_window_sec)
         .clamp(60, 7 * 86_400);
     let dry_run = req.dry_run.unwrap_or(cfg.dry_run);
+    let candidate_source = CandidateSourceKind::parse(req.candidate_source.as_deref());
 
-    let candidates = match CandidateSourceKind::parse(req.candidate_source.as_deref()) {
+    let candidates = match candidate_source {
         CandidateSourceKind::Pr402Db => {
             let db = cfg
                 .db
@@ -80,6 +82,18 @@ pub async fn run_vault_sweep(
             );
         }
     };
+
+    info!(
+        target: LOG_SERVER_LOG,
+        task = "vault_sweep",
+        dry_run,
+        limit,
+        cooldown_sec,
+        recent_window_sec,
+        candidate_source = candidate_source.as_str(),
+        candidates = candidates.len(),
+        "settlement keeper vault sweep cron started"
+    );
 
     let mut attempted = 0u64;
     let mut succeeded = 0u64;
@@ -302,9 +316,19 @@ pub async fn run_vault_sweep(
                         )
                         .await
                     {
-                        warn!(error = %e, "record_sweep_attempt (success) failed");
+                        warn!(target: LOG_SERVER_LOG, error = %e, "record_sweep_attempt (success) failed");
                     }
                 }
+                info!(
+                    target: LOG_SERVER_LOG,
+                    task = "vault_sweep",
+                    wallet = %c.wallet_pubkey,
+                    settlement_mode = %c.settlement_mode,
+                    spl_mint = ?c.spl_mint,
+                    signature = %sig,
+                    available_raw = available,
+                    "settlement keeper vault sweep tx submitted"
+                );
                 items.push(VaultSweepItemResult {
                     wallet: c.wallet_pubkey.clone(),
                     settlement_mode: c.settlement_mode.clone(),
@@ -329,9 +353,17 @@ pub async fn run_vault_sweep(
                         )
                         .await
                     {
-                        warn!(error = %db_err, "record_sweep_attempt (failure) failed");
+                        warn!(target: LOG_SERVER_LOG, error = %db_err, "record_sweep_attempt (failure) failed");
                     }
                 }
+                warn!(
+                    target: LOG_SERVER_LOG,
+                    task = "vault_sweep",
+                    wallet = %c.wallet_pubkey,
+                    settlement_mode = %c.settlement_mode,
+                    error = %e,
+                    "settlement keeper vault sweep tx failed"
+                );
                 items.push(VaultSweepItemResult {
                     wallet: c.wallet_pubkey.clone(),
                     settlement_mode: c.settlement_mode.clone(),
@@ -346,6 +378,18 @@ pub async fn run_vault_sweep(
             }
         }
     }
+
+    info!(
+        target: LOG_SERVER_LOG,
+        task = "vault_sweep",
+        dry_run,
+        scanned = candidates.len(),
+        attempted,
+        succeeded,
+        skipped_below_threshold,
+        failed,
+        "settlement keeper vault sweep cron finished"
+    );
 
     Ok(VaultSweepOutcome {
         dry_run,

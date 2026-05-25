@@ -16,6 +16,9 @@ pub mod sources;
 pub mod types;
 pub mod vault_sweep;
 
+/// Matches facilitator `LOG_SERVER_LOG` so Vercel `RUST_LOG=pr402=info` shows keeper lines.
+pub(crate) const LOG_SERVER_LOG: &str = "server_log";
+
 pub use close::{run_sla_escrow_close, SlaEscrowCloseConfig};
 pub use config::KeeperConfig;
 pub use sla_escrow::{run_sla_escrow_settle, SlaEscrowSettleConfig};

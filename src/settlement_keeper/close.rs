@@ -2,6 +2,8 @@
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use tracing::{info, warn};
+
 use crate::chain::solana_sla_escrow::{build_close_payment_instruction, parse_payment_uid_hex};
 use crate::chain::ChainProvider;
 use crate::settlement_keeper::payment::{decide_close_action, decode_payment_view, CloseAction};
@@ -11,6 +13,7 @@ use crate::settlement_keeper::sources::CandidateSourceKind;
 use crate::settlement_keeper::types::{
     SlaEscrowCloseItemResult, SlaEscrowCloseOutcome, SlaEscrowCloseRequest,
 };
+use crate::settlement_keeper::LOG_SERVER_LOG;
 
 pub struct SlaEscrowCloseConfig<'a> {
     pub chain: &'a ChainProvider,
@@ -43,6 +46,17 @@ pub async fn run_sla_escrow_close(
         }
     };
 
+    info!(
+        target: LOG_SERVER_LOG,
+        task = "sla_escrow_close",
+        dry_run,
+        limit,
+        deadline_sec,
+        candidate_source = source_kind.as_str(),
+        candidates = candidates.len(),
+        "settlement keeper sla-escrow close cron started"
+    );
+
     let deadline = Instant::now() + Duration::from_secs(deadline_sec);
     let mut items = Vec::with_capacity(candidates.len());
     let mut succeeded = 0u64;
@@ -53,6 +67,13 @@ pub async fn run_sla_escrow_close(
     for (idx, c) in candidates.iter().enumerate() {
         if Instant::now() >= deadline {
             budget_exhausted = (candidates.len() - idx) as u64;
+            info!(
+                target: LOG_SERVER_LOG,
+                task = "sla_escrow_close",
+                processed = items.len(),
+                remaining = budget_exhausted,
+                "settlement keeper sla-escrow close cron deadline reached"
+            );
             break;
         }
 
@@ -165,6 +186,13 @@ pub async fn run_sla_escrow_close(
         match send_settlement_tx(&cfg.chain.solana, ix).await {
             Ok(sig) => {
                 succeeded += 1;
+                info!(
+                    target: LOG_SERVER_LOG,
+                    task = "sla_escrow_close",
+                    payment_uid_hex = %c.payment_uid_hex,
+                    signature = %sig,
+                    "settlement keeper sla-escrow close tx submitted"
+                );
                 items.push(SlaEscrowCloseItemResult {
                     payment_uid_hex: c.payment_uid_hex.clone(),
                     action: "close_payment".into(),
@@ -175,6 +203,13 @@ pub async fn run_sla_escrow_close(
             }
             Err(e) => {
                 failed += 1;
+                warn!(
+                    target: LOG_SERVER_LOG,
+                    task = "sla_escrow_close",
+                    payment_uid_hex = %c.payment_uid_hex,
+                    error = %e,
+                    "settlement keeper sla-escrow close tx failed"
+                );
                 items.push(SlaEscrowCloseItemResult {
                     payment_uid_hex: c.payment_uid_hex.clone(),
                     action: "close_payment".into(),
@@ -185,6 +220,18 @@ pub async fn run_sla_escrow_close(
             }
         }
     }
+
+    info!(
+        target: LOG_SERVER_LOG,
+        task = "sla_escrow_close",
+        dry_run,
+        considered = candidates.len(),
+        succeeded,
+        skipped,
+        failed,
+        budget_exhausted_remaining = budget_exhausted,
+        "settlement keeper sla-escrow close cron finished"
+    );
 
     Ok(SlaEscrowCloseOutcome {
         considered: candidates.len(),
