@@ -282,6 +282,10 @@ pub async fn handle_health() -> Response<Body> {
 
     let solana_wallet_rpc_url = solana_wallet_rpc_url_for_browser(&network);
 
+    let vault_sweep_token = pr402::parameters::resolve_sweep_cron_token(pr402_db()).await;
+    let sla_settle_token =
+        pr402::parameters::resolve_sla_escrow_settle_cron_token(pr402_db()).await;
+
     let res = HealthResponse {
         status: if rpc_status == "connected" {
             "ok"
@@ -295,6 +299,15 @@ pub async fn handle_health() -> Response<Body> {
         environment,
         solana_network: network,
         solana_wallet_rpc_url,
+        settlement_keeper: SettlementKeeperHealth {
+            vault_sweep_cron_configured: vault_sweep_token
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty()),
+            sla_escrow_settle_cron_configured: sla_settle_token
+                .as_ref()
+                .is_some_and(|s| !s.trim().is_empty()),
+            database_connected: db_status == "connected",
+        },
     };
 
     facilitator_response!()

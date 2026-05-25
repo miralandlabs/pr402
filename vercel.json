@@ -286,6 +286,31 @@
         "HEAD",
         "OPTIONS"
       ]
+    },
+    {
+      "src": "/api/v1/facilitator/sla-escrow-close",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/sla-escrow-close-cron",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-settle-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
     }
   ],
   "crons": [

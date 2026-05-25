@@ -1077,6 +1077,95 @@
           }
         }
       }
+    },
+    "/api/v1/facilitator/sla-escrow-settle": {
+      "post": {
+        "tags": ["pr402 Extension: Operations"],
+        "summary": "SLA-Escrow settlement execution (private)",
+        "description": "Settlement Keeper **escrow settler**: permissionless `ReleasePayment` / `RefundPayment` post-outcome. Bearer-authenticated; supports `dryRun`.",
+        "operationId": "facilitatorSlaEscrowSettle",
+        "security": [{ "sweep_bearer": [] }],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SlaEscrowSettleRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settlement report",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SlaEscrowSettleResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/sla-escrow-settle-cron": {
+      "get": {
+        "tags": ["pr402 Extension: Operations"],
+        "summary": "Vercel cron SLA-Escrow settlement (private)",
+        "operationId": "facilitatorSlaEscrowSettleCron",
+        "security": [{ "sweep_bearer": [] }],
+        "responses": {
+          "200": {
+            "description": "Settlement report",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SlaEscrowSettleResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/sla-escrow-close": {
+      "post": {
+        "tags": ["pr402 Extension: Operations"],
+        "summary": "SLA-Escrow ClosePayment (private)",
+        "operationId": "facilitatorSlaEscrowClose",
+        "security": [{ "sweep_bearer": [] }],
+        "responses": {
+          "200": {
+            "description": "Close report",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SlaEscrowCloseResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/build-sla-escrow-settle-tx": {
+      "post": {
+        "tags": ["pr402 Extension: Operations"],
+        "summary": "Build manual SLA-Escrow settle transaction",
+        "description": "Buyer/seller **Settle now** helper when no keeper is running.",
+        "operationId": "facilitatorBuildSlaEscrowSettleTx",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BuildSlaEscrowSettleTxRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Facilitator-signed settlement tx (base64)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BuildSlaEscrowSettleTxResponse" }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1934,6 +2023,62 @@
           }
         },
         "additionalProperties": false
+      },
+      "SlaEscrowSettleRequest": {
+        "type": "object",
+        "properties": {
+          "limit": { "type": "integer" },
+          "cooldownSeconds": { "type": "integer" },
+          "deadlineSeconds": { "type": "integer" },
+          "lookbackSeconds": { "type": "integer" },
+          "dryRun": { "type": "boolean" },
+          "candidateSource": { "type": "string", "enum": ["pr402_db", "chain_scan"] }
+        }
+      },
+      "SlaEscrowSettleResponse": {
+        "type": "object",
+        "properties": {
+          "considered": { "type": "integer" },
+          "succeeded": { "type": "integer" },
+          "skipped": { "type": "integer" },
+          "failed": { "type": "integer" },
+          "budgetExhaustedRemaining": { "type": "integer" },
+          "items": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "SlaEscrowCloseRequest": {
+        "type": "object",
+        "properties": {
+          "limit": { "type": "integer" },
+          "dryRun": { "type": "boolean" }
+        }
+      },
+      "SlaEscrowCloseResponse": {
+        "type": "object",
+        "properties": {
+          "considered": { "type": "integer" },
+          "succeeded": { "type": "integer" },
+          "skipped": { "type": "integer" },
+          "failed": { "type": "integer" },
+          "budgetExhaustedRemaining": { "type": "integer" },
+          "items": { "type": "array", "items": { "type": "object" } }
+        }
+      },
+      "BuildSlaEscrowSettleTxRequest": {
+        "type": "object",
+        "required": ["paymentUidHex"],
+        "properties": {
+          "paymentUidHex": { "type": "string", "description": "64-char lowercase hex" }
+        }
+      },
+      "BuildSlaEscrowSettleTxResponse": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string" },
+          "unsignedTransaction": { "type": "string" },
+          "paymentUidHex": { "type": "string" },
+          "paymentPda": { "type": "string" }
+        }
       },
       "UniversalSettleExtra": {
         "type": "object",

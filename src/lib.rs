@@ -36,6 +36,7 @@ pub mod refund_tx_build;
 pub mod scheme;
 pub mod sdk;
 pub mod seller_provision;
+pub mod settlement_keeper;
 pub mod sla_escrow_payment_build;
 pub mod sla_escrow_ttl;
 pub mod util;

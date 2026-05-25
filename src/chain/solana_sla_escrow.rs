@@ -504,6 +504,38 @@ pub fn build_refund_payment_instruction(
     }
 }
 
+/// Build an SLAEscrow `ClosePayment` instruction. Permissionless after
+/// `payment.closed_at` when the payment is in a terminal state.
+pub fn build_close_payment_instruction(
+    program_id: Pubkey,
+    caller: Pubkey,
+    buyer: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+
+    let data = vec![SLAEscrowInstruction::ClosePayment as u8];
+    let accounts = vec![
+        AccountMeta::new(caller, true),
+        AccountMeta::new(buyer, false),
+        AccountMeta::new_readonly(bank_pda, false),
+        AccountMeta::new_readonly(config_pda, false),
+        AccountMeta::new(escrow_pda, false),
+        AccountMeta::new(payment_pda, false),
+        AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false),
+    ];
+
+    Instruction {
+        program_id,
+        accounts,
+        data,
+    }
+}
+
 #[cfg(test)]
 mod tests_settlement {
     use super::*;
