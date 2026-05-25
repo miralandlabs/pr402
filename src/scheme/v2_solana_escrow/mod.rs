@@ -181,6 +181,12 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                     fee_bps: fee_bps.into(),
                     oracle_fee_bps: oracle_fee_bps.into(),
                     ttl_seconds: 3600.into(), // Default 1 hour
+                    delivery_cutoff_seconds:
+                        (crate::sla_escrow_ttl::resolve_delivery_cutoff_seconds().max(0) as u64)
+                            .into(),
+                    delivery_budget_seconds:
+                        (crate::sla_escrow_ttl::resolve_delivery_budget_seconds().max(0) as u64)
+                            .into(),
                     // Advertise the CU envelope the facilitator actually enforces on
                     // verify for the buyer-signed FundPayment tx.
                     max_compute_unit_limit: (crate::chain::TxBudget::FundPayment.cu_limit() as u64)
@@ -422,6 +428,12 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
                         fee_bps: fee_bps.into(),
                         oracle_fee_bps: oracle_fee_bps.into(),
                         ttl_seconds: 3600.into(), // Default 1 hour
+                        delivery_cutoff_seconds:
+                            (crate::sla_escrow_ttl::resolve_delivery_cutoff_seconds().max(0) as u64)
+                                .into(),
+                        delivery_budget_seconds:
+                            (crate::sla_escrow_ttl::resolve_delivery_budget_seconds().max(0) as u64)
+                                .into(),
                         max_compute_unit_limit: (crate::chain::TxBudget::FundPayment.cu_limit()
                             as u64)
                             .into(),
@@ -697,10 +709,16 @@ pub async fn verify_transfer(
     if u64::from_le_bytes(fund_payment.amount) != requirements.amount.inner() {
         return Err(PaymentVerificationError::InvalidPaymentAmount);
     }
-    if u64::from_le_bytes(fund_payment.ttl_seconds) < 60 {
-        return Err(PaymentVerificationError::TransactionSimulation(
-            "TTL too short".into(),
-        ));
+    let tx_ttl = u64::from_le_bytes(fund_payment.ttl_seconds);
+    let cutoff = i64::try_from(extra.delivery_cutoff_seconds.inner()).unwrap_or(i64::MAX);
+    let budget = i64::try_from(extra.delivery_budget_seconds.inner()).unwrap_or(i64::MAX);
+    if let Err(e) = crate::sla_escrow_ttl::validate_fund_payment_ttl(
+        tx_ttl,
+        requirements.max_timeout_seconds,
+        cutoff,
+        budget,
+    ) {
+        return Err(PaymentVerificationError::InvalidFormat(e.to_string()));
     }
 
     // extra already defined above

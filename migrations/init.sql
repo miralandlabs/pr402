@@ -241,7 +241,11 @@ INSERT INTO parameters (param_name, param_value) VALUES
     -- and (b) building an SLA-Escrow FundPayment for that profile (unhealthy → 503).
     -- Seeds 'false' so the gate is dormant until all advertised oracles publish a
     -- registry_url and reliably respond 200 on /health. Flip to 'true' to activate.
-    ('PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY', 'false')
+    ('PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY', 'false'),
+    -- FundPayment TTL floor (x402/sla-escrow-fund-payment-ttl/v1): min maxTimeoutSeconds =
+    -- delivery_cutoff + delivery_budget. Tune here to avoid Vercel env size limits.
+    ('PR402_SLA_ESCROW_DELIVERY_CUTOFF_SECONDS', '300'),
+    ('PR402_SLA_ESCROW_DELIVERY_BUDGET_SECONDS', '300')
 ON CONFLICT (param_name) DO UPDATE SET
     param_value = EXCLUDED.param_value,
     updated_at = NOW();

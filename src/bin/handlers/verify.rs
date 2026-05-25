@@ -42,6 +42,8 @@ pub async fn handle_verify(
         }
     }
 
+    pr402::parameters::refresh_parameters_from_db(pr402_db()).await;
+
     match facilitator.verify(&verify_request).await {
         Ok(response) => {
             let effective_cid = persist_meta.clone().or_else(|| {
