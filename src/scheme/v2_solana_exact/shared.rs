@@ -284,6 +284,72 @@ pub fn verify_compute_price_instruction(
     Ok(())
 }
 
+fn parse_set_compute_unit_limit(data: &[u8]) -> Option<u32> {
+    if data.first()? != &2 || data.len() != 5 {
+        return None;
+    }
+    let mut buf = [0u8; 4];
+    buf.copy_from_slice(&data[1..5]);
+    Some(u32::from_le_bytes(buf))
+}
+
+fn parse_set_compute_unit_price(data: &[u8]) -> Option<u64> {
+    if data.first()? != &3 || data.len() != 9 {
+        return None;
+    }
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&data[1..9]);
+    Some(u64::from_le_bytes(buf))
+}
+
+/// Solana uses the **last** `SetComputeUnitLimit` in the transaction. Wallets often
+/// prepend their own compute-budget instructions ahead of pr402-built ones; verify the
+/// effective limit rather than assuming it lives at index 0.
+pub fn verify_effective_compute_unit_limit(
+    limit_ceiling: u32,
+    transaction: &VersionedTransaction,
+) -> Result<u32, SolanaExactError> {
+    let keys = transaction.message.static_account_keys();
+    let mut effective: Option<u32> = None;
+    for ix in transaction.message.instructions() {
+        let program_id = ix.program_id(keys);
+        if ComputeBudgetInstructionId.ne(program_id) {
+            continue;
+        }
+        if let Some(units) = parse_set_compute_unit_limit(ix.data.as_slice()) {
+            effective = Some(units);
+        }
+    }
+    let units = effective.ok_or(SolanaExactError::InvalidComputeLimitInstruction)?;
+    if units > limit_ceiling {
+        return Err(SolanaExactError::MaxComputeUnitLimitExceeded);
+    }
+    Ok(units)
+}
+
+/// Same last-wins semantics as [`verify_effective_compute_unit_limit`].
+pub fn verify_effective_compute_unit_price(
+    price_ceiling: u64,
+    transaction: &VersionedTransaction,
+) -> Result<(), SolanaExactError> {
+    let keys = transaction.message.static_account_keys();
+    let mut effective: Option<u64> = None;
+    for ix in transaction.message.instructions() {
+        let program_id = ix.program_id(keys);
+        if ComputeBudgetInstructionId.ne(program_id) {
+            continue;
+        }
+        if let Some(price) = parse_set_compute_unit_price(ix.data.as_slice()) {
+            effective = Some(price);
+        }
+    }
+    let price = effective.ok_or(SolanaExactError::InvalidComputePriceInstruction)?;
+    if price > price_ceiling {
+        return Err(SolanaExactError::MaxComputeUnitPriceExceeded);
+    }
+    Ok(())
+}
+
 pub fn verify_create_ata_instruction(
     transaction: &VersionedTransaction,
     index: usize,
@@ -974,5 +1040,102 @@ impl From<SolanaExactError> for PaymentVerificationError {
 impl From<SolanaChainProviderError> for PaymentVerificationError {
     fn from(value: SolanaChainProviderError) -> Self {
         Self::TransactionSimulation(value.to_string())
+    }
+}
+
+#[cfg(test)]
+mod compute_budget_tests {
+    use super::*;
+    use crate::chain::TxBudget;
+    use crate::util::tx_builder::{compute_budget_ix_set_limit, compute_budget_ix_set_price};
+    use solana_hash::Hash;
+    use solana_keypair::Keypair;
+    use solana_signer::Signer;
+    use solana_transaction::{Instruction, Transaction};
+
+    fn tx_with_budget_ixs(ixs: Vec<Instruction>) -> VersionedTransaction {
+        let payer = Keypair::new();
+        VersionedTransaction::from(Transaction::new_signed_with_payer(
+            &ixs,
+            Some(&payer.pubkey()),
+            &[&payer],
+            Hash::new_unique(),
+        ))
+    }
+
+    #[test]
+    fn effective_cu_uses_last_limit_and_price() {
+        let budget = TxBudget::FundPayment;
+        let tx = tx_with_budget_ixs(vec![
+            compute_budget_ix_set_limit(400_000),
+            compute_budget_ix_set_price(budget.cu_price()),
+            compute_budget_ix_set_limit(budget.cu_limit()),
+            compute_budget_ix_set_price(budget.cu_price()),
+        ]);
+
+        assert_eq!(
+            verify_effective_compute_unit_limit(budget.cu_limit(), &tx).unwrap(),
+            budget.cu_limit()
+        );
+        assert!(verify_effective_compute_unit_price(budget.cu_price(), &tx).is_ok());
+    }
+
+    #[test]
+    fn effective_cu_rejects_limit_above_ceiling() {
+        let budget = TxBudget::FundPayment;
+        let tx = tx_with_budget_ixs(vec![
+            compute_budget_ix_set_limit(budget.cu_limit()),
+            compute_budget_ix_set_limit(budget.cu_limit() + 1),
+            compute_budget_ix_set_price(budget.cu_price()),
+        ]);
+
+        assert!(matches!(
+            verify_effective_compute_unit_limit(budget.cu_limit(), &tx),
+            Err(SolanaExactError::MaxComputeUnitLimitExceeded)
+        ));
+    }
+
+    #[test]
+    fn effective_cu_requires_price_instruction() {
+        let budget = TxBudget::FundPayment;
+        let tx = tx_with_budget_ixs(vec![compute_budget_ix_set_limit(budget.cu_limit())]);
+
+        assert!(matches!(
+            verify_effective_compute_unit_price(budget.cu_price(), &tx),
+            Err(SolanaExactError::InvalidComputePriceInstruction)
+        ));
+    }
+
+    #[test]
+    fn effective_cu_requires_limit_instruction() {
+        let budget = TxBudget::FundPayment;
+        let tx = tx_with_budget_ixs(vec![compute_budget_ix_set_price(budget.cu_price())]);
+
+        assert!(matches!(
+            verify_effective_compute_unit_limit(budget.cu_limit(), &tx),
+            Err(SolanaExactError::InvalidComputeLimitInstruction)
+        ));
+    }
+
+    #[test]
+    fn effective_cu_allows_budget_and_ata_prefix_before_fund_path() {
+        let budget = TxBudget::FundPayment;
+        let tx = tx_with_budget_ixs(vec![
+            compute_budget_ix_set_limit(400_000),
+            compute_budget_ix_set_price(budget.cu_price()),
+            compute_budget_ix_set_limit(budget.cu_limit()),
+            compute_budget_ix_set_price(budget.cu_price()),
+            Instruction {
+                program_id: ATA_PROGRAM_PUBKEY,
+                accounts: vec![],
+                data: vec![1],
+            },
+        ]);
+
+        assert_eq!(
+            verify_effective_compute_unit_limit(budget.cu_limit(), &tx).unwrap(),
+            budget.cu_limit()
+        );
+        assert!(verify_effective_compute_unit_price(budget.cu_price(), &tx).is_ok());
     }
 }
