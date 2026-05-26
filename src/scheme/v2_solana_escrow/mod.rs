@@ -20,7 +20,7 @@ use crate::scheme::{
 
 // We reuse some shared Solana verification logic, but we need custom verify for escrow
 use crate::scheme::v2_solana_exact::shared::{
-    settle_transaction, verify_compute_limit_instruction, verify_compute_price_instruction,
+    settle_transaction, verify_effective_compute_unit_limit, verify_effective_compute_unit_price,
     TransactionInt, VerifyTransferResult,
 };
 use crate::util::{
@@ -33,6 +33,7 @@ use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_commitment_config::CommitmentConfig;
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
+use solana_transaction::versioned::VersionedTransaction;
 
 pub struct V2SolanaSLAEscrow;
 
@@ -561,6 +562,50 @@ async fn settle_sla_escrow_fund_payment(
     }
 }
 
+/// Locate the sole sla-escrow `FundPayment` instruction (wallets may prepend compute-budget ixs).
+fn find_fund_payment_instruction_index(
+    transaction: &VersionedTransaction,
+    program_id: Pubkey,
+) -> Result<usize, PaymentVerificationError> {
+    let keys = transaction.message.static_account_keys();
+    let body_len = mem::size_of::<FundPayment>();
+    let mut found: Option<usize> = None;
+    for (idx, ix) in transaction.message.instructions().iter().enumerate() {
+        if *ix.program_id(keys) != program_id {
+            continue;
+        }
+        let data = ix.data.as_slice();
+        if data.first() != Some(&(EscrowInstruction::FundPayment as u8)) {
+            continue;
+        }
+        if data.len() != 1 + body_len {
+            continue;
+        }
+        if found.is_some() {
+            return Err(PaymentVerificationError::TransactionSimulation(
+                "Multiple FundPayment instructions in transaction".into(),
+            ));
+        }
+        found = Some(idx);
+    }
+    found.ok_or_else(|| {
+        PaymentVerificationError::TransactionSimulation("FundPayment instruction not found".into())
+    })
+}
+
+fn ensure_fund_payment_is_last_instruction(
+    transaction: &VersionedTransaction,
+    fund_payment_idx: usize,
+) -> Result<(), PaymentVerificationError> {
+    let last_idx = transaction.message.instructions().len().saturating_sub(1);
+    if fund_payment_idx != last_idx {
+        return Err(PaymentVerificationError::TransactionSimulation(
+            "FundPayment must be the last instruction".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Verify a v2 escrow transfer request.
 pub async fn verify_transfer(
     provider: &SolanaChainProvider,
@@ -590,22 +635,16 @@ pub async fn verify_transfer(
     reject_versioned_tx_with_address_lookup_tables(&transaction)
         .map_err(PaymentVerificationError::InvalidFormat)?;
 
-    let instructions = transaction.message.instructions();
     let budget = crate::chain::TxBudget::FundPayment;
-    let _compute_units = verify_compute_limit_instruction(budget.cu_limit(), &transaction, 0)?;
-    verify_compute_price_instruction(budget.cu_price(), &transaction, 1)?;
+    let _compute_units = verify_effective_compute_unit_limit(budget.cu_limit(), &transaction)?;
+    verify_effective_compute_unit_price(budget.cu_price(), &transaction)?;
 
-    let is_spl_token = requirements.asset.pubkey() != &Pubkey::default();
-
-    let fund_payment_idx = if instructions.len() == 3 {
-        2
-    } else if instructions.len() == 4 && is_spl_token {
-        3
-    } else {
-        return Err(PaymentVerificationError::TransactionSimulation(
-            "InvalidTransactionInstructionsCount".into(),
-        ));
-    };
+    let escrow_config = provider.sla_escrow().ok_or_else(|| {
+        PaymentVerificationError::TransactionSimulation("SLA Escrow not configured".into())
+    })?;
+    let fund_payment_idx =
+        find_fund_payment_instruction_index(&transaction, escrow_config.program_id)?;
+    ensure_fund_payment_is_last_instruction(&transaction, fund_payment_idx)?;
 
     let tx = TransactionInt::new(transaction.clone());
     let fund_instruction = tx
@@ -617,9 +656,6 @@ pub async fn verify_transfer(
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
 
     let program_id = fund_instruction.program_id();
-    let escrow_config = provider.sla_escrow().ok_or_else(|| {
-        PaymentVerificationError::TransactionSimulation("SLA Escrow not configured".into())
-    })?;
     if program_id != escrow_config.program_id {
         return Err(PaymentVerificationError::TransactionSimulation(
             "Invalid SLAEscrow Program ID".into(),
@@ -1001,5 +1037,104 @@ pub async fn persist_escrow_audit_after_settle(
             correlation_id = %correlation_id,
             "upsert_escrow_detail failed after settle"
         );
+    }
+}
+
+#[cfg(test)]
+mod fund_payment_ix_tests {
+    use super::*;
+    use crate::util::tx_builder::{
+        compute_budget_ix_set_limit, compute_budget_ix_set_price,
+        create_associated_token_account_idempotent_ix,
+    };
+    use solana_hash::Hash;
+    use solana_keypair::Keypair;
+    use solana_signer::Signer;
+    use solana_transaction::{Instruction, Transaction};
+
+    fn mock_fund_payment_ix(program_id: Pubkey) -> Instruction {
+        let body_len = mem::size_of::<FundPayment>();
+        let mut data = vec![EscrowInstruction::FundPayment as u8];
+        data.resize(1 + body_len, 0);
+        Instruction {
+            program_id,
+            accounts: vec![],
+            data,
+        }
+    }
+
+    fn tx_from_ixs(ixs: Vec<Instruction>) -> VersionedTransaction {
+        let payer = Keypair::new();
+        VersionedTransaction::from(Transaction::new_signed_with_payer(
+            &ixs,
+            Some(&payer.pubkey()),
+            &[&payer],
+            Hash::new_unique(),
+        ))
+    }
+
+    #[test]
+    fn find_fund_payment_accepts_wallet_prepended_budget_and_ata() {
+        let program_id = Pubkey::new_unique();
+        let funding = Keypair::new();
+        let owner = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let token_program = spl_token::ID;
+        let fund = mock_fund_payment_ix(program_id);
+        let ixs = vec![
+            compute_budget_ix_set_limit(400_000),
+            compute_budget_ix_set_price(100_000),
+            compute_budget_ix_set_limit(80_000),
+            compute_budget_ix_set_price(100_000),
+            create_associated_token_account_idempotent_ix(
+                &funding.pubkey(),
+                &owner,
+                &mint,
+                &token_program,
+            ),
+            fund,
+        ];
+        let tx = VersionedTransaction::from(Transaction::new_signed_with_payer(
+            &ixs,
+            Some(&funding.pubkey()),
+            &[&funding],
+            Hash::new_unique(),
+        ));
+
+        let idx = find_fund_payment_instruction_index(&tx, program_id).unwrap();
+        ensure_fund_payment_is_last_instruction(&tx, idx).unwrap();
+        assert_eq!(idx, tx.message.instructions().len() - 1);
+    }
+
+    #[test]
+    fn fund_payment_must_be_last_instruction() {
+        let program_id = Pubkey::new_unique();
+        let fund = mock_fund_payment_ix(program_id);
+        let trailing = Instruction {
+            program_id: Pubkey::new_unique(),
+            accounts: vec![],
+            data: vec![0],
+        };
+        let tx = tx_from_ixs(vec![fund, trailing]);
+        let idx = find_fund_payment_instruction_index(&tx, program_id).unwrap();
+
+        assert!(matches!(
+            ensure_fund_payment_is_last_instruction(&tx, idx),
+            Err(PaymentVerificationError::TransactionSimulation(msg))
+            if msg.contains("FundPayment must be the last instruction")
+        ));
+    }
+
+    #[test]
+    fn find_fund_payment_rejects_multiple_matches() {
+        let program_id = Pubkey::new_unique();
+        let fund = mock_fund_payment_ix(program_id);
+        let tx = tx_from_ixs(vec![fund.clone(), fund]);
+
+        assert!(matches!(
+            find_fund_payment_instruction_index(&tx, program_id),
+            Err(PaymentVerificationError::TransactionSimulation(msg))
+            if msg.contains("Multiple FundPayment")
+        ));
     }
 }
