@@ -71,6 +71,11 @@ pub enum TxBudget {
     /// Estimated: ~15 000 CUs.
     OracleConfirm,
 
+    /// `ReleasePayment` / `RefundPayment` — permissionless escrow settlement.
+    /// SPL path may CPI-create seller/buyer/oracle ATAs on first release.
+    /// Observed: >22_000 CUs when seller ATA is absent (settlement keeper cron).
+    EscrowSettle,
+
     // ── fallback ─────────────────────────────────────────────────────
     /// Conservative fallback for future or unlisted instruction types.
     /// Use this when no specific variant applies yet.
@@ -91,6 +96,7 @@ impl TxBudget {
             Self::SweepSpl => 22_000,
             Self::FundPayment => 80_000,
             Self::OracleConfirm => 20_000,
+            Self::EscrowSettle => 80_000,
             Self::Default => 200_000,
         }
     }
@@ -115,6 +121,7 @@ impl TxBudget {
             Self::VaultShadowProvision => 10_000,
             Self::SweepSol => 10_000,
             Self::SweepSpl => 10_000,
+            Self::EscrowSettle => 10_000,
             // Fallback — conservative
             Self::Default => 100_000,
         }
