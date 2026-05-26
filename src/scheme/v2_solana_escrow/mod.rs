@@ -31,6 +31,7 @@ use sla_escrow_api::instruction::{EscrowInstruction, FundPayment};
 
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_commitment_config::CommitmentConfig;
+use solana_compute_budget_interface::ID as ComputeBudgetInstructionId;
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 use solana_transaction::versioned::VersionedTransaction;
@@ -593,14 +594,20 @@ fn find_fund_payment_instruction_index(
     })
 }
 
-fn ensure_fund_payment_is_last_instruction(
+fn ensure_fund_payment_is_last_non_compute_budget_instruction(
     transaction: &VersionedTransaction,
     fund_payment_idx: usize,
 ) -> Result<(), PaymentVerificationError> {
-    let last_idx = transaction.message.instructions().len().saturating_sub(1);
-    if fund_payment_idx != last_idx {
+    let keys = transaction.message.static_account_keys();
+    for (idx, ix) in transaction.message.instructions().iter().enumerate() {
+        if idx <= fund_payment_idx {
+            continue;
+        }
+        if ComputeBudgetInstructionId.eq(ix.program_id(keys)) {
+            continue;
+        }
         return Err(PaymentVerificationError::TransactionSimulation(
-            "FundPayment must be the last instruction".into(),
+            "FundPayment must be the last non-compute-budget instruction".into(),
         ));
     }
     Ok(())
@@ -644,7 +651,7 @@ pub async fn verify_transfer(
     })?;
     let fund_payment_idx =
         find_fund_payment_instruction_index(&transaction, escrow_config.program_id)?;
-    ensure_fund_payment_is_last_instruction(&transaction, fund_payment_idx)?;
+    ensure_fund_payment_is_last_non_compute_budget_instruction(&transaction, fund_payment_idx)?;
 
     let tx = TransactionInt::new(transaction.clone());
     let fund_instruction = tx
@@ -1092,7 +1099,9 @@ mod fund_payment_ix_tests {
                 &mint,
                 &token_program,
             ),
-            fund,
+            fund.clone(),
+            compute_budget_ix_set_limit(80_000),
+            compute_budget_ix_set_price(100_000),
         ];
         let tx = VersionedTransaction::from(Transaction::new_signed_with_payer(
             &ixs,
@@ -1102,12 +1111,35 @@ mod fund_payment_ix_tests {
         ));
 
         let idx = find_fund_payment_instruction_index(&tx, program_id).unwrap();
-        ensure_fund_payment_is_last_instruction(&tx, idx).unwrap();
-        assert_eq!(idx, tx.message.instructions().len() - 1);
+        ensure_fund_payment_is_last_non_compute_budget_instruction(&tx, idx).unwrap();
+        assert!(idx < tx.message.instructions().len() - 1);
+        assert_eq!(
+            verify_effective_compute_unit_limit(80_000, &tx).unwrap(),
+            80_000
+        );
     }
 
     #[test]
-    fn fund_payment_must_be_last_instruction() {
+    fn fund_payment_allows_trailing_compute_budget_anchor() {
+        let program_id = Pubkey::new_unique();
+        let fund = mock_fund_payment_ix(program_id);
+        let tx = tx_from_ixs(vec![
+            compute_budget_ix_set_limit(400_000),
+            compute_budget_ix_set_price(100_000),
+            fund,
+            compute_budget_ix_set_limit(80_000),
+            compute_budget_ix_set_price(100_000),
+        ]);
+        let idx = find_fund_payment_instruction_index(&tx, program_id).unwrap();
+        ensure_fund_payment_is_last_non_compute_budget_instruction(&tx, idx).unwrap();
+        assert_eq!(
+            verify_effective_compute_unit_limit(80_000, &tx).unwrap(),
+            80_000
+        );
+    }
+
+    #[test]
+    fn fund_payment_must_be_last_non_compute_budget_instruction() {
         let program_id = Pubkey::new_unique();
         let fund = mock_fund_payment_ix(program_id);
         let trailing = Instruction {
@@ -1119,9 +1151,9 @@ mod fund_payment_ix_tests {
         let idx = find_fund_payment_instruction_index(&tx, program_id).unwrap();
 
         assert!(matches!(
-            ensure_fund_payment_is_last_instruction(&tx, idx),
+            ensure_fund_payment_is_last_non_compute_budget_instruction(&tx, idx),
             Err(PaymentVerificationError::TransactionSimulation(msg))
-            if msg.contains("FundPayment must be the last instruction")
+            if msg.contains("FundPayment must be the last non-compute-budget instruction")
         ));
     }
 

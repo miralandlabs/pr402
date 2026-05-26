@@ -384,7 +384,7 @@ pub async fn send_settlement_tx(
         .await
         .map_err(|e| e.to_string())?;
 
-    let budget = TxBudget::SweepSpl;
+    let budget = TxBudget::EscrowSettle;
     let cu_limit = crate::util::tx_builder::compute_budget_ix_set_limit(budget.cu_limit());
     let cu_price = crate::util::tx_builder::compute_budget_ix_set_price(budget.cu_price());
 
@@ -497,7 +497,7 @@ pub async fn build_settle_tx_for_payment(
         .await
         .map_err(|e| e.to_string())?;
 
-    let budget = TxBudget::SweepSpl;
+    let budget = TxBudget::EscrowSettle;
     let cu_limit = crate::util::tx_builder::compute_budget_ix_set_limit(budget.cu_limit());
     let cu_price = crate::util::tx_builder::compute_budget_ix_set_price(budget.cu_price());
 
