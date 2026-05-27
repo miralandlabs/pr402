@@ -17,9 +17,9 @@
 //! **Instruction layout:** `[SetComputeUnitLimit, SetComputeUnitPrice, …optional ATA…, FundPayment]`
 //! (buyer-paid default). When **`facilitator_pays_transaction_fees: true`**, append trailing
 //! compute-budget ixs after `FundPayment` so verify still sees the facilitator ceiling after
-//! wallets prepend their own budget instructions. **Verify** enforces CU limits only on the
-//! facilitator-sponsored path; buyer-paid txs leave compute budget to the signing wallet.
-//! `FundPayment` must be the last **non-compute-budget** instruction.
+//! wallets prepend their own budget instructions. **Verify** enforces CU limits and
+//! FundPayment layout (last non-compute-budget instruction) only on the facilitator-sponsored
+//! path; buyer-paid txs leave compute budget and trailing instructions to the signing wallet.
 
 use std::str::FromStr;
 

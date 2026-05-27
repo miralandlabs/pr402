@@ -613,6 +613,20 @@ fn ensure_fund_payment_is_last_non_compute_budget_instruction(
     Ok(())
 }
 
+/// Enforce FundPayment layout only when the facilitator is the message fee payer
+/// (sponsored path). Buyer-paid txs leave trailing instructions to the signing wallet,
+/// aligned with [`verify_fund_payment_compute_budget_if_facilitator_sponsors`].
+fn verify_fund_payment_layout_if_facilitator_sponsors(
+    facilitator_sponsors_fees: bool,
+    transaction: &VersionedTransaction,
+    fund_payment_idx: usize,
+) -> Result<(), PaymentVerificationError> {
+    if !facilitator_sponsors_fees {
+        return Ok(());
+    }
+    ensure_fund_payment_is_last_non_compute_budget_instruction(transaction, fund_payment_idx)
+}
+
 /// Enforce facilitator CU ceiling only when the facilitator is the message fee payer
 /// (sponsored path, aligned with `exact`). Buyer-paid FundPayment txs leave compute budget
 /// to the wallet or agent that pays Solana fees.
@@ -678,7 +692,11 @@ pub async fn verify_transfer(
     })?;
     let fund_payment_idx =
         find_fund_payment_instruction_index(&transaction, escrow_config.program_id)?;
-    ensure_fund_payment_is_last_non_compute_budget_instruction(&transaction, fund_payment_idx)?;
+    verify_fund_payment_layout_if_facilitator_sponsors(
+        facilitator_sponsors_fees,
+        &transaction,
+        fund_payment_idx,
+    )?;
 
     let tx = TransactionInt::new(transaction.clone());
     let fund_instruction = tx
@@ -1163,6 +1181,21 @@ mod fund_payment_ix_tests {
         assert!(verify_effective_compute_unit_limit(80_000, &tx).is_err());
         assert!(verify_fund_payment_compute_budget_if_facilitator_sponsors(false, &tx).is_ok());
         assert!(verify_fund_payment_compute_budget_if_facilitator_sponsors(true, &tx).is_err());
+    }
+
+    #[test]
+    fn buyer_paid_fund_tx_skips_fund_last_layout_check() {
+        let program_id = Pubkey::new_unique();
+        let fund = mock_fund_payment_ix(program_id);
+        let trailing = Instruction {
+            program_id: Pubkey::new_unique(),
+            accounts: vec![],
+            data: vec![0],
+        };
+        let tx = tx_from_ixs(vec![fund, trailing]);
+        let idx = find_fund_payment_instruction_index(&tx, program_id).unwrap();
+        assert!(verify_fund_payment_layout_if_facilitator_sponsors(false, &tx, idx).is_ok());
+        assert!(verify_fund_payment_layout_if_facilitator_sponsors(true, &tx, idx).is_err());
     }
 
     #[test]
