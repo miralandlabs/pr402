@@ -4,6 +4,8 @@
 
 > **Status.** pr402 and the `exact` rail are live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). For `sla-escrow`, the `oracle_authority` on the payment is chosen by the seller — trust that authority explicitly before funding.
 
+> **Why pay through pr402?** **`sla-escrow` buyer protection** on Solana (not on CDP/x402.org facilitators), tx builders, open SDKs, **`preview.ipay.sh`** rehearsal. [Choosing x402 on Solana](/pr402-vs-alternatives.html) explains **facilitator vs buyer-tool** layers. The [`pay` CLI](https://pay.sh) is an optional buyer front-end — not where settlement runs.
+
 ## Install {#install}
 
 **Fastest path — use the published SDK.** One command does the whole loop below.
@@ -125,7 +127,7 @@ The seller forwards it to `/settle` and serves you the resource.
 
 **If anything fails with blockhash errors, go back to Step 3** — Solana blockhashes expire in ~60 seconds.
 
-**Full reference:** [API overview](/api-reference) · `{FACILITATOR}/openapi.json` · [Agent integration](/agent-integration) (or `GET /agent-integration.md` on the facilitator).
+**Full reference:** [API overview](/api-reference) · `{FACILITATOR}/openapi.json` · [Agent integration](/agent-integration) · [Choosing x402 on Solana](/pr402-vs-alternatives)
 
 ## Buyer launch checklist
 

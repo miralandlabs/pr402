@@ -10,6 +10,9 @@ hero:
     alt: pr402
   actions:
     - theme: brand
+      text: Start here · Seller
+      link: /start-here
+    - theme: alt
       text: Seller Quickstart
       link: /seller-quick-start
     - theme: alt
@@ -24,13 +27,17 @@ hero:
 
 features:
   - title: Sellers / Resource Providers
-    details: "UniversalSettle split-vault onboarding, sovereign discount, optional signed registry, SLA-Escrow bank metadata. Monetize an API in about 30 minutes."
-    link: /seller-quick-start
-    linkText: Seller Quickstart
+    details: "New seller? Start with the checklist (prerequisites, pick exact vs sla-escrow, six steps). Then the 30-minute quickstart for code samples."
+    link: /start-here
+    linkText: Start here · Seller checklist
   - title: Buyers / Payer Agents
-    details: "`npm i @pr402/client` or `cargo install pr402-client`. Both ship a `pr402-buy` CLI that delegates transaction assembly to pr402's `/build-*-payment-tx` endpoints — you sign once, the facilitator handles CU limits, token programs, and vault math."
+    details: "`sla-escrow` escrow protection, facilitator tx builders, and open SDKs. Optional rehearsal on preview.ipay.sh. See how pr402 compares to CDP and pay.sh."
     link: /quickstart-buyer
     linkText: Buyer Quickstart
+  - title: Choosing x402 on Solana
+    details: "Facilitators (pr402 · CDP · x402.org) vs buyer tools (pay CLI). Two layers — compare the right one for your job."
+    link: /pr402-vs-alternatives
+    linkText: Facilitators & buyer tools
   - title: Agent integration
     details: "Canonical runbook for sellers and buyers — schemes, headers, mint allowlists, pr402 vs the generic x402 spec. Pairs with OpenAPI 3.1 for precise schemas."
     link: /agent-integration

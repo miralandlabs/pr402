@@ -12,6 +12,8 @@ export default defineConfig({
 
     nav: [
       { text: 'Home', link: '/' },
+      { text: 'Start here', link: '/start-here' },
+      { text: 'Why pr402?', link: '/pr402-vs-alternatives' },
       { text: 'Seller Quickstart', link: '/seller-quick-start' },
       { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
       { text: 'Agent Integration', link: '/agent-integration' },
@@ -28,9 +30,11 @@ export default defineConfig({
       {
         text: 'Getting Started',
         items: [
+          { text: 'Start here · Seller checklist', link: '/start-here' },
           { text: 'Seller Quickstart', link: '/seller-quick-start' },
           { text: 'Seller shortcut · 5 steps', link: '/quickstart-seller' },
           { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
+          { text: 'Choosing x402 on Solana', link: '/pr402-vs-alternatives' },
           { text: 'Onboarding Guide', link: '/onboarding_guide' },
         ],
       },
