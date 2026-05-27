@@ -613,6 +613,23 @@ fn ensure_fund_payment_is_last_non_compute_budget_instruction(
     Ok(())
 }
 
+/// Enforce facilitator CU ceiling only when the facilitator is the message fee payer
+/// (sponsored path, aligned with `exact`). Buyer-paid FundPayment txs leave compute budget
+/// to the wallet or agent that pays Solana fees.
+fn verify_fund_payment_compute_budget_if_facilitator_sponsors(
+    facilitator_sponsors_fees: bool,
+    transaction: &VersionedTransaction,
+) -> Result<(), PaymentVerificationError> {
+    if !facilitator_sponsors_fees {
+        return Ok(());
+    }
+    let budget = crate::chain::TxBudget::FundPayment;
+    let _compute_units =
+        verify_effective_compute_unit_limit(budget.cu_limit(), transaction)?;
+    verify_effective_compute_unit_price(budget.cu_price(), transaction)?;
+    Ok(())
+}
+
 /// Verify a v2 escrow transfer request.
 pub async fn verify_transfer(
     provider: &SolanaChainProvider,
@@ -642,9 +659,20 @@ pub async fn verify_transfer(
     reject_versioned_tx_with_address_lookup_tables(&transaction)
         .map_err(PaymentVerificationError::InvalidFormat)?;
 
-    let budget = crate::chain::TxBudget::FundPayment;
-    let _compute_units = verify_effective_compute_unit_limit(budget.cu_limit(), &transaction)?;
-    verify_effective_compute_unit_price(budget.cu_price(), &transaction)?;
+    let fee_payer_pubkey = provider.pubkey();
+    let message_fee_payer = transaction
+        .message
+        .static_account_keys()
+        .first()
+        .copied()
+        .ok_or_else(|| {
+            PaymentVerificationError::TransactionSimulation("missing fee payer key".into())
+        })?;
+    let facilitator_sponsors_fees = message_fee_payer == fee_payer_pubkey;
+    verify_fund_payment_compute_budget_if_facilitator_sponsors(
+        facilitator_sponsors_fees,
+        &transaction,
+    )?;
 
     let escrow_config = provider.sla_escrow().ok_or_else(|| {
         PaymentVerificationError::TransactionSimulation("SLA Escrow not configured".into())
@@ -776,17 +804,6 @@ pub async fn verify_transfer(
     let buyer_pubkey = fund_instruction
         .account(0)
         .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
-
-    let fee_payer_pubkey = provider.pubkey();
-    let message_fee_payer = transaction
-        .message
-        .static_account_keys()
-        .first()
-        .copied()
-        .ok_or_else(|| {
-            PaymentVerificationError::TransactionSimulation("missing fee payer key".into())
-        })?;
-    let facilitator_sponsors_fees = message_fee_payer == fee_payer_pubkey;
 
     for instruction in transaction.message.instructions().iter() {
         for account_idx in instruction.accounts.iter() {
@@ -1132,10 +1149,21 @@ mod fund_payment_ix_tests {
         ]);
         let idx = find_fund_payment_instruction_index(&tx, program_id).unwrap();
         ensure_fund_payment_is_last_non_compute_budget_instruction(&tx, idx).unwrap();
-        assert_eq!(
-            verify_effective_compute_unit_limit(80_000, &tx).unwrap(),
-            80_000
-        );
+        assert!(verify_fund_payment_compute_budget_if_facilitator_sponsors(true, &tx).is_ok());
+        assert!(verify_fund_payment_compute_budget_if_facilitator_sponsors(false, &tx).is_ok());
+    }
+
+    #[test]
+    fn buyer_paid_fund_tx_skips_facilitator_compute_budget_ceiling() {
+        let program_id = Pubkey::new_unique();
+        let tx = tx_from_ixs(vec![
+            compute_budget_ix_set_limit(400_000),
+            compute_budget_ix_set_price(100_000),
+            mock_fund_payment_ix(program_id),
+        ]);
+        assert!(verify_effective_compute_unit_limit(80_000, &tx).is_err());
+        assert!(verify_fund_payment_compute_budget_if_facilitator_sponsors(false, &tx).is_ok());
+        assert!(verify_fund_payment_compute_budget_if_facilitator_sponsors(true, &tx).is_err());
     }
 
     #[test]
