@@ -926,22 +926,10 @@ fn extract_escrow_audit_metadata(
     let transaction = decode_versioned_transaction_from_bincode(bytes.as_slice())
         .map_err(|e| -> Box<dyn Error + Send + Sync> { e.into() })?;
 
-    // Find FundPayment instruction
-    let is_spl_token = requirements.asset.pubkey() != &Pubkey::default();
-    let num_instr = transaction.message.instructions().len();
-    let fund_idx = if num_instr == 3 {
-        2
-    } else if num_instr == 4 && is_spl_token {
-        3
-    } else {
-        0
-    };
+    let fund_idx = find_fund_payment_instruction_index(&transaction, escrow_config.program_id)
+        .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
 
     let instructions = transaction.message.instructions();
-    if fund_idx >= instructions.len() {
-        return Err("FundPayment index out of bounds".into());
-    }
-
     let instr_data = instructions[fund_idx].data.as_slice();
     if instr_data.is_empty() || instr_data[0] != EscrowInstruction::FundPayment as u8 {
         return Err("invalid or missing FundPayment discriminator".into());
