@@ -26,8 +26,7 @@ Other x402 facilitators exist (notably [Coinbase CDP](https://docs.cdp.coinbase.
 | **`sla-escrow` on Devnet** | **Yes** | **`exact` only** on Solana | N/A |
 | Seller lifecycle UI on Devnet | **Yes** | No | No |
 
-**Bottom line:** Devnet testing is not unique; a **full production mirror** (both rails, seller UI, one-URL migration) is.
-
+Preview rehearsal is a **full production mirror** (including both rails, the seller UI and one-URL migration), so you can test it without risking your real SOL or USDC on Solana Mainnet.
 ---
 
 ### For sellers (resource providers)
@@ -37,7 +36,7 @@ Other x402 facilitators exist (notably [Coinbase CDP](https://docs.cdp.coinbase.
 | **No chain code in your API** | Return 402, forward `PAYMENT-SIGNATURE` to `/settle`. pr402 verifies and executes on-chain. |
 | **`/upgrade` + discovery** | No hand-built `extra` or vault PDA math — facilitator injects institutional `accepts[]`. |
 | **Two settlement rails** | **`exact`** (UniversalSettle, instant) and **`sla-escrow`** (on-chain escrow + oracle). CDP/x402.org Solana today is **`exact` only**. |
-| **Sovereign fee tier** | Self-provision via **Activate** (~0.1 SOL) → **90 bps** protocol fee vs **100 bps** JIT standard on `exact`. |
+| **Sovereign fee tier** | Self-provision via **Activate** qualifies **90 bps** protocol fee tier vs **100 bps** JIT standard on `exact`. |
 | **Blockhash-safe `/settle`** | Verification runs inside `/settle` before broadcast — avoids verify→deliver→settle gaps that break on Solana (~60s blockhash). |
 | **SplitVault `payTo` model** | Buyers pay program PDAs, not your bare wallet — enforced by UniversalSettle + facilitator verify. |
 | **Honest fee floors** | $0.01 min on `exact`, $0.10 on `sla-escrow` protocol fee — we do not subsidize sub-cent micro-payments like some large facilitators. |
@@ -71,7 +70,7 @@ Other x402 facilitators exist (notably [Coinbase CDP](https://docs.cdp.coinbase.
 | **Built-in operator option** | pr402 deployments may operate **`x402/oracles/onchain-transfer/v1`** as a default for SPL transfer delivery; other profiles are ecosystem-operated. Listing via [register-oracle](https://github.com/miralandlabs/pr402/issues/new?template=register-oracle.md) is configuration consistency, not reliability endorsement. |
 | **Full pipeline in the template** | Chain monitor → hash-bound SLA/delivery registry → evaluate → settle — documented in the oracles repo ([Seller guide](https://github.com/miraland-labs/oracles/blob/main/docs/SELLER_GUIDE.md), [Buyer guide](https://github.com/miraland-labs/oracles/blob/main/docs/BUYER_GUIDE.md)). |
 
-**Oracle rehearsal:** run your binary against **Devnet** while sellers/buyers use **`preview.ipay.sh`** — same profile ids and escrow program as Mainnet.
+**Oracle rehearsal:** run your binary against **Devnet** while sellers/buyers use **`preview.ipay.sh`** — same profile ids and escrow program logic as Mainnet.
 
 **Full comparison guide:** [Choosing x402 on Solana](/pr402-vs-alternatives.html) (facilitators vs buyer tools — `pay` CLI is not a facilitator peer)
 
