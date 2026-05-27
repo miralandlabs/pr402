@@ -139,7 +139,7 @@ export class X402AgentClient {
     if (!capUrl)
       throw new X402Error(
         'MISSING_CAPABILITIES_URL',
-        'This 402-gated resource did not provide extra.capabilitiesUrl. The Resource Provider has not completed Facilitator integration. See docs/SELLER_INTEGRATION.md.'
+        'This 402-gated resource did not provide extra.capabilitiesUrl. The Resource Provider has not completed Facilitator integration. See public/onboarding_guide.md (GET /onboarding_guide.md on the facilitator host).'
       );
 
     // ── Step 2: Ask Facilitator to build the tx ─────────────────────
