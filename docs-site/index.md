@@ -10,6 +10,9 @@ hero:
     alt: pr402
   actions:
     - theme: brand
+      text: Start here · Seller
+      link: /start-here
+    - theme: alt
       text: Seller Quickstart
       link: /seller-quick-start
     - theme: alt
@@ -24,9 +27,9 @@ hero:
 
 features:
   - title: Sellers / Resource Providers
-    details: "UniversalSettle split-vault onboarding, sovereign discount, optional signed registry, SLA-Escrow bank metadata. Monetize an API in about 30 minutes."
-    link: /seller-quick-start
-    linkText: Seller Quickstart
+    details: "New seller? Start with the checklist (prerequisites, pick exact vs sla-escrow, six steps). Then the 30-minute quickstart for code samples."
+    link: /start-here
+    linkText: Start here · Seller checklist
   - title: Buyers / Payer Agents
     details: "`npm i @pr402/client` or `cargo install pr402-client`. Both ship a `pr402-buy` CLI that delegates transaction assembly to pr402's `/build-*-payment-tx` endpoints — you sign once, the facilitator handles CU limits, token programs, and vault math."
     link: /quickstart-buyer
