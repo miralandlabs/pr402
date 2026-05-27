@@ -74,7 +74,9 @@ Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blo
 | Integration | What to use |
 |-------------|-------------|
 | **Installable SDK (fastest)** | `npm i @pr402/client` (Node ≥ 18) or `cargo install pr402-client` (Rust). Both ship library types (`X402AgentClient`) and a `pr402-buy` CLI. One command: `pr402-buy --resource <url> --payer <keypair.json> --mint <mint>`. |
-| **Step-by-step protocol** | **[`public/agent-integration.md`](public/agent-integration.md)** (same static pattern as `openapi.json`; **`GET /agent-integration.md`**). Stub: [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). |
+| **Step-by-step protocol** | **[`public/agent-integration.md`](public/agent-integration.md)** (same static pattern as `openapi.json`; **`GET /agent-integration.md`**). In-repo stub: [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). |
+| **Seller onboarding** | **[`public/onboarding_guide.md`](public/onboarding_guide.md)** (`GET /onboarding_guide.md`). In-repo stub: [`docs/SELLER_INTEGRATION.md`](docs/SELLER_INTEGRATION.md). |
+| **Ops / recovery** | [`docs/CRON_OPERATIONS.md`](docs/CRON_OPERATIONS.md), [`docs/OPS_RECOVERY_PLAYBOOK.md`](docs/OPS_RECOVERY_PLAYBOOK.md) |
 | **Schema / codegen** | **`GET /openapi.json`** on the facilitator base URL (see `capabilities.httpEndpoints.openApi`). |
 | **Other stacks** | Call the same HTTPS paths; bodies match OpenAPI (`BuildExactPaymentTxRequest`, `X402V2VerifySettleBody`, …). The zero-dependency file [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts) and Rust `facilitator-http` feature on [`src/sdk/http.rs`](src/sdk/http.rs) remain as alternatives for environments that cannot install packages. |
 
@@ -97,6 +99,7 @@ Two settlement patterns (x402 v2):
 ---
 
 ## 📁 Project Structure
+- **Maintainer / operator docs:** [`docs/`](docs/) — cron ops, recovery playbook, sla-escrow technical notes ([`docs/README.md`](docs/README.md)).
 - **Buyer SDKs:** installable as [`@pr402/client`](https://www.npmjs.com/package/@pr402/client) (npm) and [`pr402-client`](https://crates.io/crates/pr402-client) (crates.io); both ship `pr402-buy`. Source: [`sdk/ts/`](sdk/ts/) and [`sdk/rust/`](sdk/rust/). Zero-dependency alternative for other stacks: [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts).
 - [`src/bin/facilitator.rs`](src/bin/facilitator.rs) — Vercel serverless entrypoint handling HTTP requests.
 - [`src/chain/`](src/chain/) — Solana-specific chain provider and instruction builders for UniversalSettle and SLA-Escrow.

@@ -1,7 +1,6 @@
 target/
 node_modules/
 dist/
-docs/
 # Cargo.lock
 .env
 .env.*
