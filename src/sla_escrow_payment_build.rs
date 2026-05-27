@@ -14,11 +14,12 @@
 //! **FundPayment principal** (tokens debited from the buyer’s source ATA into escrow) is always paid
 //! by the buyer; only **who pays SOL for the transaction** is toggled above.
 //!
-//! **Instruction layout:** `[SetComputeUnitLimit, SetComputeUnitPrice, …optional ATA…, FundPayment,
-//! SetComputeUnitLimit, SetComputeUnitPrice]`. Leading budget ixs are the buyer-facing defaults;
-//! trailing budget ixs are a wallet-signing anchor so verify sees the facilitator ceiling after
-//! wallets prepend their own compute-budget instructions. Verify requires `FundPayment` to be the
-//! last **non-compute-budget** instruction.
+//! **Instruction layout:** `[SetComputeUnitLimit, SetComputeUnitPrice, …optional ATA…, FundPayment]`
+//! (buyer-paid default). When **`facilitator_pays_transaction_fees: true`**, append trailing
+//! compute-budget ixs after `FundPayment` so verify still sees the facilitator ceiling after
+//! wallets prepend their own budget instructions. **Verify** enforces CU limits only on the
+//! facilitator-sponsored path; buyer-paid txs leave compute budget to the signing wallet.
+//! `FundPayment` must be the last **non-compute-budget** instruction.
 
 use std::str::FromStr;
 
@@ -677,11 +678,13 @@ pub async fn build_sla_escrow_fund_payment_tx(
         token_program,
     );
     ixs.push(fund_ix);
-    // Trailing compute-budget anchor: wallets often replace the leading budget ixs with
-    // ~400k CU. Solana uses the *last* SetComputeUnitLimit — append ours after FundPayment
-    // so verify still sees the facilitator ceiling after wallet sign.
-    ixs.push(compute_budget_ix_set_limit(budget.cu_limit()));
-    ixs.push(compute_budget_ix_set_price(budget.cu_price()));
+    if req.facilitator_pays_transaction_fees {
+        // Wallets often replace leading budget ixs with ~400k CU. Solana uses the *last*
+        // SetComputeUnitLimit — append facilitator ceiling after FundPayment so verify
+        // (facilitator-sponsored path only) still sees our budget after wallet sign.
+        ixs.push(compute_budget_ix_set_limit(budget.cu_limit()));
+        ixs.push(compute_budget_ix_set_price(budget.cu_price()));
+    }
 
     let fee_payer_pk = if req.facilitator_pays_transaction_fees {
         provider.fee_payer()
