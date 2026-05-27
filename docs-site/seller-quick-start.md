@@ -23,7 +23,9 @@ title: "Seller Quick Start: Monetize Your API with x402"
 
 > **Status.** pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). Behavior, feature flags, and fee parameters can evolve — treat **`GET /capabilities`** and **`GET /openapi.json`** on the host you actually call as the live contract.
 
-Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**. Target **Mainnet** (`https://ipay.sh`) for production; use **`https://preview.ipay.sh`** only if you want a Devnet rehearsal first ([Start here](/start-here.html)).
+Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**. Target **Mainnet** (`https://ipay.sh`) for production; use **`https://preview.ipay.sh`** only if you want a Devnet rehearsal first ([Start here](/start-here.html#why-pr402-true-differentiators)).
+
+> **Why pr402?** Paired **Mainnet ↔ Devnet** hosts, **`sla-escrow`** (not on CDP/x402.org Solana), sovereign fee tier, `/upgrade` without PDA math. [Choosing x402 on Solana](/pr402-vs-alternatives.html) · [Short differentiators](/start-here.html#why-pr402-true-differentiators).
 
 ---
 
