@@ -14,15 +14,15 @@ title: "Start here · Seller checklist"
 
 ## Why pr402? · True differentiators
 
-Other x402 facilitators exist (notably [Coinbase CDP](https://docs.cdp.coinbase.com/x402/network-support) and [x402.org](https://x402.org/facilitator)). Solana Foundation’s [`pay` CLI](https://pay.sh) is a **buyer client**, not a facilitator like `ipay.sh` — see [Choosing x402 on Solana](/pr402-vs-alternatives.html). Summary of pr402-specific strengths below.
+Other x402 facilitators exist (notably [Coinbase CDP](https://docs.cdp.coinbase.com/x402/network-support) and [x402.org](https://x402.org/facilitator)). Solana Foundation’s [`pay` CLI](https://pay.sh) is a **buyer client**, not a facilitator like [`ipay.sh`](https://ipay.sh) — see [Choosing x402 on Solana](/pr402-vs-alternatives.html). Summary of pr402-specific strengths below.
 
-### Preview rehearsal (`preview.ipay.sh`)
+### Preview rehearsal ([`preview.ipay.sh`](https://preview.ipay.sh))
 
 | | **pr402** | **CDP / x402.org** (facilitators) | **`pay` CLI** (buyer client) |
 |---|---|---|---|
 | Solana Devnet for x402 | Yes | Yes | Demos / local tooling only |
 | Paired prod ↔ preview hostnames | **`ipay.sh` ↔ `preview.ipay.sh`** | CDP: one URL + `network`; x402.org: testnet URL | N/A — not a facilitator |
-| Signup for public Devnet | **No** (preview.ipay.sh) | CDP: API keys; x402.org: no signup | N/A |
+| Signup required for public Devnet | **No** (just access [preview.ipay.sh](https://preview.ipay.sh)) | CDP: API keys; x402.org: no signup | N/A |
 | **`sla-escrow` on Devnet** | **Yes** | **`exact` only** on Solana | N/A |
 | Seller lifecycle UI on Devnet | **Yes** | No | No |
 
@@ -42,7 +42,7 @@ Other x402 facilitators exist (notably [Coinbase CDP](https://docs.cdp.coinbase.
 | **SplitVault `payTo` model** | Buyers pay program PDAs, not your bare wallet — enforced by UniversalSettle + facilitator verify. |
 | **Honest fee floors** | $0.01 min on `exact`, $0.10 on `sla-escrow` protocol fee — we do not subsidize sub-cent micro-payments like some large facilitators. |
 
-**Seller rehearsal path:** integrate on **`https://preview.ipay.sh`**, then switch to **`https://ipay.sh`** and re-run `/upgrade` for Mainnet mints/PDAs.
+**Seller rehearsal path:** integrate on **[`https://preview.ipay.sh`](https://preview.ipay.sh)**, then switch to **[`https://ipay.sh`](https://ipay.sh)** and re-run `/upgrade` for Mainnet mints/PDAs.
 
 ---
 
