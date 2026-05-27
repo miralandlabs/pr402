@@ -624,8 +624,7 @@ fn verify_fund_payment_compute_budget_if_facilitator_sponsors(
         return Ok(());
     }
     let budget = crate::chain::TxBudget::FundPayment;
-    let _compute_units =
-        verify_effective_compute_unit_limit(budget.cu_limit(), transaction)?;
+    let _compute_units = verify_effective_compute_unit_limit(budget.cu_limit(), transaction)?;
     verify_effective_compute_unit_price(budget.cu_price(), transaction)?;
     Ok(())
 }
