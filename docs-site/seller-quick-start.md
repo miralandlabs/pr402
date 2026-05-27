@@ -14,6 +14,7 @@ title: "Seller Quick Start: Monetize Your API with x402"
 >
 > | When you want… | Read |
 > |---|---|
+> | Prerequisites, fees, pick exact vs sla-escrow, numbered checklist | [Start here · Seller checklist](/start-here.html) |
 > | A 30-minute walkthrough with language examples (Rust / Python / JS / Go) | **This page** |
 > | A 5-step cheat-sheet after you already know the flow | [Seller shortcut · 5 steps](/quickstart-seller.html) |
 > | Deep dive on sovereign fees, JIT provisioning, one-asset-per-wallet policy | [Onboarding guide](/onboarding_guide.html) |
@@ -22,7 +23,51 @@ title: "Seller Quick Start: Monetize Your API with x402"
 
 > **Status.** pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). Behavior, feature flags, and fee parameters can evolve — treat **`GET /capabilities`** and **`GET /openapi.json`** on the host you actually call as the live contract.
 
-Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**.
+Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**. Target **Mainnet** (`https://ipay.sh`) for production; use **`https://preview.ipay.sh`** only if you want a Devnet rehearsal first ([Start here](/start-here.html)).
+
+---
+
+## Two rails · why `sla-escrow` matters for buyers
+
+| | **`exact`** (UniversalSettle) | **`sla-escrow`** (SLA-Escrow) |
+|---|---|---|
+| **Settlement** | Instant — buyer pays, you deliver | Funds held in on-chain escrow until terms met or oracle verdict |
+| **Best for** | API calls, instant access (~5¢+ per call) | High-value or slow fulfillment (shipping, custom work, SLAs) |
+| **Buyer protection** | Standard x402 instant pay model | **Escrow + oracle** — refund/release paths enforced on-chain |
+| **Elsewhere in x402** | Common among facilitators | **pr402-only today** — no standard x402 facilitator offers equivalent escrow protection |
+
+Most sellers start with **`exact`**. Offer **`sla-escrow`** when buyers need assurance that payment is not released until delivery — that buyer trust is a seller differentiator, not just extra integration work.
+
+---
+
+## Protocol fees & pricing
+
+Treat **`GET $BASE/api/v1/facilitator/capabilities`** as authoritative. Snapshot for the live **ipay.sh** deployment:
+
+| | **`exact`** | **`sla-escrow`** |
+|---|---|---|
+| **Standard protocol fee** | **100 bps** (1.00%) | **100 bps** (1.00%) |
+| **Sovereign protocol fee** | **90 bps** (0.90%) after **Activate** on [ipay.sh](https://ipay.sh) | — |
+| **Minimum protocol fee (USDC)** | **$0.01** | **$0.10** |
+| **Oracle tip** | none | **100 bps** on verdict (no floor) |
+
+**`exact` floor math (USDC):** fee = max(1% × amount, $0.01).
+
+| Price per call | Protocol fee | Fee as % of revenue |
+|---|---|---|
+| $0.01 | $0.01 | 100% |
+| $0.02 | $0.01 | 50% |
+| $0.05 | $0.01 | 20% |
+| $0.10+ | scales with 1% | ≤ 10% and falling |
+
+**Draft pricing guidance:**
+
+- **`exact`:** aim for **≥ ~$0.05 USDC** per call. Below **~$0.02**, more than half of revenue can go to protocol fees. pr402 does not fully subsidize tx gas like some large facilitators; the **1 cent** floor covers operating cost.
+- **`sla-escrow`:** aim for **≥ ~$10 USDC** per payment. Smaller tickets → use **`exact`**.
+
+**Sovereign discount:** Self-provision via **Activate** (~**0.1 SOL** one-time) drops `exact` protocol fee from 100 bps → 90 bps. Skip Activate and pr402 **JIT-provisions** on first settle at 100 bps — your choice.
+
+Full checklist: [Start here · Seller checklist](/start-here.html).
 
 ---
 

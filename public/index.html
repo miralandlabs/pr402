@@ -1050,8 +1050,10 @@
                     pr402 is the REST bridge between off-chain agents speaking
                     JSON and on-chain programs speaking Solana instructions. Two
                     rails: <code>exact</code> (UniversalSettle) for instant
-                    micro-payments, <code>sla-escrow</code>(SLA-Escrow) for
-                    oracle-backed long-running work.
+                    payments, <code>sla-escrow</code> (SLA-Escrow) for
+                    oracle-backed delivery with <strong>buyer escrow
+                    protection</strong> — a capability standard x402
+                    facilitators do not offer today.
                 </p>
                 <nav class="top">
                     <a
@@ -1204,6 +1206,34 @@
                             >/capabilities</a
                         >
                         for the authoritative live values.
+                    </p>
+                    <p class="fee-schedule-footnote">
+                        <strong>Seller pricing (draft guide).</strong>
+                        Protocol fee = max(bps × amount, floor). On
+                        <code>exact</code>, a <code>$0.01</code> floor means a
+                        <code>$0.02</code> call pays 50% in fees and a
+                        <code>$0.05</code> call pays 20% — aim for
+                        <strong>≥ ~$0.05 USDC</strong> per call. pr402 does not
+                        subsidize sub-cent micro-payments the way some large
+                        facilitators do; the floor covers operating cost. On
+                        <code>sla-escrow</code>, protocol floor is
+                        <code>$0.10</code> plus oracle tip — aim for
+                        <strong>≥ ~$10 USDC</strong> per payment; use
+                        <code>exact</code> for smaller tickets.
+                        <strong>Activate</strong> (self-provision on this page)
+                        lowers <code>exact</code> protocol fee from 100 bps to
+                        90 bps; ~0.1 SOL in your wallet covers the one-time
+                        on-chain setup.
+                    </p>
+                    <p class="fee-schedule-footnote">
+                        <strong>Buyer value · sla-escrow.</strong> Funds stay in
+                        on-chain escrow until delivery terms are met or an oracle
+                        rules — refund and release paths are program-enforced.
+                        Standard x402 facilitators today settle instantly on
+                        <code>exact</code>-style rails only; pr402’s
+                        <code>sla-escrow</code> rail is the escrow option for
+                        buyers who need protection on high-value or slow
+                        fulfillment work.
                     </p>
                 </section>
 
@@ -1503,9 +1533,10 @@
                         <h3>Monetize an API in ~30 min</h3>
                         <p>
                             UniversalSettle split-vault onboarding, sovereign
-                            discount path, optional signed registry. Your 402
-                            <code>payTo</code> must be a program PDA — not a
-                            bare wallet.
+                            discount path, optional signed registry.
+                            <code>sla-escrow</code> for buyer escrow protection
+                            (pr402-only). Your 402 <code>payTo</code> must be a
+                            program PDA — not a bare wallet.
                         </p>
                         <ul>
                             <li>
@@ -1546,6 +1577,9 @@
                             unsigned-tx builder, sign locally, then
                             <code>POST /verify</code> and
                             <code>POST /settle</code> with the same JSON body.
+                            On <code>sla-escrow</code>, funds stay in on-chain
+                            escrow until delivery or an oracle verdict — buyer
+                            protection other x402 facilitators do not offer.
                         </p>
                         <ul>
                             <li>
