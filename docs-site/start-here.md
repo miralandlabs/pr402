@@ -26,7 +26,8 @@ Other x402 facilitators exist (notably [Coinbase CDP](https://docs.cdp.coinbase.
 | **`sla-escrow` on Devnet** | **Yes** | **`exact` only** on Solana | N/A |
 | Seller lifecycle UI on Devnet | **Yes** | No | No |
 
-Preview rehearsal is a **full production mirror** (including both rails, the seller UI and one-URL migration), so you can test it without risking your real SOL or USDC on Solana Mainnet.
+**Preview rehearsal** is a full production mirror (including both rails, the seller UI and one-URL migration), so you can test it without risking your real SOL or USDC on Solana Mainnet.
+
 ---
 
 ### For sellers (resource providers)
