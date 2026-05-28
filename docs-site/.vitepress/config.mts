@@ -15,6 +15,7 @@ export default defineConfig({
       { text: 'Start here', link: '/start-here' },
       { text: 'Integrate (sellers)', link: '/seller-quick-start' },
       { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
+      { text: 'Connect Cursor', link: '/connect-cursor-to-pr402' },
       { text: 'Why pr402?', link: '/pr402-vs-alternatives' },
       { text: 'Agent Integration', link: '/agent-integration' },
       { text: 'API Reference', link: '/api-reference' },
@@ -39,6 +40,7 @@ export default defineConfig({
         text: 'For buyers',
         items: [
           { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
+          { text: 'Connect Cursor to pr402', link: '/connect-cursor-to-pr402' },
         ],
       },
       {
