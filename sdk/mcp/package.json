@@ -1,7 +1,7 @@
 {
   "name": "@pr402/mcp-server",
   "version": "0.1.0",
-  "description": "MCP server wrapping pr402 facilitator HTTP via @pr402/client — buyer and seller tools.",
+  "description": "MCP server for pr402 on Solana — buyer auto-pay and seller facilitator tools via @pr402/client.",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
   "type": "commonjs",
@@ -14,11 +14,12 @@
   ],
   "scripts": {
     "build": "tsc",
-    "postbuild": "node -e \"require('fs').chmodSync('dist/server.js', 0o755)\""
+    "postbuild": "node -e \"require('fs').chmodSync('dist/server.js', 0o755)\"",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@pr402/client": "file:../ts",
+    "@pr402/client": "^0.3.0",
     "@solana/web3.js": "^1.87.0"
   },
   "devDependencies": {
@@ -28,9 +29,28 @@
   "engines": {
     "node": ">=18"
   },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "x402",
+    "solana",
+    "pr402",
+    "usdc",
+    "ai-agents",
+    "cursor",
+    "facilitator"
+  ],
   "license": "Apache-2.0",
+  "homepage": "https://github.com/miralandlabs/pr402/tree/main/sdk/mcp#readme",
+  "bugs": {
+    "url": "https://github.com/miralandlabs/pr402/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/miralandlabs/pr402"
+    "url": "git+https://github.com/miralandlabs/pr402.git",
+    "directory": "sdk/mcp"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

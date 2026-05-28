@@ -25,6 +25,26 @@
       "source": "/api/v1/facilitator/agent-payTo-semantics.json",
       "destination": "/agent-payTo-semantics.json",
       "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/agent-tools.json",
+      "destination": "/agent-tools.json",
+      "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/seller-endpoint-guide.json",
+      "destination": "/seller-endpoint-guide.json",
+      "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/quickstart-buyer.md",
+      "destination": "/quickstart-buyer.md",
+      "permanent": false
+    },
+    {
+      "source": "/api/v1/facilitator/quickstart-seller.md",
+      "destination": "/quickstart-seller.md",
+      "permanent": false
     }
   ],
   "builds": [
@@ -80,6 +100,22 @@
     {
       "src": "/agent-payTo-semantics.json",
       "dest": "/public/agent-payTo-semantics.json"
+    },
+    {
+      "src": "/agent-tools.json",
+      "dest": "/public/agent-tools.json"
+    },
+    {
+      "src": "/seller-endpoint-guide.json",
+      "dest": "/public/seller-endpoint-guide.json"
+    },
+    {
+      "src": "/quickstart-buyer.md",
+      "dest": "/public/quickstart-buyer.md"
+    },
+    {
+      "src": "/quickstart-seller.md",
+      "dest": "/public/quickstart-seller.md"
     },
     {
       "src": "/seller-quick-start.md",

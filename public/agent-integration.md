@@ -204,9 +204,44 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 
 ## Buyer agents (payers)
 
-> **Fastest path.** Install the SDK and call one command:
-> `npm i -g @pr402/client && pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>`
-> or `cargo install pr402-client` for the Rust binary. Both ship `pr402-buy`, and both also expose a library (`X402AgentClient`) for embedding. The sections below document the protocol underneath — read them when implementing from scratch, debugging the CLI, or integrating in a language without a published SDK.
+> **Pick your stack**
+
+| You use… | Install | Best for |
+|----------|---------|----------|
+| **Cursor / Claude Desktop / MCP host** | `npx -y @pr402/mcp-server` | Tool `pr402_pay_http_resource` + seller MCP tools. Config: [`/agent-tools.json`](/agent-tools.json). |
+| **Node script or embed** | `npm i @pr402/client` | `pr402-buy` CLI or `X402AgentClient.fetchWithAutoPay`. |
+| **Python LangChain** | `pip install langchain-pr402` | `X402GetTool` / `X402PostTool` — [PyPI](https://pypi.org/project/langchain-pr402/). |
+| **Rust** | `cargo install pr402-client` | `pr402-buy` binary + library. |
+
+> **Fastest CLI path:** `npm i -g @pr402/client && pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>` (or `cargo install pr402-client`). The sections below document the protocol underneath — read them when implementing from scratch, debugging the CLI, or integrating in a language without a published SDK.
+
+### MCP hosts (Cursor, Claude Desktop)
+
+**Package:** [`@pr402/mcp-server`](https://www.npmjs.com/package/@pr402/mcp-server) (stdio MCP adapter over `@pr402/client`).
+
+1. **Install:** `npm install -g @pr402/mcp-server` or `npx -y @pr402/mcp-server`.
+2. **Configure** (project `.cursor/mcp.json` or Claude Desktop `mcpServers`):
+
+```json
+{
+  "mcpServers": {
+    "pr402": {
+      "command": "npx",
+      "args": ["-y", "@pr402/mcp-server"],
+      "env": {
+        "PR402_FACILITATOR_URL": "https://preview.ipay.sh",
+        "PR402_PAYER_KEYPAIR_JSON": "/absolute/path/to/buyer-keypair.json"
+      }
+    }
+  }
+}
+```
+
+3. **Devnet:** use `https://preview.ipay.sh` and a funded Devnet keypair. **Mainnet:** `https://ipay.sh`.
+4. **Tools:** buyer — `pr402_get_capabilities`, `pr402_build_exact_payment`, `pr402_pay_http_resource`; seller — `pr402_seller_preview`, `pr402_seller_rail_info`, `pr402_seller_provision_tx`, `pr402_enrich_payment_required`.
+5. **Machine-readable catalog:** `GET /agent-tools.json` on your facilitator host.
+
+Example Cursor config: [x402-buyer-starter `examples/mcp/cursor-mcp.json`](https://github.com/miraland-labs/x402-buyer-starter/blob/main/examples/mcp/cursor-mcp.json). Source: `pr402/sdk/mcp/README.md`.
 
 > **Discover sellers.** `GET /api/v1/facilitator/providers` returns the public directory of verified, opted-in sellers (paginated via `?limit=&cursor=`). Each entry carries `serviceUrl`, `tags[]`, `displayName`, and the settlement rail pubkeys — enough to build an `accepts[]` line without a prior 402. Single-wallet lookup: `GET /api/v1/facilitator/providers/{wallet}`. The facilitator verifies wallet control only; it does not vet the advertised service.
 

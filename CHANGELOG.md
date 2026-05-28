@@ -36,4 +36,4 @@ Buyer pipeline (`/verify`, `/settle`, `/build-*-payment-tx`) is unchanged.
 
 ### New packages
 
-- `@pr402/mcp-server` 0.1.0 — MCP tools wrapping `@pr402/client` HTTP (no Rust MCP code)
+- `@pr402/mcp-server` 0.1.0 — MCP tools wrapping `@pr402/client` HTTP (no Rust MCP code). Publish: `cd sdk/mcp && npm publish --access public` (see `scripts/publish-mcp.sh`). Discovery: `GET /agent-tools.json`.
