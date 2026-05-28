@@ -1,10 +1,10 @@
 ---
-title: "Seller shortcut · 5 steps"
+title: "Quick reference · 5 steps"
 ---
 
-# Seller shortcut · 5 steps
+# Quick reference · 5 steps
 
-> **Cheat-sheet.** This is the minimal 5-step flow for sellers who already understand x402. If you want the full walkthrough with diagrams, language examples, and rationale, use the [Seller Quickstart](/seller-quick-start.html) instead.
+> **Cheat-sheet.** Minimal 5-step flow for sellers who already understand x402. **New seller?** → [Start here · Sellers](/start-here.html) (prerequisites + pick rail). **Full walkthrough?** → [Integrate your API](/seller-quick-start.html) (diagram + language examples).
 
 > **You have a Solana wallet and want to charge for API calls. Here's the fastest path.**
 
@@ -121,7 +121,7 @@ Content-Type: application/json
 
 The `/upgrade` endpoint handles all institutional routing for you. For sovereign status (lower fees), see the full [onboarding guide](/onboarding_guide).
 
-**Human-readable docs:** [Seller Quick Start](/seller-quick-start) · [API overview](/api-reference).
+**Human-readable docs:** [Integrate your API](/seller-quick-start.html) · [Start here · Sellers](/start-here.html) · [API overview](/api-reference).
 
 **Machine-readable:** `{FACILITATOR}/openapi.json` — substitute your facilitator `$BASE` (for example `https://ipay.sh` or `https://preview.ipay.sh`).
 

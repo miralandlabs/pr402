@@ -1,75 +1,32 @@
 ---
-title: "Seller Quick Start: Monetize Your API with x402"
+title: "Integrate your API"
 ---
 
-# Seller Quick Start: Monetize Your API with x402
+# Integrate your API
 
-**Audience**: Any developer with an existing web API (REST, GraphQL, etc.) who wants to gate routes behind paid access using the x402 protocol and the pr402 facilitator.
+**Audience:** Any developer with an existing web API (REST, GraphQL, etc.) who wants to gate routes behind paid access using the x402 protocol and the pr402 facilitator.
 
-**Time to integrate**: ~30 minutes. No blockchain SDK required in your server.
+**Time to integrate:** ~30 minutes. No blockchain SDK required in your server.
 
-**Prefer a five-step cheat-sheet?** Use [Seller shortcut · 5 steps](/quickstart-seller.html) for the minimal `/upgrade` path.
-
-> **Seller documentation map.** This is the canonical seller guide. Other seller-facing pages exist for good reasons; use them in this order:
->
-> | When you want… | Read |
-> |---|---|
-> | Prerequisites, fees, pick exact vs sla-escrow, numbered checklist | [Start here · Seller checklist](/start-here.html) |
-> | A 30-minute walkthrough with language examples (Rust / Python / JS / Go) | **This page** |
-> | A 5-step cheat-sheet after you already know the flow | [Seller shortcut · 5 steps](/quickstart-seller.html) |
-> | Deep dive on sovereign fees, JIT provisioning, one-asset-per-wallet policy | [Onboarding guide](/onboarding_guide.html) |
-> | The Preview → Activate → Verify lifecycle and how each HTTP endpoint maps | [Agent integration · Seller agents](/agent-integration.html#seller-agents-resource-providers) |
-> | Machine-readable contract | `GET /openapi.json` on the host you call |
+> **New seller?** Complete [Start here · Sellers](/start-here.html) first (prerequisites + pick `exact` vs `sla-escrow`). **In a hurry?** [Quick reference · 5 steps](/quickstart-seller.html) (`exact` rail cheat-sheet).
 
 > **Status.** pr402 is live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). Behavior, feature flags, and fee parameters can evolve — treat **`GET /capabilities`** and **`GET /openapi.json`** on the host you actually call as the live contract.
 
-Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**. Target **Mainnet** (`https://ipay.sh`) for production; use **`https://preview.ipay.sh`** only if you want a Devnet rehearsal first ([Start here](/start-here.html#why-pr402-true-differentiators)).
-
-> **Why pr402?** Paired **Mainnet ↔ Devnet** hosts, **`sla-escrow`** (not on CDP/x402.org Solana), sovereign fee tier, `/upgrade` without PDA math. [Choosing x402 on Solana](/pr402-vs-alternatives.html) · [Short differentiators](/start-here.html#why-pr402-true-differentiators).
+Throughout this doc, replace **`$BASE`** with your facilitator origin — the same URL buyers use. Confirm **`solanaNetwork`** with **`GET $BASE/api/v1/facilitator/health`**. Target **Mainnet** (`https://ipay.sh`) for production; use **`https://preview.ipay.sh`** only if you want a Devnet rehearsal first.
 
 ---
 
-## Two rails · why `sla-escrow` matters for buyers
+## Two rails (pick one)
 
 | | **`exact`** (UniversalSettle) | **`sla-escrow`** (SLA-Escrow) |
 |---|---|---|
 | **Settlement** | Instant — buyer pays, you deliver | Funds held in on-chain escrow until terms met or oracle verdict |
 | **Best for** | API calls, instant access (~5¢+ per call) | High-value or slow fulfillment (shipping, custom work, SLAs) |
-| **Buyer protection** | Standard x402 instant pay model | **Escrow + oracle** — refund/release paths enforced on-chain |
-| **Elsewhere in x402** | Common among facilitators | **pr402-only today** — no standard x402 facilitator offers equivalent escrow protection |
+| **Integration size** | Smaller (402 + settle) | Larger (SLA terms, oracle, fulfillment) |
 
-Most sellers start with **`exact`**. Offer **`sla-escrow`** when buyers need assurance that payment is not released until delivery — that buyer trust is a seller differentiator, not just extra integration work.
+Most sellers start with **`exact`**. For **`sla-escrow`**, read the [Onboarding guide](/onboarding_guide.html) first.
 
----
-
-## Protocol fees & pricing
-
-Treat **`GET $BASE/api/v1/facilitator/capabilities`** as authoritative. Snapshot for the live **ipay.sh** deployment:
-
-| | **`exact`** | **`sla-escrow`** |
-|---|---|---|
-| **Standard protocol fee** | **100 bps** (1.00%) | **100 bps** (1.00%) |
-| **Sovereign protocol fee** | **90 bps** (0.90%) after **Activate** on [ipay.sh](https://ipay.sh) | — |
-| **Minimum protocol fee (USDC)** | **$0.01** | **$0.10** |
-| **Oracle tip** | none | **100 bps** on verdict (no floor) |
-
-**`exact` floor math (USDC):** fee = max(1% × amount, $0.01).
-
-| Price per call | Protocol fee | Fee as % of revenue |
-|---|---|---|
-| $0.01 | $0.01 | 100% |
-| $0.02 | $0.01 | 50% |
-| $0.05 | $0.01 | 20% |
-| $0.10+ | scales with 1% | ≤ 10% and falling |
-
-**Draft pricing guidance:**
-
-- **`exact`:** aim for **≥ ~$0.05 USDC** per call. Below **~$0.02**, more than half of revenue can go to protocol fees. pr402 does not fully subsidize tx gas like some large facilitators; the **1 cent** floor covers operating cost.
-- **`sla-escrow`:** aim for **≥ ~$10 USDC** per payment. Smaller tickets → use **`exact`**.
-
-**Sovereign discount:** Self-provision via **Activate** (~**0.1 SOL** one-time) drops `exact` protocol fee from 100 bps → 90 bps. Skip Activate and pr402 **JIT-provisions** on first settle at 100 bps — your choice.
-
-Full checklist: [Start here · Seller checklist](/start-here.html).
+Pricing and fee floors: [Start here · Appendix A · Protocol fees](/start-here.html#appendix-a-protocol-fees--pricing).
 
 ---
 
@@ -106,20 +63,65 @@ Buyer Agent              Your API Server              pr402 Facilitator
 
 ---
 
-## The 3 Changes to Your Code
+## Step 1 — Get your `payTo` (Preview / Activate)
 
-### Change 1: Return HTTP 402 on Unpaid Requests
+Your buyers must pay into a **program PDA** (`payTo`), not your bare wallet.
 
-When a request arrives without a valid `PAYMENT-SIGNATURE` header, respond with **HTTP 402** and a JSON body describing what to pay.
+1. Open **[ipay.sh](https://ipay.sh)** (Mainnet) or **[preview.ipay.sh](https://preview.ipay.sh)** (Devnet rehearsal).
+2. Scroll to **§ seller lifecycle** (or `https://ipay.sh#seller-lifecycle`).
+3. Paste your **seller pubkey** (or connect wallet).
+4. Run **Preview** — note the vault / `payTo` the page shows (no on-chain change).
 
-**What you need first** — look up your vault PDA (one-time):
+For `exact`, you can also resolve via:
 
 ```bash
+export BASE="https://ipay.sh"   # Mainnet
+
 curl -sS "$BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | jq .
-# → Note the vaultPda value — that becomes your payTo
 ```
 
-**Your 402 response body** (x402 v2 format):
+**Recommended for Mainnet `exact`:** run **Activate** on the same site. Your wallet signs one provisioning transaction (~0.1 SOL for rent + fees). That makes you **sovereign** (**90 bps** protocol fee on every later payment). Skipping Activate is fine — pr402 JIT-provisions on first settle at **100 bps**. See [Appendix · Protocol fees](#supplemental-protocol-fees--pricing) or [Start here · Appendix A](/start-here.html#appendix-a-protocol-fees--pricing).
+
+---
+
+## Step 2 — Build your 402 payment body (once per product)
+
+Do **not** hand-craft `extra` fields. POST a minimal draft to **`/upgrade`** once and **save the response**.
+
+```bash
+export BASE="https://ipay.sh"   # Mainnet
+
+curl -sS -X POST "$BASE/api/v1/facilitator/upgrade" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "x402Version": 2,
+    "resource": { "url": "https://your-api.com/premium-endpoint" },
+    "accepts": [{
+      "scheme": "exact",
+      "network": "<NETWORK_FROM_/capabilities>",
+      "payTo": "YOUR_WALLET_PUBKEY",
+      "asset": "<USDC_MINT_FROM_/capabilities>",
+      "amount": "50000",
+      "maxTimeoutSeconds": 300
+    }]
+  }' | jq . > payment-body.json
+```
+
+Copy `network` and `asset` from **`GET $BASE/api/v1/facilitator/capabilities`** — do not paste Mainnet mints into a Devnet rehearsal (or vice versa).
+
+Store `payment-body.json` as your **402 payment body**. Re-run `/upgrade` only when price, mint, network, or facilitator URL changes.
+
+More detail on the `/upgrade` shortcut: [Quick reference · Steps 1–2](/quickstart-seller.html).
+
+---
+
+## Step 3 — The 3 changes to your code
+
+### Change 1: Return HTTP 402 on unpaid requests
+
+When a request arrives without a valid `PAYMENT-SIGNATURE` header, respond with **HTTP 402** and body = your **402 payment body** (from Step 2).
+
+**Alternative:** build the body manually via `/discovery` + `/supported` — see JSON shape below. **`/upgrade` is recommended** for most sellers.
 
 ```json
 {
@@ -146,13 +148,13 @@ curl -sS "$BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | 
 }
 ```
 
-> **Tip**: Copy `extra` from `GET /api/v1/facilitator/supported` → matching `kinds[]` entry + your wallet-specific fields. Or use **`POST /api/v1/facilitator/upgrade`** to have the facilitator build this for you (see below).
+> **Tip**: Copy `extra` from `GET /api/v1/facilitator/supported` → matching `kinds[]` entry + your wallet-specific fields. Or use **`POST /api/v1/facilitator/upgrade`** (Step 2).
 
 ---
 
-### Change 2: Extract `PAYMENT-SIGNATURE` and Settle via Facilitator
+### Change 2: Extract `PAYMENT-SIGNATURE` and settle via facilitator
 
-When the buyer retries with proof, extract the header and POST it to the facilitator. pr402's `/settle` performs full verification internally before executing on-chain, so calling `/settle` alone is the simplest path. For audit linkage, you can optionally call `/verify` first to obtain a `correlationId`, then pass it to `/settle`.
+When the buyer retries with proof, extract the header and POST it to the facilitator. pr402's `/settle` performs full verification internally before executing on-chain.
 
 **Pseudocode — simple path (any language):**
 
@@ -161,12 +163,10 @@ function handle_paid_request(request):
     proof = request.headers["PAYMENT-SIGNATURE"]
 
     if proof is empty:
-        return http_402(accepts_json)
+        return http_402(payment_body_json)
 
     payment_body = json_decode(proof)
 
-    # /settle verifies internally then executes on-chain.
-    # Idempotent: already-confirmed transactions return success.
     result = http_post(
         "$BASE/api/v1/facilitator/settle",
         headers: { "Content-Type": "application/json" },
@@ -174,9 +174,8 @@ function handle_paid_request(request):
     )
 
     if result.status != 200:
-        return http_402(accepts_json)
+        return http_402(payment_body_json)
 
-    # Payment confirmed — serve the premium content
     return http_200(premium_content)
 ```
 
@@ -185,21 +184,18 @@ function handle_paid_request(request):
 ```
 function handle_paid_request(request):
     ...
-    # Step 1: dry-run verification (no on-chain cost)
     verify_result = http_post(".../verify", body: payment_body)
     if verify_result.status != 200:
-        return http_402(accepts_json)
+        return http_402(payment_body_json)
 
-    # Step 2: carry correlationId into settle for DB audit trail
     if verify_result.body.correlationId:
         payment_body.correlationId = verify_result.body.correlationId
 
-    # Step 3: settle (verifies again internally + executes on-chain)
     settle_result = http_post(".../settle", body: payment_body)
     ...
 ```
 
-**curl equivalent** (what your server does internally):
+**curl equivalent:**
 
 ```bash
 curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
@@ -209,7 +205,7 @@ curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
 
 ---
 
-### Change 3: Return `PAYMENT-RESPONSE` Header (v2)
+### Change 3: Return `PAYMENT-RESPONSE` header (v2)
 
 After successful settlement, include the result in a `PAYMENT-RESPONSE` header so buyers can confirm finality.
 
@@ -226,7 +222,7 @@ function handle_paid_request(request):
 
 ---
 
-## Language Examples
+## Language Examples {#language-examples}
 
 ### Rust (Axum)
 
@@ -312,33 +308,23 @@ json.NewEncoder(w).Encode(premiumContent)
 
 ---
 
-## Shortcut: The `/upgrade` Endpoint
-
-Don't want to look up vault PDAs or merge `extra` fields? Post a minimal 402 body to **`POST /api/v1/facilitator/upgrade`** and get back a fully institutional response.
+## Step 4 — Test and go live
 
 ```bash
-# Your naive 402 body (bare wallet as payTo):
-curl -X POST "$BASE/api/v1/facilitator/upgrade" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "x402Version": 2,
-    "accepts": [{
-      "scheme": "exact",
-      "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
-      "payTo": "YOUR_BARE_WALLET",
-      "amount": "50000",
-      "asset": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
-    }]
-  }'
-# → Returns the same body with payTo replaced by vault PDA and extra injected
+# Unpaid — expect 402
+curl -sS -D - "https://your-api.com/premium-endpoint" -o /dev/null
+
+# Paid path — use x402-seller-starter, a buyer agent, or @pr402/client
+# See Buyer Quickstart if you need a payer
 ```
 
-Cache the result and return it as your 402 response.
+Run one real (small) Mainnet payment end-to-end before announcing the product.
+
+**Optional Devnet rehearsal:** If you practiced on `preview.ipay.sh`, switch `$BASE` to `https://ipay.sh`, re-run **`/upgrade`** on Mainnet (mints and PDAs differ), update your stored 402 body, and test once more.
 
 ---
 
 ## Quick Reference
-
 
 | What                          | Endpoint                                              | Method   | Notes                                                                                   |
 | ----------------------------- | ----------------------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
@@ -350,7 +336,6 @@ Cache the result and return it as your 402 response.
 | Supported schemes/rails       | `/api/v1/facilitator/supported`                       | GET      |                                                                                         |
 | Full discovery bundle         | `/api/v1/facilitator/capabilities`                    | GET      |                                                                                         |
 
-
 > **pr402 vs standard x402 settle model**: In the generic x402 spec, `/verify` and `/settle` are separate steps with resource delivery in between. On Solana, blockhashes expire in ~60 seconds, making that gap risky. pr402's `/settle` runs verification internally before executing — so calling `/settle` alone is safe and sufficient. `/verify` remains useful as a zero-cost pre-flight check or to obtain a `correlationId` for DB audit trails.
 
 **Canonical API spec:** `GET /openapi.json` on your facilitator deployment (see [API reference](/api-reference) for how humans and agents should use it).
@@ -358,3 +343,36 @@ Cache the result and return it as your 402 response.
 **Full integration runbook:** [Agent integration](/agent-integration) here, or `GET /agent-integration.md` on the facilitator.
 
 **Reference implementation:** [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter) (Rust + Axum).
+
+---
+
+## Supplemental · Protocol fees & pricing
+
+> Same tables as [Start here · Appendix A](/start-here.html#appendix-a-protocol-fees--pricing). Kept here for sellers pricing while integrating.
+
+Treat **`GET $BASE/api/v1/facilitator/capabilities`** as authoritative. Snapshot for the live **ipay.sh** deployment:
+
+| | **`exact`** | **`sla-escrow`** |
+|---|---|---|
+| **Standard protocol fee** | **100 bps** (1.00%) | **100 bps** (1.00%) |
+| **Sovereign protocol fee** | **90 bps** (0.90%) after **Activate** on [ipay.sh](https://ipay.sh) | — |
+| **Minimum protocol fee (USDC)** | **$0.01** | **$0.10** |
+| **Oracle tip** | none | **100 bps** on verdict (no floor) |
+
+**`exact` floor math (USDC):** fee = max(1% × amount, $0.01).
+
+| Price per call | Protocol fee | Fee as % of revenue |
+|---|---|---|
+| $0.01 | $0.01 | 100% |
+| $0.02 | $0.01 | 50% |
+| $0.05 | $0.01 | 20% |
+| $0.10+ | scales with 1% | ≤ 10% and falling |
+
+**Draft pricing guidance:**
+
+- **`exact`:** aim for **≥ ~$0.05 USDC** per call. Below **~$0.02**, more than half of revenue can go to protocol fees.
+- **`sla-escrow`:** aim for **≥ ~$10 USDC** per payment. Smaller tickets → use **`exact`**.
+
+**Sovereign discount:** Self-provision via **Activate** (~**0.1 SOL** one-time) drops `exact` protocol fee from 100 bps → 90 bps.
+
+**Facilitator comparison (CDP, x402.org, `pay` CLI):** [Start here · Appendix B](/start-here.html#appendix-b-why-pr402-vs-other-facilitators) · [Choosing x402 on Solana](/pr402-vs-alternatives.html)

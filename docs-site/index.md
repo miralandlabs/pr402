@@ -10,10 +10,10 @@ hero:
     alt: pr402
   actions:
     - theme: brand
-      text: Start here · Seller
+      text: Start here · Sellers
       link: /start-here
     - theme: alt
-      text: Seller Quickstart
+      text: Integrate your API
       link: /seller-quick-start
     - theme: alt
       text: Buyer Quickstart
@@ -27,9 +27,9 @@ hero:
 
 features:
   - title: Sellers / Resource Providers
-    details: "New seller? Start with the checklist (prerequisites, pick exact vs sla-escrow, six steps). Then the 30-minute quickstart for code samples."
+    details: "Orient (prerequisites, pick rail) → integrate (code samples) → optional quick reference. Fee tables and facilitator comparisons are in supplemental appendices."
     link: /start-here
-    linkText: Start here · Seller checklist
+    linkText: Start here · Sellers
   - title: Buyers / Payer Agents
     details: "`sla-escrow` escrow protection, facilitator tx builders, and open SDKs. Optional rehearsal on preview.ipay.sh. See how pr402 compares to CDP and pay.sh."
     link: /quickstart-buyer

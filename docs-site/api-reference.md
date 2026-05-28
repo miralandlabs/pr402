@@ -5,9 +5,9 @@ This site is written for **human teams** (copy-friendly curl blocks, diagrams, c
 ## Humans — recommended reading order
 
 0. **Install the buyer SDK** — `npm i @pr402/client` (Node) or `cargo install pr402-client` (Rust). Both ship a `pr402-buy` CLI; everything below documents the protocol under it.
-1. [Buyer Quick Start](/quickstart-buyer) — six steps from HTTP 402 to `PAYMENT-SIGNATURE`.
-2. [Seller Quick Start](/seller-quick-start) — 402 shape, `/settle`, language snippets.
-3. [Seller shortcut (5 steps)](/quickstart-seller) — minimal path via `/upgrade`.
+1. [Start here · Sellers](/start-here) — prerequisites, pick rail (appendices: fees, facilitator comparison).
+2. [Integrate your API](/seller-quick-start) — 402 shape, `/settle`, language snippets.
+3. [Quick reference · 5 steps](/quickstart-seller) — minimal path via `/upgrade`.
 4. [Onboarding Guide](/onboarding_guide) — sovereign vs facilitated onboarding, fees, registry rules.
 5. [Agent integration](/agent-integration) — full runbook (buyers, sellers, operational constraints).
 
