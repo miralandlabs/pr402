@@ -2,24 +2,18 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { Keypair } from '@solana/web3.js';
 import { X402AgentClient } from '@pr402/client';
 import { readFileSync } from 'node:fs';
+import { z } from 'zod';
 import { facilitatorBase } from '../config';
-
-type ToolArgs = Record<string, unknown>;
+import { registerToolLoose } from '../register-tool';
+import { jsonObject } from '../schemas';
 
 export function registerBuyerTools(server: McpServer): void {
-  const s = server as McpServer & {
-    registerTool: (
-      name: string,
-      config: { description?: string; inputSchema?: unknown },
-      cb: (args: ToolArgs) => Promise<unknown>
-    ) => void;
-  };
-
-  s.registerTool(
+  registerToolLoose(
+    server,
     'pr402_get_capabilities',
     {
       description: 'Fetch GET /capabilities from the configured pr402 facilitator.',
-      inputSchema: { type: 'object', properties: {} },
+      inputSchema: {},
     },
     async () => {
       const res = await fetch(`${facilitatorBase()}/capabilities`);
@@ -27,20 +21,22 @@ export function registerBuyerTools(server: McpServer): void {
     }
   );
 
-  s.registerTool(
+  registerToolLoose(
+    server,
     'pr402_build_exact_payment',
     {
       description:
         'POST /build-exact-payment-tx — unsigned tx + verifyBodyTemplate.',
       inputSchema: {
-        type: 'object',
-        properties: {
-          payer: { type: 'string' },
-          accepted: { type: 'object' },
-          resource: { type: 'object' },
-          autoWrapSol: { type: 'boolean' },
-        },
-        required: ['payer', 'accepted'],
+        payer: z.string().describe('Buyer base58 pubkey'),
+        accepted: jsonObject.describe('One accepts[] line from HTTP 402'),
+        resource: jsonObject
+          .optional()
+          .describe('Resource object from HTTP 402'),
+        autoWrapSol: z
+          .boolean()
+          .optional()
+          .describe('Inject WSOL wrap instructions when true'),
       },
     },
     async (args) => {
@@ -71,18 +67,17 @@ export function registerBuyerTools(server: McpServer): void {
     }
   );
 
-  s.registerTool(
+  registerToolLoose(
+    server,
     'pr402_pay_http_resource',
     {
       description:
         'Fetch a 402-gated URL via @pr402/client fetchWithAutoPay. Set PR402_PAYER_KEYPAIR_JSON.',
       inputSchema: {
-        type: 'object',
-        properties: {
-          url: { type: 'string' },
-          preferredMint: { type: 'string' },
-        },
-        required: ['url', 'preferredMint'],
+        url: z.string().describe('Paid resource URL'),
+        preferredMint: z
+          .string()
+          .describe('Base58 mint to pay with (must match accepts[].asset)'),
       },
     },
     async (args) => {

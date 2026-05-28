@@ -92,6 +92,17 @@ The seller forwards it to `/settle` and serves you the resource.
 
 **Full reference:** `GET /openapi.json` and `GET /agent-integration.md` on the facilitator.
 
+## Agent integrations (pick your stack)
+
+| Stack | Install | Notes |
+|-------|---------|-------|
+| **MCP** (Cursor, Claude Desktop) | `npx -y @pr402/mcp-server` | Tool `pr402_pay_http_resource`; config in [`/agent-tools.json`](/agent-tools.json) |
+| **Node** | `npm i @pr402/client` | `pr402-buy` CLI or `X402AgentClient` |
+| **Python LangChain** | `pip install langchain-pr402` | [PyPI](https://pypi.org/project/langchain-pr402/) |
+| **Rust** | `cargo install pr402-client` | `pr402-buy` + library |
+
+Cursor example: [x402-buyer-starter `examples/mcp/cursor-mcp.json`](https://github.com/miraland-labs/x402-buyer-starter/blob/main/examples/mcp/cursor-mcp.json).
+
 ## Buyer launch checklist
 
 - Cache `GET /capabilities` per facilitator host and invalidate it on failed build/verify responses.

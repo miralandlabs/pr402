@@ -1,25 +1,17 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
 import { facilitatorBase } from '../config';
-
-type ToolArgs = Record<string, unknown>;
+import { registerToolLoose } from '../register-tool';
+import { jsonObject } from '../schemas';
 
 export function registerSellerTools(server: McpServer): void {
-  const s = server as McpServer & {
-    registerTool: (
-      name: string,
-      config: { description?: string; inputSchema?: unknown },
-      cb: (args: ToolArgs) => Promise<unknown>
-    ) => void;
-  };
-
-  s.registerTool(
+  registerToolLoose(
+    server,
     'pr402_seller_preview',
     {
       description: 'GET /sellers/{wallet}/preview — multi-rail lifecycle preview.',
       inputSchema: {
-        type: 'object',
-        properties: { wallet: { type: 'string' } },
-        required: ['wallet'],
+        wallet: z.string().describe('Seller base58 pubkey'),
       },
     },
     async (args) => {
@@ -31,18 +23,20 @@ export function registerSellerTools(server: McpServer): void {
     }
   );
 
-  s.registerTool(
+  registerToolLoose(
+    server,
     'pr402_seller_rail_info',
     {
       description: 'GET /sellers/{wallet}/rails/{scheme} — single-rail payTo lookup.',
       inputSchema: {
-        type: 'object',
-        properties: {
-          wallet: { type: 'string' },
-          scheme: { type: 'string' },
-          asset: { type: 'string' },
-        },
-        required: ['wallet', 'scheme'],
+        wallet: z.string().describe('Seller base58 pubkey'),
+        scheme: z
+          .string()
+          .describe('Rail scheme: exact or sla-escrow'),
+        asset: z
+          .string()
+          .optional()
+          .describe('SPL mint (required query for sla-escrow)'),
       },
     },
     async (args) => {
@@ -57,17 +51,16 @@ export function registerSellerTools(server: McpServer): void {
     }
   );
 
-  s.registerTool(
+  registerToolLoose(
+    server,
     'pr402_seller_provision_tx',
     {
       description: 'POST /sellers/provision-tx — unsigned CreateVault / ATA tx.',
       inputSchema: {
-        type: 'object',
-        properties: {
-          wallet: { type: 'string' },
-          asset: { type: 'string' },
-        },
-        required: ['wallet', 'asset'],
+        wallet: z.string().describe('Seller base58 pubkey'),
+        asset: z
+          .string()
+          .describe('SOL, USDC, USDT, or base58 SPL mint'),
       },
     },
     async (args) => {
@@ -83,16 +76,13 @@ export function registerSellerTools(server: McpServer): void {
     }
   );
 
-  s.registerTool(
+  registerToolLoose(
+    server,
     'pr402_enrich_payment_required',
     {
       description: 'POST /payment-required/enrich — enrich PaymentRequired for HTTP 402.',
       inputSchema: {
-        type: 'object',
-        properties: {
-          paymentRequired: { type: 'object' },
-        },
-        required: ['paymentRequired'],
+        paymentRequired: jsonObject.describe('Naive PaymentRequired JSON body'),
       },
     },
     async (args) => {

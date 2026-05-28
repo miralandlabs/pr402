@@ -4,27 +4,30 @@ exports.registerBuyerTools = registerBuyerTools;
 const web3_js_1 = require("@solana/web3.js");
 const client_1 = require("@pr402/client");
 const node_fs_1 = require("node:fs");
+const zod_1 = require("zod");
 const config_1 = require("../config");
+const register_tool_1 = require("../register-tool");
+const schemas_1 = require("../schemas");
 function registerBuyerTools(server) {
-    const s = server;
-    s.registerTool('pr402_get_capabilities', {
+    (0, register_tool_1.registerToolLoose)(server, 'pr402_get_capabilities', {
         description: 'Fetch GET /capabilities from the configured pr402 facilitator.',
-        inputSchema: { type: 'object', properties: {} },
+        inputSchema: {},
     }, async () => {
         const res = await fetch(`${(0, config_1.facilitatorBase)()}/capabilities`);
         return { content: [{ type: 'text', text: await res.text() }] };
     });
-    s.registerTool('pr402_build_exact_payment', {
+    (0, register_tool_1.registerToolLoose)(server, 'pr402_build_exact_payment', {
         description: 'POST /build-exact-payment-tx — unsigned tx + verifyBodyTemplate.',
         inputSchema: {
-            type: 'object',
-            properties: {
-                payer: { type: 'string' },
-                accepted: { type: 'object' },
-                resource: { type: 'object' },
-                autoWrapSol: { type: 'boolean' },
-            },
-            required: ['payer', 'accepted'],
+            payer: zod_1.z.string().describe('Buyer base58 pubkey'),
+            accepted: schemas_1.jsonObject.describe('One accepts[] line from HTTP 402'),
+            resource: schemas_1.jsonObject
+                .optional()
+                .describe('Resource object from HTTP 402'),
+            autoWrapSol: zod_1.z
+                .boolean()
+                .optional()
+                .describe('Inject WSOL wrap instructions when true'),
         },
     }, async (args) => {
         const res = await fetch(`${(0, config_1.facilitatorBase)()}/build-exact-payment-tx`, {
@@ -48,15 +51,13 @@ function registerBuyerTools(server) {
             ],
         };
     });
-    s.registerTool('pr402_pay_http_resource', {
+    (0, register_tool_1.registerToolLoose)(server, 'pr402_pay_http_resource', {
         description: 'Fetch a 402-gated URL via @pr402/client fetchWithAutoPay. Set PR402_PAYER_KEYPAIR_JSON.',
         inputSchema: {
-            type: 'object',
-            properties: {
-                url: { type: 'string' },
-                preferredMint: { type: 'string' },
-            },
-            required: ['url', 'preferredMint'],
+            url: zod_1.z.string().describe('Paid resource URL'),
+            preferredMint: zod_1.z
+                .string()
+                .describe('Base58 mint to pay with (must match accepts[].asset)'),
         },
     }, async (args) => {
         const kpPath = process.env.PR402_PAYER_KEYPAIR_JSON;

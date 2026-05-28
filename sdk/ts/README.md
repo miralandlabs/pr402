@@ -7,6 +7,8 @@ Lightweight [x402 v2](https://github.com/coinbase/x402/blob/main/specs/x402-spec
 
 Both share one code path, so behavior is identical.
 
+**Related packages:** [`@pr402/mcp-server`](https://www.npmjs.com/package/@pr402/mcp-server) for Cursor / Claude Desktop (MCP stdio) · [`langchain-pr402`](https://pypi.org/project/langchain-pr402/) for Python LangChain agents · machine-readable MCP catalog: `GET /agent-tools.json` on your facilitator host.
+
 ## Install
 
 Library and CLI both install from the same package:

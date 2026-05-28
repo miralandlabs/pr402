@@ -19,6 +19,9 @@ hero:
       text: Buyer Quickstart
       link: /quickstart-buyer
     - theme: alt
+      text: Connect Cursor
+      link: /connect-cursor-to-pr402
+    - theme: alt
       text: Install buyer CLI
       link: /quickstart-buyer#install
     - theme: alt

@@ -34,7 +34,7 @@ In-repo copies: [`public/openapi.json`](public/openapi.json), [`public/agent-int
 | Persona | Fastest path | Success signal |
 |---------|--------------|----------------|
 | **Seller / resource provider** | [`GET /quickstart-seller.md`](public/quickstart-seller.md) or [`x402-seller-starter`](https://github.com/miraland-labs/x402-seller-starter) | Your API returns a valid `402` and accepts a settled `PAYMENT-SIGNATURE`. |
-| **Buyer / agent developer** | `npm i @pr402/client` · `cargo install pr402-client` — both ship a `pr402-buy` CLI. Reference: [`x402-buyer-starter`](https://github.com/miraland-labs/x402-buyer-starter). | Your agent builds, signs, verifies, settles, and retries with payment proof. |
+| **Buyer / agent developer** | **MCP:** `npx -y @pr402/mcp-server` · **CLI:** `npm i @pr402/client` · **Rust:** `cargo install pr402-client` · Reference: [`x402-buyer-starter`](https://github.com/miraland-labs/x402-buyer-starter) | Your agent builds, signs, verifies, settles, and retries with payment proof. |
 | **API / SDK integrator** | `GET /openapi.json` on the exact facilitator host you call | Generated clients match the deployed schema and feature flags. |
 
 For production integrations, pick one facilitator origin per environment and keep it consistent across seller docs, buyer build requests, `/verify`, and `/settle`. Use `https://ipay.sh` for Mainnet and `https://preview.ipay.sh` for Devnet unless a seller explicitly documents another origin.
@@ -73,7 +73,9 @@ Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blo
 
 | Integration | What to use |
 |-------------|-------------|
-| **Installable SDK (fastest)** | `npm i @pr402/client` (Node ≥ 18) or `cargo install pr402-client` (Rust). Both ship library types (`X402AgentClient`) and a `pr402-buy` CLI. One command: `pr402-buy --resource <url> --payer <keypair.json> --mint <mint>`. |
+| **MCP hosts** (Cursor, Claude Desktop) | `npm i @pr402/mcp-server` or `npx -y @pr402/mcp-server`. Tool catalog: **`GET /agent-tools.json`**. Source: [`sdk/mcp/`](sdk/mcp/). |
+| **Installable SDK (CLI / embed)** | `npm i @pr402/client` (Node ≥ 18) or `cargo install pr402-client` (Rust). Both ship library types (`X402AgentClient`) and a `pr402-buy` CLI. One command: `pr402-buy --resource <url> --payer <keypair.json> --mint <mint>`. |
+| **Python LangChain** | [`langchain-pr402`](https://pypi.org/project/langchain-pr402/) on PyPI — `X402GetTool` / `X402PostTool`. |
 | **Step-by-step protocol** | **[`public/agent-integration.md`](public/agent-integration.md)** (same static pattern as `openapi.json`; **`GET /agent-integration.md`**). In-repo stub: [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). |
 | **Seller onboarding** | **[`public/onboarding_guide.md`](public/onboarding_guide.md)** (`GET /onboarding_guide.md`). In-repo stub: [`docs/SELLER_INTEGRATION.md`](docs/SELLER_INTEGRATION.md). |
 | **Ops / recovery** | [`docs/CRON_OPERATIONS.md`](docs/CRON_OPERATIONS.md), [`docs/OPS_RECOVERY_PLAYBOOK.md`](docs/OPS_RECOVERY_PLAYBOOK.md) |
@@ -100,7 +102,7 @@ Two settlement patterns (x402 v2):
 
 ## 📁 Project Structure
 - **Maintainer / operator docs:** [`docs/`](docs/) — cron ops, recovery playbook, sla-escrow technical notes ([`docs/README.md`](docs/README.md)).
-- **Buyer SDKs:** installable as [`@pr402/client`](https://www.npmjs.com/package/@pr402/client) (npm) and [`pr402-client`](https://crates.io/crates/pr402-client) (crates.io); both ship `pr402-buy`. Source: [`sdk/ts/`](sdk/ts/) and [`sdk/rust/`](sdk/rust/). Zero-dependency alternative for other stacks: [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts).
+- **Buyer SDKs:** installable as [`@pr402/client`](https://www.npmjs.com/package/@pr402/client) (npm), [`@pr402/mcp-server`](https://www.npmjs.com/package/@pr402/mcp-server) (MCP / Cursor), [`langchain-pr402`](https://pypi.org/project/langchain-pr402/) (Python LangChain), and [`pr402-client`](https://crates.io/crates/pr402-client) (crates.io); npm/rust packages ship `pr402-buy`. Source: [`sdk/ts/`](sdk/ts/), [`sdk/mcp/`](sdk/mcp/), [`sdk/rust/`](sdk/rust/). Zero-dependency alternative for other stacks: [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts).
 - [`src/bin/facilitator.rs`](src/bin/facilitator.rs) — Vercel serverless entrypoint handling HTTP requests.
 - [`src/chain/`](src/chain/) — Solana-specific chain provider and instruction builders for UniversalSettle and SLA-Escrow.
 - [`src/scheme/`](src/scheme/) — Protocol verification logic for Exact and Escrow schemes.

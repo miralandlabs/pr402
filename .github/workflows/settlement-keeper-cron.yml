@@ -56,10 +56,13 @@ jobs:
               -H "Authorization: Bearer ${CRON_SECRET}" \
               "$1"
           }
+          echo "--- sweep-cron ---"
           invoke "${BASE}/api/v1/facilitator/sweep-cron"
           sleep 20
+          echo "--- sla-escrow-settle-cron ---"
           invoke "${BASE}/api/v1/facilitator/sla-escrow-settle-cron"
           sleep 20
+          echo "--- sla-escrow-close-cron ---"
           invoke "${BASE}/api/v1/facilitator/sla-escrow-close-cron" \
             || echo "close cron skipped (endpoint may be disabled on this deployment)"
 
@@ -91,9 +94,12 @@ jobs:
               -H "Authorization: Bearer ${CRON_SECRET}" \
               "$1"
           }
+          echo "--- sweep-cron ---"
           invoke "${BASE}/api/v1/facilitator/sweep-cron"
           sleep 20
+          echo "--- sla-escrow-settle-cron ---"
           invoke "${BASE}/api/v1/facilitator/sla-escrow-settle-cron"
           sleep 20
+          echo "--- sla-escrow-close-cron ---"
           invoke "${BASE}/api/v1/facilitator/sla-escrow-close-cron" \
             || echo "close cron skipped (endpoint may be disabled on this deployment)"

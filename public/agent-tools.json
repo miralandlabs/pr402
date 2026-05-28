@@ -1,5 +1,67 @@
 {
   "version": "0.1.0",
+  "description": "Agent integration packages for the pr402 Solana x402 facilitator.",
+  "documentation": {
+    "runbook": "/agent-integration.md",
+    "buyerQuickStart": "/quickstart-buyer.md",
+    "sellerQuickStart": "/quickstart-seller.md",
+    "openApi": "/openapi.json"
+  },
+  "mcpServer": {
+    "package": "@pr402/mcp-server",
+    "npm": "https://www.npmjs.com/package/@pr402/mcp-server",
+    "command": "npx",
+    "args": ["-y", "@pr402/mcp-server"],
+    "repositoryPath": "sdk/mcp",
+    "transport": "stdio",
+    "env": {
+      "PR402_FACILITATOR_URL": "Facilitator origin — https://preview.ipay.sh (Devnet) or https://ipay.sh (Mainnet)",
+      "PR402_PAYER_KEYPAIR_JSON": "Path to Solana keypair JSON — required for pr402_pay_http_resource only"
+    },
+    "cursorConfigExample": "https://github.com/miraland-labs/x402-buyer-starter/blob/main/examples/mcp/cursor-mcp.json"
+  },
+  "packages": [
+    {
+      "id": "mcp",
+      "name": "@pr402/mcp-server",
+      "registry": "npm",
+      "install": "npm install -g @pr402/mcp-server",
+      "run": "npx -y @pr402/mcp-server",
+      "audience": "Cursor, Claude Desktop, MCP-compatible agents",
+      "rails": ["exact"],
+      "sellerTools": true
+    },
+    {
+      "id": "typescript-client",
+      "name": "@pr402/client",
+      "registry": "npm",
+      "install": "npm install @pr402/client",
+      "run": "npx @pr402/client pr402-buy --help",
+      "audience": "Node scripts, embedded agents",
+      "rails": ["exact"],
+      "sellerTools": false
+    },
+    {
+      "id": "langchain",
+      "name": "langchain-pr402",
+      "registry": "pypi",
+      "install": "pip install langchain-pr402",
+      "audience": "Python LangChain agents",
+      "rails": ["exact"],
+      "sellerTools": false,
+      "url": "https://pypi.org/project/langchain-pr402/"
+    },
+    {
+      "id": "rust-client",
+      "name": "pr402-client",
+      "registry": "crates.io",
+      "install": "cargo install pr402-client",
+      "audience": "Rust agents and CLIs",
+      "rails": ["exact"],
+      "sellerTools": false,
+      "url": "https://crates.io/crates/pr402-client"
+    }
+  ],
   "buyerTools": [
     {
       "name": "pr402_get_capabilities",
@@ -37,6 +99,5 @@
     "pr402://openapi",
     "pr402://agent-integration",
     "pr402://payto-semantics"
-  ],
-  "package": "@pr402/mcp-server"
+  ]
 }

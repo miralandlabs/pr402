@@ -36,4 +36,16 @@ Buyer pipeline (`/verify`, `/settle`, `/build-*-payment-tx`) is unchanged.
 
 ### New packages
 
-- `@pr402/mcp-server` 0.1.0 — MCP tools wrapping `@pr402/client` HTTP (no Rust MCP code)
+- `@pr402/mcp-server` 0.1.0 — MCP tools wrapping `@pr402/client` HTTP (no Rust MCP code). Publish: `cd sdk/mcp && npm publish --access public` (see `scripts/publish-mcp.sh`). Discovery: `GET /agent-tools.json`.
+
+## @pr402/mcp-server 0.1.1 — 2026-05-28
+
+### Fixed
+
+- Tool `inputSchema` uses **Zod** raw shapes (required by `@modelcontextprotocol/sdk` ≥ 1.29). Fixes startup crash: `inputSchema must be a Zod schema or raw shape`.
+
+## @pr402/mcp-server 0.1.2 — 2026-05-28
+
+### Fixed
+
+- `registerToolLoose` calls `(server as any).registerTool` to bypass TS2589 on all TypeScript versions while keeping Zod runtime validation.
