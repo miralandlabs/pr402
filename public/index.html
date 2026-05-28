@@ -1051,9 +1051,9 @@
                     JSON and on-chain programs speaking Solana instructions. Two
                     rails: <code>exact</code> (UniversalSettle) for instant
                     payments, <code>sla-escrow</code> (SLA-Escrow) for
-                    oracle-backed delivery with <strong>buyer escrow
-                    protection</strong> — a capability standard x402
-                    facilitators do not offer today.
+                    oracle-backed delivery with
+                    <strong>buyer escrow protection</strong> — a capability
+                    standard x402 facilitators do not offer today.
                 </p>
                 <nav class="top">
                     <a
@@ -1237,30 +1237,25 @@
                     </p>
                     <p class="fee-schedule-footnote">
                         <strong>Buyer value · sla-escrow.</strong> Funds stay in
-                        on-chain escrow until delivery terms are met or an oracle
-                        rules — refund and release paths are program-enforced.
-                        Standard x402 facilitators today settle instantly on
-                        <code>exact</code>-style rails only; pr402’s
-                        <code>sla-escrow</code> rail is the escrow option for
-                        buyers who need protection on high-value or slow
-                        fulfillment work.
+                        on-chain escrow until delivery terms are met or an
+                        oracle rules — refund and release paths are
+                        program-enforced. Standard x402 facilitators today
+                        settle instantly on <code>exact</code>-style rails only;
+                        pr402’s <code>sla-escrow</code> rail is the escrow
+                        option for buyers who need protection on high-value or
+                        slow fulfillment work.
                     </p>
                     <p class="fee-schedule-footnote">
-                        <strong>Preview rehearsal.</strong>
-                        <a
-                            class="pr402-docs-link"
-                            href="https://docs.ipay.sh/start-here.html#appendix-b-why-pr402-vs-other-facilitators"
-                            >Devnet is not unique</a
-                        >
-                        — CDP and x402.org also support Solana Devnet —
-                        but <code>preview.ipay.sh</code> mirrors
+                        <strong>Preview rehearsal. </strong
+                        ><code>preview.ipay.sh</code> mirrors
                         <code>ipay.sh</code> (both rails, seller lifecycle UI,
                         same API): flip <code>$BASE</code> when you go live.
                         <a
                             class="pr402-docs-link"
                             href="https://docs.ipay.sh/pr402-vs-alternatives.html"
                             >Full comparison</a
-                        > · facilitators vs buyer tools.
+                        >
+                        · facilitators vs buyer tools.
                     </p>
                 </section>
 
@@ -1514,8 +1509,9 @@
                             </button>
                         </div>
                         <div class="hint">
-                            GET /api/v1/facilitator/sellers/{wallet}/challenge → wallet
-                            signs message → POST /api/v1/facilitator/sellers/{wallet}/register
+                            GET /api/v1/facilitator/sellers/{wallet}/challenge →
+                            wallet signs message → POST
+                            /api/v1/facilitator/sellers/{wallet}/register
                         </div>
                         <div
                             class="probe-output"
@@ -1909,14 +1905,18 @@
                         </tr>
                         <tr>
                             <td class="method">GET</td>
-                            <td class="path">/api/v1/facilitator/sellers/{wallet}/rails/{scheme}</td>
+                            <td class="path">
+                                /api/v1/facilitator/sellers/{wallet}/rails/{scheme}
+                            </td>
                             <td class="desc">
                                 resolve canonical payTo for 402 (seller)
                             </td>
                         </tr>
                         <tr>
                             <td class="method">GET</td>
-                            <td class="path">/api/v1/facilitator/sellers/{wallet}/preview</td>
+                            <td class="path">
+                                /api/v1/facilitator/sellers/{wallet}/preview
+                            </td>
                             <td class="desc">
                                 preview PDAs &amp; fees (seller)
                             </td>
@@ -1942,7 +1942,9 @@
                         </tr>
                         <tr>
                             <td class="method post">POST</td>
-                            <td class="path">/api/v1/facilitator/sellers/{wallet}/register</td>
+                            <td class="path">
+                                /api/v1/facilitator/sellers/{wallet}/register
+                            </td>
                             <td class="desc">
                                 submit wallet signature (seller registry)
                             </td>
@@ -1958,7 +1960,9 @@
                         </tr>
                         <tr>
                             <td class="method post">POST</td>
-                            <td class="path">/api/v1/facilitator/payment-required/enrich</td>
+                            <td class="path">
+                                /api/v1/facilitator/payment-required/enrich
+                            </td>
                             <td class="desc">
                                 expand lite 402 into full paymentRequired
                             </td>
@@ -2366,7 +2370,9 @@
                             return null;
                         }
                         try {
-                            var res = await fetch(sellerApiPath(wallet, "/preview"));
+                            var res = await fetch(
+                                sellerApiPath(wallet, "/preview"),
+                            );
                             if (!res.ok) return null;
                             var data = await res.json();
                             applyLifecycle(data.lifecycle || null);
@@ -2387,7 +2393,9 @@
                         outPreview.classList.remove("is-error");
                         outPreview.textContent = "> onboard " + wallet;
                         try {
-                            var res = await fetch(sellerApiPath(wallet, "/preview"));
+                            var res = await fetch(
+                                sellerApiPath(wallet, "/preview"),
+                            );
                             if (!res.ok) throw new Error("HTTP " + res.status);
                             var data = await res.json();
                             renderPreview(data);
