@@ -1,6 +1,6 @@
 {
   "name": "@pr402/mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "MCP server for pr402 on Solana — buyer auto-pay and seller facilitator tools via @pr402/client.",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -20,7 +20,8 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@pr402/client": "^0.3.0",
-    "@solana/web3.js": "^1.87.0"
+    "@solana/web3.js": "^1.87.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^20",

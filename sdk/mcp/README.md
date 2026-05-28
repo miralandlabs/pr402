@@ -21,6 +21,16 @@ cd pr402/sdk/mcp && npm ci && npm run build
 node dist/server.js
 ```
 
+## Run (stdio)
+
+An MCP server — not a CLI. It speaks JSON-RPC on **stdin/stdout**; there is no `--help` flag. Configure it in Cursor or Claude Desktop (below), or run manually:
+
+```bash
+export PR402_FACILITATOR_URL=https://preview.ipay.sh
+export PR402_PAYER_KEYPAIR_JSON=/path/to/keypair.json  # pr402_pay_http_resource only
+npx -y @pr402/mcp-server
+```
+
 ## Environment
 
 | Variable | Required | Default | Purpose |
