@@ -117,7 +117,7 @@ The facilitator exposes a three-stage seller lifecycle. Each stage has a distinc
 
 | Stage | HTTP | Side effect | Required? |
 |-------|------|-------------|-----------|
-| **Preview** | `GET /api/v1/facilitator/onboard?wallet=…` | None. Derives vault PDAs and returns on-chain state. | No wallet needed. |
+| **Preview** | `GET /api/v1/facilitator/onboard?wallet=…` | None. Derives vault PDAs and returns on-chain state. `schemes` is keyed by wire names only (`exact`, `sla-escrow`) — at most two entries; not `v2:solana:*` aliases. | No wallet needed. |
 | **Activate** | `POST /api/v1/facilitator/onboard/provision` | Returns an unsigned `CreateVault` (+ optional ATA) tx. After the **seller** signs and broadcasts, the on-chain `SplitVault` exists and unlocks the sovereign 90 bps fee tier. | Required before accepting payments. |
 | **Verify** (optional) | `GET /api/v1/facilitator/onboard/challenge` then `POST /api/v1/facilitator/onboard` | Writes a verified row in the off-chain `resource_providers` registry so the seller appears in discovery. The facilitator **refuses** this step with `409 Conflict` until Activate has landed. | Optional. Only required for verified-seller discovery listings. |
 
@@ -295,7 +295,7 @@ pr402 uses **short canonical names** on the wire:
 | `exact` | `v2:solana:exact` | UniversalSettle instant settlement |
 | `sla-escrow` | `v2:solana:sla-escrow` | SLA-Escrow time-bound settlement |
 
-In `accepts[]`, `paymentRequirements.scheme`, and builder request `accepted.scheme`, use the **canonical** name. The qualified forms are accepted for backward compatibility.
+In `accepts[]`, `paymentRequirements.scheme`, and builder request `accepted.scheme`, use the **canonical** name. The qualified forms are accepted for backward compatibility. **`GET /onboard`** (preview) and **`POST /onboard`** (registration) return the same wire keys under `schemes` — never duplicate alias entries.
 
 ---
 
