@@ -2,7 +2,7 @@
 
 > **New here?** Start with the concise quick starts:
 > - **Buyers:** [`/quickstart-buyer`](/quickstart-buyer) — 6 steps, copy-paste curl commands
-> - **Sellers:** [`/quickstart-seller`](/quickstart-seller) — 5 steps, no PDA math needed
+> - **Sellers:** [`/start-here`](/start-here) → [`/seller-quick-start`](/seller-quick-start) — orient, then integrate; [`/quickstart-seller`](/quickstart-seller) — 5-step cheat-sheet
 
 Runbook for two kinds of autonomous clients:
 

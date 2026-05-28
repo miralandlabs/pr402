@@ -13,9 +13,9 @@ export default defineConfig({
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Start here', link: '/start-here' },
-      { text: 'Why pr402?', link: '/pr402-vs-alternatives' },
-      { text: 'Seller Quickstart', link: '/seller-quick-start' },
+      { text: 'Integrate (sellers)', link: '/seller-quick-start' },
       { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
+      { text: 'Why pr402?', link: '/pr402-vs-alternatives' },
       { text: 'Agent Integration', link: '/agent-integration' },
       { text: 'API Reference', link: '/api-reference' },
       {
@@ -28,12 +28,22 @@ export default defineConfig({
 
     sidebar: [
       {
-        text: 'Getting Started',
+        text: 'For sellers',
         items: [
-          { text: 'Start here · Seller checklist', link: '/start-here' },
-          { text: 'Seller Quickstart', link: '/seller-quick-start' },
-          { text: 'Seller shortcut · 5 steps', link: '/quickstart-seller' },
+          { text: 'Start here', link: '/start-here' },
+          { text: 'Integrate your API', link: '/seller-quick-start' },
+          { text: 'Quick reference · 5 steps', link: '/quickstart-seller' },
+        ],
+      },
+      {
+        text: 'For buyers',
+        items: [
           { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
+        ],
+      },
+      {
+        text: 'Choosing & policy',
+        items: [
           { text: 'Choosing x402 on Solana', link: '/pr402-vs-alternatives' },
           { text: 'Onboarding Guide', link: '/onboarding_guide' },
         ],

@@ -201,10 +201,10 @@ Hackathons and **`exact`-only** Devnet spikes with zero signup. When you need Ma
 
 | Persona | Start here |
 |---|---|
-| Seller — pick pr402 facilitator | [Start here · Seller checklist](/start-here.html) |
+| Seller — pick pr402 facilitator | [Start here · Sellers](/start-here.html) |
 | Buyer — pay pr402-backed API | [Buyer Quickstart](/quickstart-buyer.html) |
 | Buyer — also want `pay` CLI | [`solana-foundation/pay`](https://github.com/solana-foundation/pay) + your seller’s facilitator docs |
 | Oracle operator | [`oracles/` docs](https://github.com/miraland-labs/oracles) |
-| Short differentiator list | [Start here · Why pr402?](/start-here.html#why-pr402-true-differentiators) |
+| Short differentiator list | [Start here · Appendix B](/start-here.html#appendix-b-why-pr402-vs-other-facilitators) |
 
 **Live contract (pr402):** `GET https://ipay.sh/openapi.json` · `GET https://ipay.sh/api/v1/facilitator/capabilities`

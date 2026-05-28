@@ -554,7 +554,7 @@
           "pr402 Extension: Seller Onboarding"
         ],
         "summary": "Onboard preview \u2014 all schemes (read-only)",
-        "description": "Returns vault/sol_storage preview for **all** registered schemes (exact + sla-escrow if configured). No DB writes. For lightweight single-scheme lookup, prefer `GET /discovery`. For DB-persisted registration, use the challenge \u2192 POST flow.",
+        "description": "Returns vault/sol_storage preview for each **wire** scheme (`exact`, and `sla-escrow` when escrow is configured). The `schemes` map has at most two keys \u2014 wire names only; `v2:solana:*` aliases are accepted on verify/settle/build/discovery but never returned here. No DB writes. For lightweight single-scheme lookup, prefer `GET /discovery`. For DB-persisted registration, use the challenge \u2192 POST flow.",
         "operationId": "facilitatorOnboardPreview",
         "parameters": [
           {
@@ -1825,6 +1825,7 @@
           },
           "schemes": {
             "type": "object",
+            "description": "Per-rail preview keyed by wire scheme name (`exact`, `sla-escrow`). Alias keys (`v2:solana:exact`, `v2:solana:sla-escrow`) are not emitted.",
             "additionalProperties": {
               "$ref": "#/components/schemas/SchemeOnboardInfo"
             }

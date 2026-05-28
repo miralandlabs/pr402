@@ -8,6 +8,7 @@ use crate::scheme::{
     X402SchemeFacilitator, X402SchemeFacilitatorBuilder, X402SchemeFacilitatorError, X402SchemeId,
 };
 pub use crate::seller_provision::SellerProvisionTxResponse;
+use crate::util::{WIRE_SCHEME_EXACT, WIRE_SCHEME_SLA_ESCROW};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -209,6 +210,17 @@ impl FacilitatorLocal {
             db,
         })
     }
+
+    /// One entry per distinct handler (`exact` and `sla-escrow` share no Arc with aliases).
+    fn unique_scheme_handlers(&self) -> Vec<Arc<dyn X402SchemeFacilitator>> {
+        let mut unique_handlers: Vec<Arc<dyn X402SchemeFacilitator>> = Vec::new();
+        for h in self.scheme_handlers.values() {
+            if !unique_handlers.iter().any(|ex| Arc::ptr_eq(ex, h)) {
+                unique_handlers.push(h.clone());
+            }
+        }
+        unique_handlers
+    }
 }
 
 #[async_trait]
@@ -273,15 +285,8 @@ impl Facilitator for FacilitatorLocal {
             signers: HashMap::new(),
         };
 
-        // Deduplicate handlers (since we map aliases to the same Arc)
-        let mut unique_handlers: Vec<Arc<dyn X402SchemeFacilitator>> = Vec::new();
-        for h in self.scheme_handlers.values() {
-            if !unique_handlers.iter().any(|ex| Arc::ptr_eq(ex, h)) {
-                unique_handlers.push(h.clone());
-            }
-        }
-
-        for handler in unique_handlers {
+        // Deduplicate handlers (alias keys `v2:solana:*` map to the same Arc as wire keys).
+        for handler in self.unique_scheme_handlers() {
             let response = handler.supported().await.map_err(|e| {
                 tracing::error!("Handler supported() failed: {:?}", e);
                 FacilitatorLocalError::Discovery(e)
@@ -320,12 +325,16 @@ impl Facilitator for FacilitatorLocal {
             lifecycle: None,
         };
 
-        for (name, handler) in &self.scheme_handlers {
+        // Wire scheme keys only (`exact`, `sla-escrow`) — skip `v2:solana:*` handler aliases.
+        for wire_key in [WIRE_SCHEME_EXACT, WIRE_SCHEME_SLA_ESCROW] {
+            let Some(handler) = self.scheme_handlers.get(wire_key) else {
+                continue;
+            };
             let onboard_info = handler.onboard(wallet).await.map_err(|e| {
-                tracing::error!("Handler onboard() failed for {}: {:?}", name, e);
+                tracing::error!("Handler onboard() failed for {}: {:?}", wire_key, e);
                 FacilitatorLocalError::Onboard(e)
             })?;
-            response.schemes.insert(name.clone(), onboard_info);
+            response.schemes.insert(wire_key.to_string(), onboard_info);
         }
 
         // Machine-readable lifecycle snapshot (preview → activate → verify). The three flags
@@ -406,7 +415,7 @@ impl Facilitator for FacilitatorLocal {
         request: &proto::PaymentRequired,
     ) -> Result<proto::PaymentRequired, Self::Error> {
         let mut upgraded = request.clone();
-        for handler in self.scheme_handlers.values() {
+        for handler in self.unique_scheme_handlers() {
             upgraded = handler
                 .upgrade(&upgraded)
                 .await
