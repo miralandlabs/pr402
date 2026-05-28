@@ -70,7 +70,7 @@ Before you set prices, skim [Appendix A · Protocol fees](#appendix-a-protocol-f
 
 | Symptom | Likely fix |
 |---|---|
-| Buyers pay wrong address | `payTo` must be vault PDA from `/upgrade` or `/discovery`, not bare wallet |
+| Buyers pay wrong address | `payTo` must be vault PDA from `/payment-required/enrich` or `/sellers/{wallet}/rails/{scheme}`, not bare wallet |
 | Mixed Devnet / Mainnet | One `$BASE` everywhere — 402 body, settle, health check |
 | Settle fails quickly on Solana | Call `/settle` promptly; do not verify-then-wait-then-settle with long gaps |
 | Fee eats most of a micro-payment | Raise price or see [Appendix A · Protocol fees](#appendix-a-protocol-fees--pricing) |
@@ -138,14 +138,14 @@ Other x402 facilitators exist (notably [Coinbase CDP](https://docs.cdp.coinbase.
 | Differentiator | What it means |
 |---|---|
 | **No chain code in your API** | Return 402, forward `PAYMENT-SIGNATURE` to `/settle`. pr402 verifies and executes on-chain. |
-| **`/upgrade` + discovery** | No hand-built `extra` or vault PDA math — facilitator injects institutional `accepts[]`. |
+| **`/payment-required/enrich` + discovery** | No hand-built `extra` or vault PDA math — facilitator injects institutional `accepts[]`. |
 | **Two settlement rails** | **`exact`** (UniversalSettle, instant) and **`sla-escrow`** (on-chain escrow + oracle). CDP/x402.org Solana today is **`exact` only**. |
 | **Sovereign fee tier** | Self-provision via **Activate** qualifies **90 bps** protocol fee tier vs **100 bps** JIT standard on `exact`. |
 | **Blockhash-safe `/settle`** | Verification runs inside `/settle` before broadcast — avoids verify→deliver→settle gaps that break on Solana (~60s blockhash). |
 | **SplitVault `payTo` model** | Buyers pay program PDAs, not your bare wallet — enforced by UniversalSettle + facilitator verify. |
 | **Honest fee floors** | $0.01 min on `exact`, $0.10 on `sla-escrow` protocol fee — we do not subsidize sub-cent micro-payments like some large facilitators. |
 
-**Seller rehearsal path:** integrate on **[`https://preview.ipay.sh`](https://preview.ipay.sh)**, then switch to **[`https://ipay.sh`](https://ipay.sh)** and re-run `/upgrade` for Mainnet mints/PDAs.
+**Seller rehearsal path:** integrate on **[`https://preview.ipay.sh`](https://preview.ipay.sh)**, then switch to **[`https://ipay.sh`](https://ipay.sh)** and re-run `/payment-required/enrich` for Mainnet mints/PDAs.
 
 #### For buyers (payer agents)
 

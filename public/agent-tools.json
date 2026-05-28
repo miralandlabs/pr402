@@ -1,0 +1,42 @@
+{
+  "version": "0.1.0",
+  "buyerTools": [
+    {
+      "name": "pr402_get_capabilities",
+      "http": "GET /api/v1/facilitator/capabilities"
+    },
+    {
+      "name": "pr402_build_exact_payment",
+      "http": "POST /api/v1/facilitator/build-exact-payment-tx"
+    },
+    {
+      "name": "pr402_pay_http_resource",
+      "http": "composite @pr402/client.fetchWithAutoPay"
+    }
+  ],
+  "sellerTools": [
+    {
+      "name": "pr402_seller_preview",
+      "http": "GET /api/v1/facilitator/sellers/{wallet}/preview"
+    },
+    {
+      "name": "pr402_seller_rail_info",
+      "http": "GET /api/v1/facilitator/sellers/{wallet}/rails/{scheme}"
+    },
+    {
+      "name": "pr402_seller_provision_tx",
+      "http": "POST /api/v1/facilitator/sellers/provision-tx"
+    },
+    {
+      "name": "pr402_enrich_payment_required",
+      "http": "POST /api/v1/facilitator/payment-required/enrich"
+    }
+  ],
+  "resources": [
+    "pr402://capabilities",
+    "pr402://openapi",
+    "pr402://agent-integration",
+    "pr402://payto-semantics"
+  ],
+  "package": "@pr402/mcp-server"
+}

@@ -77,7 +77,7 @@ For `exact`, you can also resolve via:
 ```bash
 export BASE="https://ipay.sh"   # Mainnet
 
-curl -sS "$BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | jq .
+curl -sS "$BASE/api/v1/facilitator/sellers/YOUR_PUBKEY/rails/exact" | jq .
 ```
 
 **Recommended for Mainnet `exact`:** run **Activate** on the same site. Your wallet signs one provisioning transaction (~0.1 SOL for rent + fees). That makes you **sovereign** (**90 bps** protocol fee on every later payment). Skipping Activate is fine — pr402 JIT-provisions on first settle at **100 bps**. See [Appendix · Protocol fees](#supplemental-protocol-fees--pricing) or [Start here · Appendix A](/start-here.html#appendix-a-protocol-fees--pricing).
@@ -86,12 +86,12 @@ curl -sS "$BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | 
 
 ## Step 2 — Build your 402 payment body (once per product)
 
-Do **not** hand-craft `extra` fields. POST a minimal draft to **`/upgrade`** once and **save the response**.
+Do **not** hand-craft `extra` fields. POST a minimal draft to **`/payment-required/enrich`** once and **save the response**.
 
 ```bash
 export BASE="https://ipay.sh"   # Mainnet
 
-curl -sS -X POST "$BASE/api/v1/facilitator/upgrade" \
+curl -sS -X POST "$BASE/api/v1/facilitator/payment-required/enrich" \
   -H "Content-Type: application/json" \
   -d '{
     "x402Version": 2,
@@ -109,9 +109,9 @@ curl -sS -X POST "$BASE/api/v1/facilitator/upgrade" \
 
 Copy `network` and `asset` from **`GET $BASE/api/v1/facilitator/capabilities`** — do not paste Mainnet mints into a Devnet rehearsal (or vice versa).
 
-Store `payment-body.json` as your **402 payment body**. Re-run `/upgrade` only when price, mint, network, or facilitator URL changes.
+Store `payment-body.json` as your **402 payment body**. Re-run `/payment-required/enrich` only when price, mint, network, or facilitator URL changes.
 
-More detail on the `/upgrade` shortcut: [Quick reference · Steps 1–2](/quickstart-seller.html).
+More detail on the `/payment-required/enrich` shortcut: [Quick reference · Steps 1–2](/quickstart-seller.html).
 
 ---
 
@@ -121,7 +121,7 @@ More detail on the `/upgrade` shortcut: [Quick reference · Steps 1–2](/quicks
 
 When a request arrives without a valid `PAYMENT-SIGNATURE` header, respond with **HTTP 402** and body = your **402 payment body** (from Step 2).
 
-**Alternative:** build the body manually via `/discovery` + `/supported` — see JSON shape below. **`/upgrade` is recommended** for most sellers.
+**Alternative:** build the body manually via `/sellers/{wallet}/rails/{scheme}` + `/supported` — see JSON shape below. **`/payment-required/enrich` is recommended** for most sellers.
 
 ```json
 {
@@ -148,7 +148,7 @@ When a request arrives without a valid `PAYMENT-SIGNATURE` header, respond with 
 }
 ```
 
-> **Tip**: Copy `extra` from `GET /api/v1/facilitator/supported` → matching `kinds[]` entry + your wallet-specific fields. Or use **`POST /api/v1/facilitator/upgrade`** (Step 2).
+> **Tip**: Copy `extra` from `GET /api/v1/facilitator/supported` → matching `kinds[]` entry + your wallet-specific fields. Or use **`POST /api/v1/facilitator/payment-required/enrich`** (Step 2).
 
 ---
 
@@ -320,7 +320,7 @@ curl -sS -D - "https://your-api.com/premium-endpoint" -o /dev/null
 
 Run one real (small) Mainnet payment end-to-end before announcing the product.
 
-**Optional Devnet rehearsal:** If you practiced on `preview.ipay.sh`, switch `$BASE` to `https://ipay.sh`, re-run **`/upgrade`** on Mainnet (mints and PDAs differ), update your stored 402 body, and test once more.
+**Optional Devnet rehearsal:** If you practiced on `preview.ipay.sh`, switch `$BASE` to `https://ipay.sh`, re-run **`/payment-required/enrich`** on Mainnet (mints and PDAs differ), update your stored 402 body, and test once more.
 
 ---
 
@@ -328,9 +328,9 @@ Run one real (small) Mainnet payment end-to-end before announcing the product.
 
 | What                          | Endpoint                                              | Method   | Notes                                                                                   |
 | ----------------------------- | ----------------------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
-| Discover your `payTo` PDA     | `/api/v1/facilitator/discovery?wallet=X&scheme=exact` | GET      |                                                                                         |
-| Full onboard preview          | `/api/v1/facilitator/onboard?wallet=X`                | GET      |                                                                                         |
-| Upgrade naive 402             | `/api/v1/facilitator/upgrade`                         | POST     |                                                                                         |
+| Discover your `payTo` PDA     | `/api/v1/facilitator/sellers/X/rails/exact` | GET      |                                                                                         |
+| Full onboard preview          | `/api/v1/facilitator/sellers/{X}/preview`              | GET      |                                                                                         |
+| Upgrade naive 402             | `/api/v1/facilitator/payment-required/enrich`                         | POST     |                                                                                         |
 | **Settle (verify + execute)** | `/api/v1/facilitator/settle`                      | **POST** | Verifies internally, then executes on-chain. Idempotent.                                |
 | Verify (dry-run only)         | `/api/v1/facilitator/verify`                          | POST     | Optional pre-flight check. No on-chain cost. Returns `correlationId` for audit linkage. |
 | Supported schemes/rails       | `/api/v1/facilitator/supported`                       | GET      |                                                                                         |

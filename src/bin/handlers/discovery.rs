@@ -127,29 +127,29 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/sla-escrow-settle-cron",
                 auth: Some("bearer"),
             },
-            onboard_preview: HttpEndpointInfo {
+            seller_preview: HttpEndpointInfo {
                 method: "GET",
-                path: "/api/v1/facilitator/onboard",
+                path: seller_api::PREVIEW_TEMPLATE,
                 auth: None,
             },
-            onboard_challenge: HttpEndpointInfo {
+            seller_challenge: HttpEndpointInfo {
                 method: "GET",
-                path: "/api/v1/facilitator/onboard/challenge",
+                path: seller_api::CHALLENGE_TEMPLATE,
                 auth: None,
             },
-            onboard: HttpEndpointInfo {
+            seller_register: HttpEndpointInfo {
                 method: "POST",
-                path: "/api/v1/facilitator/onboard",
+                path: seller_api::REGISTER_TEMPLATE,
                 auth: None,
             },
-            onboard_provision: HttpEndpointInfo {
+            seller_provision_tx: HttpEndpointInfo {
                 method: "POST",
-                path: "/api/v1/facilitator/onboard/provision",
+                path: seller_api::PROVISION_TX,
                 auth: None,
             },
-            onboard_retire: HttpEndpointInfo {
+            seller_retire: HttpEndpointInfo {
                 method: "POST",
-                path: "/api/v1/facilitator/onboard/retire",
+                path: seller_api::RETIRE_TEMPLATE,
                 auth: None,
             },
             providers: HttpEndpointInfo {
@@ -182,14 +182,14 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/capabilities",
                 auth: None,
             },
-            discovery: HttpEndpointInfo {
+            seller_rail_info: HttpEndpointInfo {
                 method: "GET",
-                path: "/api/v1/facilitator/discovery",
+                path: seller_api::RAIL_TEMPLATE,
                 auth: None,
             },
-            upgrade: HttpEndpointInfo {
+            payment_required_enrich: HttpEndpointInfo {
                 method: "POST",
-                path: "/api/v1/facilitator/upgrade",
+                path: seller_api::PAYMENT_REQUIRED_ENRICH,
                 auth: None,
             },
         },
@@ -203,6 +203,7 @@ pub async fn handle_capabilities(
             x402_spec: "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md",
         },
         sla_escrow_oracle_profiles,
+        seller_endpoint_guide: seller_endpoint_guide_json(),
     };
 
     facilitator_response!()
@@ -358,7 +359,7 @@ pub async fn handle_discovery(
     }
 }
 
-/// Public PDA preview only (no DB). Use challenge + POST `/onboard` to persist with proof-of-control.
+/// Public PDA preview only (no DB). Use challenge + `POST /sellers/{wallet}/register` to persist with proof-of-control.
 pub async fn handle_upgrade(
     facilitator: Arc<
         dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,

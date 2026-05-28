@@ -86,7 +86,7 @@ fn decode_signature_flexible(encoded: &str) -> Result<Signature, String> {
     Ok(Signature::from(arr))
 }
 
-/// Build the exact UTF-8 string the wallet must sign for POST `/api/v1/facilitator/onboard`.
+/// Build the exact UTF-8 string the wallet must sign for POST `/api/v1/facilitator/sellers/{wallet}/register`.
 pub fn build_signed_onboard_message(
     hmac_secret: &[u8],
     wallet_b58: &str,

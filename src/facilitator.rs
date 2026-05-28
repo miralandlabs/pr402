@@ -66,7 +66,7 @@ pub trait Facilitator: Send + Sync {
 /// [`SchemeOnboardInfo::vault_pda_previews`]. Each entry is the result
 /// of pre-computing a per-asset PDA (e.g. the SLA-Escrow `Escrow`
 /// account for native SOL or for the cluster's USDC mint) so dashboards
-/// don't have to hit `/discovery` per mint.
+/// don't have to hit `/sellers/{wallet}/rails/{scheme}` per mint.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultPdaPreview {
@@ -110,7 +110,7 @@ pub struct SchemeOnboardInfo {
     pub vault_pda_preview_mint: Option<String>,
     /// Multi-asset PDA preview list. For `sla-escrow` we surface SOL
     /// AND the cluster's canonical USDC mint so dashboards can show
-    /// both without an extra `/discovery?asset=…` call. The first entry
+    /// both without an extra `/sellers/{wallet}/rails/{scheme}?asset=…` call. The first entry
     /// matches the legacy single-mint `vault_pda` field. Empty/omitted
     /// for schemes (like `exact`) whose vault PDA is mint-agnostic.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -142,10 +142,10 @@ pub struct OnboardResponse {
 /// Machine-readable seller lifecycle state: **Preview → Activate → Verify**.
 ///
 /// - `previewed`: PDAs were resolvable (true whenever this response exists).
-/// - `activated`: on-chain SplitVault for the exact rail exists (seller ran `/onboard/provision`
+/// - `activated`: on-chain SplitVault for the exact rail exists (seller ran `/sellers/provision-tx`
 ///   and broadcast). Does not imply `is_sovereign`; that is reported on `schemes["exact"]`.
 /// - `verified`: a `resource_providers` row exists with `registration_verified_at` set for
-///   this wallet (seller completed `/onboard/challenge` + `POST /onboard`).
+///   this wallet (seller completed `/sellers/{wallet}/challenge` + `POST /sellers/{wallet}/register`).
 ///
 /// `nextStep` is the first stage the seller can meaningfully act on — `null` once all three
 /// are complete.
@@ -348,7 +348,7 @@ impl Facilitator for FacilitatorLocal {
         //                   else). Does NOT imply `is_sovereign` — that's orthogonal (depends
         //                   on who paid `CreateVault`) and is surfaced on `schemes["exact"]`.
         //   - `verified`:   a `resource_providers` row exists with `registration_verified_at`
-        //                   set. Requires `/onboard/challenge` + `POST /onboard`.
+        //                   set. Requires `/sellers/{wallet}/challenge` + `POST /sellers/{wallet}/register`.
         let activated = response
             .schemes
             .get("exact")

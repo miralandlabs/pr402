@@ -14,7 +14,7 @@ pub async fn handle_onboard_preview(
     if wallet.is_empty() {
         return error_response(
             StatusCode::BAD_REQUEST,
-            "Missing wallet parameter. For DB registration use GET .../onboard/challenge then POST .../onboard with signature.",
+            "Missing wallet parameter. For DB registration use GET /sellers/{wallet}/challenge then POST /sellers/{wallet}/register with signature.",
         );
     }
 
@@ -214,7 +214,10 @@ fn validate_discovery(d: &OnboardDiscoveryPayload) -> Result<(), String> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OnboardSubmitBody {
-    wallet: String,
+    /// Optional — if omitted, the path segment `/sellers/{wallet}/register` is canonical.
+    /// When present, must equal the path wallet.
+    #[serde(default)]
+    wallet: Option<String>,
     message: String,
     signature: String,
     /// Declared settlement asset for `resource_providers` (one per merchant wallet). Default **USDC**.
@@ -226,10 +229,20 @@ struct OnboardSubmitBody {
     discovery: Option<OnboardDiscoveryPayload>,
 }
 
+/// Submit body after merging the path wallet with the (optional) body wallet.
+struct SubmitFields {
+    wallet: String,
+    message: String,
+    signature: String,
+    asset: String,
+    discovery: Option<OnboardDiscoveryPayload>,
+}
+
 pub async fn handle_onboard_submit(
     facilitator: Arc<
         dyn Facilitator<Error = pr402::facilitator::FacilitatorLocalError> + Send + Sync,
     >,
+    path_wallet: &str,
     body: Body,
 ) -> Response<Body> {
     let Some(secret) = pr402::parameters::resolve_onboard_hmac_secret(pr402_db()).await else {
@@ -244,9 +257,28 @@ pub async fn handle_onboard_submit(
         Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
         Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
     };
-    let submit: OnboardSubmitBody = match serde_json::from_str(&body_str) {
+    let parsed: OnboardSubmitBody = match serde_json::from_str(&body_str) {
         Ok(b) => b,
         Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
+    };
+    let wallet = match parsed.wallet.as_deref().map(str::trim) {
+        Some(w) if !w.is_empty() => {
+            if w != path_wallet {
+                return error_response(
+                    StatusCode::BAD_REQUEST,
+                    "Body `wallet` does not match the path segment; omit it or set it equal to the URL wallet.",
+                );
+            }
+            w.to_string()
+        }
+        _ => path_wallet.to_string(),
+    };
+    let submit = SubmitFields {
+        wallet,
+        message: parsed.message,
+        signature: parsed.signature,
+        asset: parsed.asset,
+        discovery: parsed.discovery,
     };
     if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
         secret.as_bytes(),
@@ -292,9 +324,9 @@ pub async fn handle_onboard_submit(
                     // — buyers would then try to pay a non-existent account.
                     //
                     // This is belt-and-suspenders; the well-lit path for sellers is:
-                    //   1. POST /onboard/provision → sign → broadcast  (the "activate" step)
-                    //   2. GET  /onboard/challenge                     (the "verify identity" step)
-                    //   3. POST /onboard (this handler)
+                    //   1. POST /sellers/provision-tx                  → sign → broadcast  (the "activate" step)
+                    //   2. GET  /sellers/{wallet}/challenge            (the "verify identity" step)
+                    //   3. POST /sellers/{wallet}/register (this handler)
                     if let Some(cp) = CHAIN_PROVIDER.get() {
                         let vault_pk = match solana_pubkey::Pubkey::from_str(&info.vault_pda) {
                             Ok(pk) => pk,
@@ -311,7 +343,7 @@ pub async fn handle_onboard_submit(
                                 return error_response(
                                     StatusCode::CONFLICT,
                                     "Vault is not yet on-chain for this wallet. Activate first: \
-                                     POST /api/v1/facilitator/onboard/provision (sign and broadcast), \
+                                     POST /api/v1/facilitator/sellers/provision-tx (sign and broadcast), \
                                      then retry registry submit.",
                                 );
                             }
@@ -433,20 +465,23 @@ pub async fn handle_onboard_submit(
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OnboardRetireBody {
-    wallet: String,
+    /// Optional — if omitted, the path segment `/sellers/{wallet}/retire` is canonical.
+    /// When present, must equal the path wallet.
+    #[serde(default)]
+    wallet: Option<String>,
     message: String,
     signature: String,
 }
 
 /// Opt-out endpoint: retire all `resource_providers` rows for a wallet.
 ///
-/// Uses the same HMAC challenge + wallet signature flow as `POST /onboard`, but flips
-/// `retired_at` / `inactive` / `listing_opt_in` so the rows stop appearing in discovery
-/// and future settle attempts warn. The signed `message` must have been obtained from
-/// `GET /onboard/challenge?wallet=…`; the server-side HMAC binds the message to the
+/// Uses the same HMAC challenge + wallet signature flow as `POST /sellers/{wallet}/register`,
+/// but flips `retired_at` / `inactive` / `listing_opt_in` so the rows stop appearing in
+/// discovery and future settle attempts warn. The signed `message` must have been obtained
+/// from `GET /sellers/{wallet}/challenge`; the server-side HMAC binds the message to the
 /// deployment and the wallet proves key control. No on-chain write is issued — this is
 /// an off-chain registry retirement only.
-pub async fn handle_onboard_retire(body: Body) -> Response<Body> {
+pub async fn handle_onboard_retire(path_wallet: &str, body: Body) -> Response<Body> {
     let Some(secret) = pr402::parameters::resolve_onboard_hmac_secret(pr402_db()).await else {
         return error_response(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -459,15 +494,27 @@ pub async fn handle_onboard_retire(body: Body) -> Response<Body> {
         Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
         Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
     };
-    let submit: OnboardRetireBody = match serde_json::from_str(&body_str) {
+    let parsed: OnboardRetireBody = match serde_json::from_str(&body_str) {
         Ok(b) => b,
         Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
     };
+    let wallet = match parsed.wallet.as_deref().map(str::trim) {
+        Some(w) if !w.is_empty() => {
+            if w != path_wallet {
+                return error_response(
+                    StatusCode::BAD_REQUEST,
+                    "Body `wallet` does not match the path segment; omit it or set it equal to the URL wallet.",
+                );
+            }
+            w.to_string()
+        }
+        _ => path_wallet.to_string(),
+    };
     if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
         secret.as_bytes(),
-        &submit.wallet,
-        &submit.message,
-        &submit.signature,
+        &wallet,
+        &parsed.message,
+        &parsed.signature,
     ) {
         return error_response(StatusCode::UNAUTHORIZED, &e);
     }
@@ -479,13 +526,13 @@ pub async fn handle_onboard_retire(body: Body) -> Response<Body> {
         );
     };
 
-    match db.retire_resource_provider(&submit.wallet).await {
+    match db.retire_resource_provider(&wallet).await {
         Ok(updated) => facilitator_response!()
             .status(StatusCode::OK)
             .header("Content-Type", "application/json")
             .body(Body::Text(
                 serde_json::json!({
-                    "wallet": submit.wallet,
+                    "wallet": wallet,
                     "retiredRowCount": updated,
                     "note": if updated == 0 {
                         "No active rows found for this wallet; nothing to retire."
@@ -590,9 +637,9 @@ pub async fn handle_public_provider_single(wallet: &str) -> Response<Body> {
 
 /// Seller payment history: returns the most recent `payment_attempts` rows for a wallet,
 /// joined through the resource-provider row. Intended for seller dashboards. Requires the
-/// same HMAC challenge + wallet-signed message as `POST /onboard` so only the wallet owner
-/// can read their own history. Query params: `message`, `signature` (wallet-signed challenge),
-/// `limit` (1..=100), `cursor` (RFC3339 createdAt).
+/// same HMAC challenge + wallet-signed message as `POST /sellers/{wallet}/register` so only
+/// the wallet owner can read their own history. Query params: `message`, `signature`
+/// (wallet-signed challenge), `limit` (1..=100), `cursor` (RFC3339 createdAt).
 pub async fn handle_seller_payments_list(query: &str, body: Body) -> Response<Body> {
     let Some(db) = pr402_db() else {
         return error_response(

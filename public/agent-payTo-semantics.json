@@ -9,7 +9,7 @@
     },
     "sla-escrow": {
       "kind": "escrowPda",
-      "resolve": "GET /api/v1/facilitator/discovery?wallet=<seller>&scheme=sla-escrow&asset=<mint> → vaultPda",
+      "resolve": "GET /api/v1/facilitator/sellers/{seller}/rails/sla-escrow?asset=<mint> → vaultPda",
       "fundPaymentSeller": "extra.merchantWallet or extra.beneficiary (seller payout wallet; not payTo)",
       "bankPda": "supported.kinds[].extra.bankAddress (instruction account; not payTo)",
       "verifyMatches": "payTo equals derive_escrow_pda(mint, bank) for payment asset"
@@ -25,6 +25,6 @@
       "POST /api/v1/facilitator/build-exact-payment-tx",
       "POST /api/v1/facilitator/build-sla-escrow-payment-tx"
     ],
-    "upgradeWarning": "POST /api/v1/facilitator/upgrade logs when accepts[].asset is not allowlisted (non-blocking)"
+    "upgradeWarning": "POST /api/v1/facilitator/payment-required/enrich logs when accepts[].asset is not allowlisted (non-blocking)"
   }
 }

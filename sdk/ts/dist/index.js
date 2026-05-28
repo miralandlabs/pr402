@@ -64,7 +64,7 @@ class X402AgentClient {
             throw new X402Error('MINT_NOT_ACCEPTED', `Resource does not accept mint ${preferredMint}. Available mints: [${availableMints.join(', ')}]. Pick one from this list.`, { availableMints });
         const capUrl = rule.extra?.capabilitiesUrl;
         if (!capUrl)
-            throw new X402Error('MISSING_CAPABILITIES_URL', 'This 402-gated resource did not provide extra.capabilitiesUrl. The Resource Provider has not completed Facilitator integration. See docs/SELLER_INTEGRATION.md.');
+            throw new X402Error('MISSING_CAPABILITIES_URL', 'This 402-gated resource did not provide extra.capabilitiesUrl. The Resource Provider has not completed Facilitator integration. See public/onboarding_guide.md (GET /onboarding_guide.md on the facilitator host).');
         // ── Step 2: Ask Facilitator to build the tx ─────────────────────
         const facilitatorBase = capUrl.replace('/capabilities', '');
         const buildRes = await fetch(`${facilitatorBase}/build-exact-payment-tx`, {

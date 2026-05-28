@@ -7,7 +7,7 @@ This site is written for **human teams** (copy-friendly curl blocks, diagrams, c
 0. **Install the buyer SDK** — `npm i @pr402/client` (Node) or `cargo install pr402-client` (Rust). Both ship a `pr402-buy` CLI; everything below documents the protocol under it.
 1. [Start here · Sellers](/start-here) — prerequisites, pick rail (appendices: fees, facilitator comparison).
 2. [Integrate your API](/seller-quick-start) — 402 shape, `/settle`, language snippets.
-3. [Quick reference · 5 steps](/quickstart-seller) — minimal path via `/upgrade`.
+3. [Quick reference · 5 steps](/quickstart-seller) — minimal path via `/payment-required/enrich`.
 4. [Onboarding Guide](/onboarding_guide) — sovereign vs facilitated onboarding, fees, registry rules.
 5. [Agent integration](/agent-integration) — full runbook (buyers, sellers, operational constraints).
 
@@ -45,9 +45,9 @@ For **preview**, substitute `https://preview.ipay.sh/openapi.json`.
 
 | Area | Illustrative routes | Purpose |
 |------|---------------------|---------|
-| Health & discovery | `/api/v1/facilitator/health`, `/capabilities`, `/supported`, `/discovery` | Cluster, feature flags, rails |
+| Health & discovery | `/api/v1/facilitator/health`, `/capabilities`, `/supported`, `/sellers/{wallet}/rails/{scheme}` | Cluster, feature flags, rails |
 | Buyer flows | `/build-exact-payment-tx`, `/build-sla-escrow-payment-tx`, `/verify`, `/settle` | Unsigned tx, proofs, settlement |
-| Seller flows | `/upgrade`, `/onboard/*`, `/vault-snapshot` | 402 shaping, provisioning, ops |
+| Seller flows | `/payment-required/enrich`, `/sellers/*`, `/vault-snapshot` | 402 shaping, provisioning, ops |
 
 Exact paths and bodies live **only** in **`openapi.json`** — avoid copying tables into offline cheat sheets when precision matters.
 

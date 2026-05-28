@@ -1,0 +1,63 @@
+[
+  {
+    "goal": "Multi-rail preview + lifecycle ladder (Preview step)",
+    "method": "GET",
+    "path": "/api/v1/facilitator/sellers/{wallet}/preview",
+    "sideEffect": "read-only",
+    "returns": "OnboardResponse with lifecycle",
+    "when": "First seller call; need nextStep (activate | verify | null)"
+  },
+  {
+    "goal": "Single-rail payTo lookup",
+    "method": "GET",
+    "path": "/api/v1/facilitator/sellers/{wallet}/rails/{scheme}",
+    "query": "asset (required for sla-escrow mint-specific escrow PDA)",
+    "sideEffect": "read-only",
+    "returns": "SchemeOnboardInfo",
+    "when": "Building accepts[] for one rail; prefer over preview when you only need one scheme"
+  },
+  {
+    "goal": "Activate — build unsigned CreateVault / ATA tx",
+    "method": "POST",
+    "path": "/api/v1/facilitator/sellers/provision-tx",
+    "body": "{ wallet, asset }",
+    "sideEffect": "returns unsigned tx (exact rail only)",
+    "returns": "SellerProvisionTxResponse",
+    "when": "lifecycle.nextStep is activate or you need sovereign fee tier"
+  },
+  {
+    "goal": "Enrich naive PaymentRequired for HTTP 402",
+    "method": "POST",
+    "path": "/api/v1/facilitator/payment-required/enrich",
+    "body": "PaymentRequired JSON (exact: wallet in payTo draft)",
+    "sideEffect": "read-only transform",
+    "returns": "PaymentRequired with vault PDA + extra",
+    "when": "Publishing 402; cache result per product/price"
+  },
+  {
+    "goal": "Registry challenge (Verify step)",
+    "method": "GET",
+    "path": "/api/v1/facilitator/sellers/{wallet}/challenge",
+    "sideEffect": "read-only",
+    "returns": "message to sign",
+    "when": "Optional public directory listing"
+  },
+  {
+    "goal": "Registry submit (Verify step)",
+    "method": "POST",
+    "path": "/api/v1/facilitator/sellers/{wallet}/register",
+    "body": "{ wallet, message, signature, asset? }",
+    "sideEffect": "DB write when configured",
+    "returns": "OnboardResponse",
+    "when": "After Activate on-chain; optional"
+  },
+  {
+    "goal": "Registry retire (opt-out)",
+    "method": "POST",
+    "path": "/api/v1/facilitator/sellers/{wallet}/retire",
+    "body": "{ wallet, message, signature }",
+    "sideEffect": "DB write — marks retired_at",
+    "returns": "OnboardRetireResponse",
+    "when": "Remove wallet from public directory"
+  }
+]

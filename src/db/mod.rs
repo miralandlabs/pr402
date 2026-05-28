@@ -39,8 +39,9 @@ pub struct Pr402Db {
 /// One row emitted by [`Pr402Db::list_public_providers`] / [`Pr402Db::get_public_provider`].
 ///
 /// Intentionally minimal: only fields the seller opted to publish, plus the vault PDA so
-/// buyers / discovery consumers can skip a separate `/discovery` round-trip when they want
-/// to build an `accepts[]` line. Sensitive / internal columns (sweep signatures, attempt
+/// buyers / discovery consumers can skip a separate `/sellers/{wallet}/rails/{scheme}`
+/// round-trip when they want to build an `accepts[]` line. Sensitive / internal columns
+/// (sweep signatures, attempt
 /// counters) are never included.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -422,7 +423,7 @@ impl Pr402Db {
 
     /// Returns `true` when at least one `resource_providers` row exists for this wallet
     /// with `registration_verified_at IS NOT NULL`. Used by the seller lifecycle ladder on
-    /// `GET /onboard` to report the `verified` stage without scanning metadata in the UI.
+    /// `GET /sellers/{wallet}/preview` to report the `verified` stage without scanning metadata in the UI.
     ///
     /// Scoped to `wallet_pubkey` only (all settlement rails collapse together): a seller is
     /// "verified" once any rail has completed the challenge + signed submit. The facilitator
@@ -468,7 +469,7 @@ impl Pr402Db {
 
     /// Apply an optional discovery payload to the seller's registry rows. Updates *all*
     /// rails for `wallet_pubkey` in lockstep so the public listing stays consistent across
-    /// settlement modes. Called at the tail of `POST /onboard`.
+    /// settlement modes. Called at the tail of `POST /sellers/{wallet}/register`.
     ///
     /// Length / pattern limits are enforced in the application layer (handler) before this
     /// runs; this function just writes the validated values. Passing `None` for any field
@@ -547,8 +548,9 @@ impl Pr402Db {
     }
 
     /// Retire all `resource_providers` rows for a wallet. Sets `retired_at = NOW()` (if not
-    /// already set) and flips `inactive = TRUE`. Called from `POST /onboard/retire` after
-    /// the same HMAC challenge + wallet signature verification as `POST /onboard`.
+    /// already set) and flips `inactive = TRUE`. Called from `POST /sellers/{wallet}/retire`
+    /// after the same HMAC challenge + wallet signature verification as
+    /// `POST /sellers/{wallet}/register`.
     ///
     /// Returns the count of rows updated. Zero = wallet was not in the registry; callers
     /// should surface that as a no-op success, not an error.
@@ -1089,12 +1091,13 @@ impl Pr402Db {
 
         // NOTE: on conflict we also clear the retirement markers so a seller can
         // reactivate a previously retired wallet by re-running the Activate → Verify
-        // ladder. Without this, POST /onboard would return 200 OK but the row would
-        // remain `inactive = TRUE, retired_at = <prev>`, silently leaving the wallet
-        // hidden from /providers and blocked from `apply_seller_discovery` (which
-        // filters on `retired_at IS NULL`). `listing_opt_in` is deliberately NOT
-        // reset here; re-opting in is a separate explicit action via the optional
-        // discovery payload on POST /onboard.
+        // ladder. Without this, POST /sellers/{wallet}/register would return 200 OK
+        // but the row would remain `inactive = TRUE, retired_at = <prev>`, silently
+        // leaving the wallet hidden from /providers and blocked from
+        // `apply_seller_discovery` (which filters on `retired_at IS NULL`).
+        // `listing_opt_in` is deliberately NOT reset here; re-opting in is a separate
+        // explicit action via the optional discovery payload on
+        // POST /sellers/{wallet}/register.
         const SQL: &str = r#"
                 INSERT INTO resource_providers (
                     wallet_pubkey, settlement_mode, spl_mint,

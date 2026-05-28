@@ -51,9 +51,9 @@ For production integrations, pick one facilitator origin per environment and kee
 Sellers can onboard either **Proactively** (Protocol Onboarding) to receive a fee discount, or **Just-In-Time** (Facilitated) with a small setup recovery fee.
 
 **Agentic Onboarding Flow:**
-1. **Discover**: Find your `payTo` (vault PDA) address via `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact`.
-2. **On-Chain Provisioning**: **`POST /api/v1/facilitator/onboard/provision`** with a **JSON body** (`Content-Type: application/json`). Put `wallet` and `asset` **in the request body**, not in the query string — e.g. `{"wallet":"<PUBKEY>","asset":"SOL"}` (`USDC`, `USDT`, or a base58 mint). Example: `curl -X POST .../onboard/provision -H "Content-Type: application/json" -d '{"wallet":"<PUBKEY>","asset":"SOL"}'`. Idempotent when already on-chain; sign & broadcast when `transaction` is present. (Facilitator policy: **one asset per merchant wallet**; use **separate wallets** for additional tokens — see [`public/onboarding_guide.md`](public/onboarding_guide.md).)
-3. **Registry (Off-Chain)**: Use `/onboard/challenge` to persist verified metadata for high-fidelity discovery.
+1. **Discover**: Find your `payTo` (vault PDA) address via `GET /api/v1/facilitator/sellers/{PUBKEY}/rails/exact`.
+2. **On-Chain Provisioning**: **`POST /api/v1/facilitator/sellers/provision-tx`** with a **JSON body** (`Content-Type: application/json`). Put `wallet` and `asset` **in the request body**, not in the query string — e.g. `{"wallet":"<PUBKEY>","asset":"SOL"}` (`USDC`, `USDT`, or a base58 mint). Example: `curl -X POST .../sellers/provision-tx -H "Content-Type: application/json" -d '{"wallet":"<PUBKEY>","asset":"SOL"}'`. Idempotent when already on-chain; sign & broadcast when `transaction` is present. (Facilitator policy: **one asset per merchant wallet**; use **separate wallets** for additional tokens — see [`public/onboarding_guide.md`](public/onboarding_guide.md).)
+3. **Registry (Off-Chain)**: Use `/sellers/{wallet}/challenge` to persist verified metadata for high-fidelity discovery.
 
 ## For buyer agents (payers)
 

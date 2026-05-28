@@ -45,8 +45,8 @@ pub const BUILD_EXACT_PAYMENT_TX_PATH: &str = "/api/v1/facilitator/build-exact-p
 pub const BUILD_SLA_ESCROW_PAYMENT_TX_PATH: &str =
     "/api/v1/facilitator/build-sla-escrow-payment-tx";
 
-/// `POST /api/v1/facilitator/onboard/provision` — seller SplitVault + asset surface (see OpenAPI `SellerProvisionTxResponse`).
-pub const FACILITATOR_ONBOARD_PROVISION_PATH: &str = "/api/v1/facilitator/onboard/provision";
+/// `POST /api/v1/facilitator/sellers/provision-tx` — seller SplitVault + asset surface (see OpenAPI `SellerProvisionTxResponse`).
+pub const FACILITATOR_ONBOARD_PROVISION_PATH: &str = "/api/v1/facilitator/sellers/provision-tx";
 
 /// `GET /openapi.json` — OpenAPI 3.1 document (static); also linked from `capabilities.httpEndpoints.openApi`.
 pub const FACILITATOR_OPENAPI_PATH: &str = "/openapi.json";
@@ -60,7 +60,7 @@ pub const FACILITATOR_SELLER_QUICK_START_PATH: &str = "/seller-quick-start.md";
 /// `GET /quickstart-buyer.md` — Concise 6-step buyer agent guide (static `public/quickstart-buyer.md`).
 pub const FACILITATOR_QUICKSTART_BUYER_PATH: &str = "/quickstart-buyer.md";
 
-/// `GET /quickstart-seller.md` — Concise 5-step seller guide with `/upgrade` as default path (static `public/quickstart-seller.md`).
+/// `GET /quickstart-seller.md` — Concise 5-step seller guide with `/payment-required/enrich` as default path (static `public/quickstart-seller.md`).
 pub const FACILITATOR_QUICKSTART_SELLER_PATH: &str = "/quickstart-seller.md";
 
 #[cfg(feature = "facilitator-http")]

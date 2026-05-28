@@ -18,9 +18,9 @@ export const FACILITATOR_HEALTH_PATH = "/api/v1/facilitator/health";
 export const FACILITATOR_CAPABILITIES_PATH = "/api/v1/facilitator/capabilities";
 export const FACILITATOR_VERIFY_PATH = "/api/v1/facilitator/verify";
 export const FACILITATOR_SETTLE_PATH = "/api/v1/facilitator/settle";
-/** `POST .../onboard/provision` — seller UniversalSettle provisioning per asset. */
+/** `POST .../sellers/provision-tx` — seller UniversalSettle provisioning per asset. */
 export const FACILITATOR_ONBOARD_PROVISION_PATH =
-  "/api/v1/facilitator/onboard/provision";
+  "/api/v1/facilitator/sellers/provision-tx";
 /** Static OpenAPI 3.1 document (same origin as facilitator). */
 export const FACILITATOR_OPENAPI_PATH = "/openapi.json";
 /** Markdown agent runbook — static `public/agent-integration.md` (same pattern as OpenAPI). */

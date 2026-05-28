@@ -1,0 +1,36 @@
+{
+  "name": "@pr402/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server wrapping pr402 facilitator HTTP via @pr402/client — buyer and seller tools.",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "type": "commonjs",
+  "bin": {
+    "pr402-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "postbuild": "node -e \"require('fs').chmodSync('dist/server.js', 0o755)\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@pr402/client": "file:../ts",
+    "@solana/web3.js": "^1.87.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/miralandlabs/pr402"
+  }
+}

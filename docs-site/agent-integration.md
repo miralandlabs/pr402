@@ -54,24 +54,39 @@ Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
 **Important (pr402 ≠ simple wallet `payTo`):** This facilitator settles through **UniversalSettle** (`v2:solana:exact`) and/or **SLA-Escrow** (`v2:solana:sla-escrow`). Your 402 **`payTo`** (and matching proof destinations) must be the **on-chain PDA** your buyers pay into—not a bare seller wallet for settlement proofs:
 
-- **`exact`**: use the UniversalSettle **split-vault / rail PDAs** from seller discovery (`GET /api/v1/facilitator/discovery?wallet=…&scheme=exact`) or your integrator’s docs.
+- **`exact`**: use the UniversalSettle **split-vault / rail PDAs** from seller discovery (`GET /api/v1/facilitator/sellers/{wallet}/rails/exact`) or your integrator’s docs.
 - **`sla-escrow`**: **`payTo` must be the Escrow PDA** for the asset mint and facilitator bank (the facilitator verifies this). The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** sets the canonical `payTo` for you.
 
 ---
 
 ## Seller agents (resource providers)
 
+### Seller endpoint decision matrix
+
+Do **not** collapse these into one endpoint — each has a distinct side effect. Use this table (also available as **`sellerEndpointGuide`** on **`GET /capabilities`**) to pick the right call:
+
+| Goal | Method + path | Side effect | When to use |
+|------|---------------|-------------|-------------|
+| Multi-rail preview + lifecycle ladder | `GET /api/v1/facilitator/sellers/{wallet}/preview` | Read-only | First seller call; inspect `lifecycle.nextStep` |
+| Single-rail `payTo` lookup | `GET /api/v1/facilitator/sellers/{wallet}/rails/{scheme}` (+ `?asset=` for sla-escrow) | Read-only | Building one `accepts[]` line |
+| Activate — unsigned CreateVault tx | `POST /api/v1/facilitator/sellers/provision-tx` | Returns unsigned tx | `lifecycle.nextStep === "activate"` |
+| Enrich naive 402 body | `POST /api/v1/facilitator/payment-required/enrich` | Read-only JSON transform | Publishing HTTP 402 |
+| Registry challenge | `GET /api/v1/facilitator/sellers/{wallet}/challenge` | Read-only | Optional public directory |
+| Registry submit | `POST /api/v1/facilitator/sellers/{wallet}/register` | DB write when configured | After Activate on-chain |
+
+
+
 ### Seller lifecycle: Preview → Activate → Verify
 
-The facilitator exposes a three-stage seller lifecycle. Each stage has a distinct side effect; the stages are surfaced machine-readably via the `lifecycle` block on `GET /api/v1/facilitator/onboard` (`previewed` / `activated` / `verified` / `nextStep`).
+The facilitator exposes a three-stage seller lifecycle. Each stage has a distinct side effect; the stages are surfaced machine-readably via the `lifecycle` block on `GET /api/v1/facilitator/sellers/{wallet}/preview` (`previewed` / `activated` / `verified` / `nextStep`).
 
 | Stage | HTTP | Side effect | Required? |
 |-------|------|-------------|-----------|
-| **Preview** | `GET /api/v1/facilitator/onboard?wallet=…` | None. Derives vault PDAs and returns on-chain state. | No wallet needed. |
-| **Activate** | `POST /api/v1/facilitator/onboard/provision` | Returns an unsigned `CreateVault` (+ optional ATA) tx. After the **seller** signs and broadcasts, the on-chain `SplitVault` exists and unlocks the sovereign 90 bps fee tier. | Required before accepting payments. |
-| **Verify** (optional) | `GET /api/v1/facilitator/onboard/challenge` then `POST /api/v1/facilitator/onboard` | Writes a verified row in the off-chain `resource_providers` registry so the seller appears in discovery. The facilitator **refuses** this step with `409 Conflict` until Activate has landed. | Optional. Only required for verified-seller discovery listings. |
+| **Preview** | `GET /api/v1/facilitator/sellers/{wallet}/preview` | None. Derives vault PDAs and returns on-chain state. | No wallet needed. |
+| **Activate** | `POST /api/v1/facilitator/sellers/provision-tx` | Returns an unsigned `CreateVault` (+ optional ATA) tx. After the **seller** signs and broadcasts, the on-chain `SplitVault` exists and unlocks the sovereign 90 bps fee tier. | Required before accepting payments. |
+| **Verify** (optional) | `GET /api/v1/facilitator/sellers/{wallet}/challenge` then `POST /api/v1/facilitator/sellers/{wallet}/register` | Writes a verified row in the off-chain `resource_providers` registry so the seller appears in discovery. The facilitator **refuses** this step with `409 Conflict` until Activate has landed. | Optional. Only required for verified-seller discovery listings. |
 
-The `POST /onboard/provision` response carries a `statusCode` enum so agents don't have to parse `notes[]`:
+The `POST /sellers/provision-tx` response carries a `statusCode` enum so agents don't have to parse `notes[]`:
 
 - `ALREADY_PROVISIONED` — vault (and ATA if applicable) already exist; no `transaction` returned.
 - `VAULT_AND_ATA` — first-time SPL provisioning (two setup ixs).
@@ -81,17 +96,17 @@ The `POST /onboard/provision` response carries a `statusCode` enum so agents don
 If you receive payment for resources and want **Sovereign** status (90 bps fee tier — a 10 bps discount off the standard 100 bps rate) and correct **402 `accepts[]`** lines:
 
 1. **Discover rules**: [Onboarding guide](/onboarding_guide) — Sovereign vs facilitated (JIT) paths.
-2. **Preview (no wallet):** `GET /api/v1/facilitator/onboard?wallet=<YOUR_PUBKEY>`. The `lifecycle` block tells you what stage to act on next.
+2. **Preview (no wallet):** `GET /api/v1/facilitator/sellers/{YOUR_PUBKEY}/preview`. The `lifecycle` block tells you what stage to act on next.
 3. **Activate (on-chain):**
-   - **Build**: `POST /api/v1/facilitator/onboard/provision` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `USDT`, or a base58 SPL mint). Idempotent per `(wallet, asset)` (`statusCode: "ALREADY_PROVISIONED"` + no `transaction` when done).
+   - **Build**: `POST /api/v1/facilitator/sellers/provision-tx` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `USDT`, or a base58 SPL mint). Idempotent per `(wallet, asset)` (`statusCode: "ALREADY_PROVISIONED"` + no `transaction` when done).
    - **Sign** the base64 bincode `VersionedTransaction` with your seller key.
    - **Send** to Solana. Signing with the seller wallet itself earns the ongoing **10 bps** protocol fee discount (90 bps sovereign rate vs 100 bps standard).
 4. **Discover your `payTo` (vault PDA)** and metadata:
    ```bash
-   curl -sS "https://<facilitator-url>/api/v1/facilitator/discovery?wallet=<YOUR_PUBKEY>&scheme=exact" | jq .
+   curl -sS "https://<facilitator-url>/api/v1/facilitator/sellers/{YOUR_PUBKEY}/rails/exact" | jq .
    ```
    Try the **Vault Explorer** on the facilitator `/` landing page for the same resolution.
-5. **Verify identity (optional):** `GET /api/v1/facilitator/onboard/challenge?wallet=…`, sign the returned `message` with the wallet, then `POST /api/v1/facilitator/onboard` with `{ wallet, message, signature, asset }`. The signature must be base58-encoded Ed25519. The facilitator returns **`409 Conflict`** if the on-chain vault does not yet exist — run Activate first. Requires `DATABASE_URL` + HMAC secret on the server; persists verified vault metadata for discovery.
+5. **Verify identity (optional):** `GET /api/v1/facilitator/sellers/{wallet}/challenge`, sign the returned `message` with the wallet, then `POST /api/v1/facilitator/sellers/{wallet}/register` with `{ wallet, message, signature, asset }`.
 6. **Publishing x402**: See [Publishing a Payment Required line](#publishing-a-payment-required-line-sellers) so your `accepts[]` matches what this facilitator verifies.
 
 <a id="publishing-a-payment-required-line-sellers"></a>
@@ -109,7 +124,7 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
    **Several options in one 402:** x402 **`accepts[]`** is an **array**—each entry is a full payment requirement with its own **`payTo`**, **`asset`**, and metadata; the buyer returns **one** chosen line as **`accepted`**. This is how you advertise more than one token or rail on the same resource. With this facilitator’s **one asset per merchant wallet** rule, use **distinct seller pubkeys** per rail and give each `accepts[]` row the **`payTo`** / **`extra.merchantWallet`** from discovery for **that** key (see [Onboarding guide](/onboarding_guide) — *Policy: one payment asset per merchant wallet*).
 
 3. **`v2:solana:exact` (UniversalSettle)**  
-   - **`payTo`**: Must identify the **vault rail** the facilitator checks on-chain (split-vault / SOL storage / vault ATA semantics per deployment). Use PDAs from **`GET /api/v1/facilitator/discovery?wallet=<your_seller_pubkey>&scheme=exact`** (`vaultPda`, `solStoragePda`, etc.). Do **not** publish only your personal wallet as `payTo` unless that is explicitly the derived rail for your deployment.  
+   - **`payTo`**: Must identify the **vault rail** the facilitator checks on-chain (split-vault / SOL storage / vault ATA semantics per deployment). Use PDAs from **`GET /api/v1/facilitator/sellers/{your_seller_pubkey}/rails/exact`** (`vaultPda`, `solStoragePda`, etc.). Do **not** publish only your personal wallet as `payTo` unless that is explicitly the derived rail for your deployment.  
    - **`extra`**: Should align with the **`supported`** kind (e.g. `feePayer`, `programId`, `configAddress`, `merchantWallet`, `beneficiary` as your product uses them). Buyers’ proofs are checked against `paymentRequirements` and the wire transaction.
 
 4. **`v2:solana:sla-escrow`**  
@@ -121,18 +136,18 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
    Deployments may set **`PR402_ALLOWED_PAYMENT_MINTS`** (comma / whitespace‑separated base58 mints; env or `parameters` table — include **`11111111111111111111111111111111`** if native SOL lines must pass).  
    - **Non-empty list:** `exact` **and** `sla-escrow` **`/verify`**, **`/settle`**, **`build-exact-payment-tx`**, and **`build-sla-escrow-payment-tx`** reject any `accepted.asset` / `paymentRequirements.asset` not in the list (same error text as verify).  
    - **Empty / unset:** permissive (all mints). The facilitator logs a **one-time** warning at first check in that mode — do not rely on this in production.  
-   - **`POST /upgrade`:** when an allowlist is configured, the server **warns** (non-blocking) if any **`accepts[].asset`** is missing from the list so you can fix 402 bodies before buyers hit hard failures.
+   - **`POST /payment-required/enrich`:** when an allowlist is configured, the server **warns** (non-blocking) if any **`accepts[].asset`** is missing from the list so you can fix 402 bodies before buyers hit hard failures.
 
 6. **Minimal mental model**  
    You are not only “pasting Coinbase x402 examples”; you are **pinning** your resource to **this facilitator’s** Solana rails. When in doubt, reproduce a happy path with **`build-exact-payment-tx`** / **`build-sla-escrow-payment-tx`** locally, then mirror the `accepted` object in your live `accepts[]`.
 
 ### Seller agent checklist (automation)
 
-1. **Capabilities**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Seller lifecycle endpoints are under `httpEndpoints.onboardPreview` / `onboardChallenge` / `onboard` / `onboardProvision`.
-2. **Preview**: `GET /api/v1/facilitator/onboard?wallet=<PUBKEY>`. Inspect the `lifecycle` block — if `nextStep === "activate"`, skip to step 4. If `isSovereign: true` on `schemes.exact`, you already have the discount path.
-3. **Scheme discovery**: `GET /api/v1/facilitator/discovery?wallet=<PUBKEY>&scheme=exact` (or `sla-escrow&asset=<MINT>`) for a single canonical `payTo`.
-4. **Activate**: `POST /api/v1/facilitator/onboard/provision` with `wallet` + **`asset`** for that seller key's single rail. Inspect `statusCode`: `ALREADY_PROVISIONED` means no tx to sign; otherwise sign the base64 bincode tx and broadcast.
-5. **Verify (optional)**: `GET /api/v1/facilitator/onboard/challenge?wallet=<PUBKEY>` → sign the returned `message` → `POST /api/v1/facilitator/onboard` with `{ wallet, message, signature (base58), asset }`. Expect `409 Conflict` if Activate hasn't landed on-chain yet.
+1. **Capabilities**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Seller lifecycle endpoints are under `httpEndpoints.sellerPreview` / `sellerChallenge` / `sellerRegister` / `sellerProvisionTx`.
+2. **Preview**: `GET /api/v1/facilitator/sellers/{PUBKEY}/preview`. Inspect the `lifecycle` block — if `nextStep === "activate"`, skip to step 4. If `isSovereign: true` on `schemes.exact`, you already have the discount path.
+3. **Scheme discovery**: `GET /api/v1/facilitator/sellers/{PUBKEY}/rails/exact` (or `/sellers/{PUBKEY}/rails/sla-escrow?asset=<MINT>`) for a single canonical `payTo`.
+4. **Activate**: `POST /api/v1/facilitator/sellers/provision-tx` with `wallet` + **`asset`** for that seller key's single rail. Inspect `statusCode`: `ALREADY_PROVISIONED` means no tx to sign; otherwise sign the base64 bincode tx and broadcast.
+5. **Verify (optional)**: `GET /api/v1/facilitator/sellers/{PUBKEY}/challenge` → sign the returned `message` → `POST /api/v1/facilitator/sellers/{PUBKEY}/register` with `{ message, signature (base58), asset }` (path wallet is canonical; body `wallet`, if present, must equal the path). Expect `409 Conflict` if Activate hasn't landed on-chain yet.
 6. **Balances (debug)**: `GET /api/v1/facilitator/vault-snapshot?wallet=<PUBKEY>` (UniversalSettle deployments).
 
 ---
@@ -257,9 +272,9 @@ These are deliberate design choices that differentiate pr402 from a generic x402
 |---------|---------|
 | **`verifyBodyTemplate`** | Build endpoints return a ready-to-use verify/settle body template. Buyers just sign and slot the tx in — no manual JSON construction, no mismatched fields. |
 | **Idempotent `/settle`** | If the transaction is already confirmed on-chain, settle returns success. Safe for retries, agent loops, and network interruptions. |
-| **`/upgrade` (Lite → Full 402)** | Sellers can post a naive 402 body with bare wallet `payTo` and receive back a fully institutional response with PDA-derived addresses and `extra` metadata. Eliminates PDA math on the seller side. |
+| **`/payment-required/enrich` (Lite → Full 402)** | Sellers can post a naive 402 body with bare wallet `payTo` and receive back a fully institutional response with PDA-derived addresses and `extra` metadata. Eliminates PDA math on the seller side. |
 | **Dual scheme support** | Both `exact` (instant UniversalSettle) and `sla-escrow` (time-bound escrow with oracle adjudication) are supported from a single facilitator deployment. |
-| **`/discovery` (lightweight)** | Single-scheme, read-only lookup of `payTo` PDA. No auth, no DB. Sellers can call this from any language with a simple HTTP GET. |
+| **`/sellers/{wallet}/rails/{scheme}` (lightweight)** | Single-scheme, read-only lookup of `payTo` PDA. No auth, no DB. Sellers can call this from any language with a simple HTTP GET. |
 | **CORS `Access-Control-Expose-Headers`** | `PAYMENT-RESPONSE`, `X-Correlation-ID`, and `X-API-Version` are exposed so browser-based agents can read settlement results. |
 | **Toxic asset protection** | Configurable mint allowlist (`PR402_ALLOWED_PAYMENT_MINTS`) prevents settlement with worthless spam tokens. |
 | **Seller quick start** | Language-agnostic guide at [`/seller-quick-start`](/seller-quick-start) with pseudocode and examples in Rust, Python, JS/TS, and Go. |
