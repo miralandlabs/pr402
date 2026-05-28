@@ -700,7 +700,7 @@
           "pr402 Extension: Seller Onboarding"
         ],
         "summary": "Wallet-authenticated seller payment history",
-        "description": "Returns recent `payment_attempts` rows for the authenticated seller wallet. Uses the same HMAC challenge + wallet-signed message as `POST /onboard` so only the wallet owner can read their own history.",
+        "description": "Returns recent `payment_attempts` rows for the authenticated seller wallet. Uses the same HMAC challenge + wallet-signed message as `POST /sellers/{wallet}/register` so only the wallet owner can read their own history.",
         "operationId": "facilitatorSellerPayments",
         "requestBody": {
           "required": true,
@@ -1610,7 +1610,7 @@
           "message",
           "signature"
         ],
-        "description": "Same HMAC-bound, wallet-signed payload shape as POST /onboard. The facilitator only retires the wallet after signature verification passes.",
+        "description": "Same HMAC-bound, wallet-signed payload shape as `POST /sellers/{wallet}/register`. The facilitator only retires the wallet after signature verification passes.",
         "properties": {
           "wallet": {
             "type": "string"
@@ -1743,7 +1743,7 @@
           "message",
           "signature"
         ],
-        "description": "Same HMAC challenge + wallet-signed payload as POST /onboard.",
+        "description": "Same HMAC challenge + wallet-signed payload as `POST /sellers/{wallet}/register`.",
         "properties": {
           "wallet": {
             "type": "string"
@@ -1916,7 +1916,7 @@
           },
           "payToResolve": {
             "type": "string",
-            "description": "How agents should resolve `payTo`: `onboard.vaultPda` (exact, mint-agnostic) or `discovery.vaultPda` (sla-escrow, mint-specific).",
+            "description": "Resolve hint: exact → `GET /sellers/{wallet}/rails/exact`; sla-escrow → `GET /sellers/{wallet}/rails/sla-escrow?asset=<mint>`. Legacy symbolic values `onboard.vaultPda` / `discovery.vaultPda` may still appear in JSON.",
             "nullable": true
           },
           "vaultPdaPreviewMint": {
@@ -1926,7 +1926,7 @@
           },
           "vaultPdaPreviews": {
             "type": "array",
-            "description": "Multi-asset PDA preview list. For sla-escrow we surface SOL plus the cluster's canonical USDC mint so dashboards can show every commonly-used `payTo` without an extra `/discovery?asset=\u2026` round-trip. Empty / omitted on schemes whose vault PDA is mint-agnostic (e.g. exact / SplitVault).",
+            "description": "Multi-asset PDA preview list. For sla-escrow we surface SOL plus the cluster's canonical USDC mint so dashboards can show every commonly-used `payTo` without an extra `GET /sellers/{wallet}/rails/sla-escrow?asset=\u2026` round-trip. Empty / omitted on schemes whose vault PDA is mint-agnostic (e.g. exact / SplitVault).",
             "items": {
               "$ref": "#/components/schemas/VaultPdaPreview"
             },

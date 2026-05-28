@@ -145,7 +145,7 @@ The **authoritative** list of paths, request bodies, and schemas is **[`public/o
 
 **Core x402 path:** `supported` → optional **`build-exact-payment-tx`** or **`build-sla-escrow-payment-tx`** → **`verify`** → **`settle`** (same JSON body for verify/settle; see [`public/agent-integration.md`](public/agent-integration.md)).
 
-**Discovery & ops:** `health`, `capabilities`, `discovery`, seller `onboard/*`, `upgrade`, operator sweep/snapshot (OpenAPI tag **Operations**).
+**Discovery & ops:** `health`, `capabilities`, seller **`/sellers/{wallet}/preview`**, **`/sellers/{wallet}/rails/{scheme}`**, **`/sellers/provision-tx`**, **`/payment-required/enrich`**, operator sweep/snapshot (OpenAPI tag **Operations**).
 
 ### Vercel deployment
 - **`vercel.json`** uses `vercel-rust@4.0.8` and maps each `/api/v1/facilitator/...` path to the `facilitator` binary.

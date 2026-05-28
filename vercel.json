@@ -253,6 +253,14 @@
       ]
     },
     {
+      "src": "/api/v1/facilitator/build-refund-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
       "src": "/api/v1/facilitator/oracle/build-confirm",
       "dest": "/src/bin/facilitator",
       "methods": [
