@@ -13,4 +13,4 @@ The seller / resource-provider runbook is **[`public/onboarding_guide.md`](../pu
 
 Edit seller-facing Markdown under **`public/`** only. Confirm **`solanaNetwork`** on the host you integrate against: **`GET /api/v1/facilitator/health`**.
 
-**Key seller HTTP paths** (see OpenAPI for bodies): `GET /discovery`, `GET|POST /onboard/*`, `POST /upgrade`, core x402 `verify` / `settle` proxy from your API.
+**Key seller HTTP paths** (see OpenAPI for bodies): `GET /sellers/{wallet}/preview`, `GET /sellers/{wallet}/rails/{scheme}`, `POST /sellers/provision-tx`, `GET /sellers/{wallet}/challenge`, `POST /sellers/{wallet}/register`, `POST /sellers/{wallet}/retire`, `POST /payment-required/enrich`, core x402 `verify` / `settle` proxy from your API.

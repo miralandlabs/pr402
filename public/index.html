@@ -1309,7 +1309,7 @@
                             </button>
                         </div>
                         <div class="hint">
-                            GET /api/v1/facilitator/onboard?wallet=…
+                            GET /api/v1/facilitator/sellers/{wallet}/preview
                         </div>
                         <div
                             class="probe-output"
@@ -1381,7 +1381,7 @@
                             </button>
                         </div>
                         <div class="hint">
-                            POST /api/v1/facilitator/onboard/provision · one
+                            POST /api/v1/facilitator/sellers/provision-tx · one
                             asset per merchant wallet — use separate wallets for
                             additional tokens.
                         </div>
@@ -1514,8 +1514,8 @@
                             </button>
                         </div>
                         <div class="hint">
-                            GET /api/v1/facilitator/onboard/challenge → wallet
-                            signs message → POST /api/v1/facilitator/onboard
+                            GET /api/v1/facilitator/sellers/{wallet}/challenge → wallet
+                            signs message → POST /api/v1/facilitator/sellers/{wallet}/register
                         </div>
                         <div
                             class="probe-output"
@@ -1909,14 +1909,14 @@
                         </tr>
                         <tr>
                             <td class="method">GET</td>
-                            <td class="path">/api/v1/facilitator/discovery</td>
+                            <td class="path">/api/v1/facilitator/sellers/{wallet}/rails/{scheme}</td>
                             <td class="desc">
                                 resolve canonical payTo for 402 (seller)
                             </td>
                         </tr>
                         <tr>
                             <td class="method">GET</td>
-                            <td class="path">/api/v1/facilitator/onboard</td>
+                            <td class="path">/api/v1/facilitator/sellers/{wallet}/preview</td>
                             <td class="desc">
                                 preview PDAs &amp; fees (seller)
                             </td>
@@ -1924,7 +1924,7 @@
                         <tr>
                             <td class="method post">POST</td>
                             <td class="path">
-                                /api/v1/facilitator/onboard/provision
+                                /api/v1/facilitator/sellers/provision-tx
                             </td>
                             <td class="desc">
                                 unsigned provision tx per wallet + asset
@@ -1934,7 +1934,7 @@
                         <tr>
                             <td class="method">GET</td>
                             <td class="path">
-                                /api/v1/facilitator/onboard/challenge
+                                /api/v1/facilitator/sellers/{wallet}/challenge
                             </td>
                             <td class="desc">
                                 HMAC challenge for signed registry
@@ -1942,7 +1942,7 @@
                         </tr>
                         <tr>
                             <td class="method post">POST</td>
-                            <td class="path">/api/v1/facilitator/onboard</td>
+                            <td class="path">/api/v1/facilitator/sellers/{wallet}/register</td>
                             <td class="desc">
                                 submit wallet signature (seller registry)
                             </td>
@@ -1958,7 +1958,7 @@
                         </tr>
                         <tr>
                             <td class="method post">POST</td>
-                            <td class="path">/api/v1/facilitator/upgrade</td>
+                            <td class="path">/api/v1/facilitator/payment-required/enrich</td>
                             <td class="desc">
                                 expand lite 402 into full paymentRequired
                             </td>
@@ -2174,6 +2174,14 @@
                 }
 
                 // ---- seller lifecycle ladder (Preview → Activate → Verify) ----
+                function sellerApiPath(wallet, suffix) {
+                    return (
+                        "/api/v1/facilitator/sellers/" +
+                        encodeURIComponent(wallet) +
+                        suffix
+                    );
+                }
+
                 function initLifecycleLadder() {
                     var input = document.getElementById("wallet-input");
                     var btnPreview = document.getElementById("btn-preview-run");
@@ -2358,10 +2366,7 @@
                             return null;
                         }
                         try {
-                            var res = await fetch(
-                                "/api/v1/facilitator/onboard?wallet=" +
-                                    encodeURIComponent(wallet),
-                            );
+                            var res = await fetch(sellerApiPath(wallet, "/preview"));
                             if (!res.ok) return null;
                             var data = await res.json();
                             applyLifecycle(data.lifecycle || null);
@@ -2382,10 +2387,7 @@
                         outPreview.classList.remove("is-error");
                         outPreview.textContent = "> onboard " + wallet;
                         try {
-                            var res = await fetch(
-                                "/api/v1/facilitator/onboard?wallet=" +
-                                    encodeURIComponent(wallet),
-                            );
+                            var res = await fetch(sellerApiPath(wallet, "/preview"));
                             if (!res.ok) throw new Error("HTTP " + res.status);
                             var data = await res.json();
                             renderPreview(data);
@@ -2686,7 +2688,7 @@
                     };
                 }
 
-                // ---- Activate step: POST /onboard/provision → sign → send ----
+                // ---- Activate step: POST /sellers/provision-tx → sign → send ----
                 function initActivateStep(walletState) {
                     var btnProvision = document.getElementById(
                         "btn-provision-vault",
@@ -2724,7 +2726,7 @@
                         setStatus("Requesting provisioning transaction…");
                         try {
                             var res = await fetch(
-                                "/api/v1/facilitator/onboard/provision",
+                                "/api/v1/facilitator/sellers/provision-tx",
                                 {
                                     method: "POST",
                                     headers: {
@@ -2878,8 +2880,7 @@
                         try {
                             // Step 1: fetch challenge
                             var chRes = await fetch(
-                                "/api/v1/facilitator/onboard/challenge?wallet=" +
-                                    encodeURIComponent(connected),
+                                sellerApiPath(connected, "/challenge"),
                             );
                             var chTxt = await chRes.text();
                             if (!chRes.ok)
@@ -2918,7 +2919,7 @@
                             var discovery = collectDiscoveryPayload();
                             if (discovery) submitBody.discovery = discovery;
                             var submitRes = await fetch(
-                                "/api/v1/facilitator/onboard",
+                                sellerApiPath(connected, "/register"),
                                 {
                                     method: "POST",
                                     headers: {
@@ -3027,8 +3028,7 @@
                         setStatus("Requesting signed challenge…");
                         try {
                             var chRes = await fetch(
-                                "/api/v1/facilitator/onboard/challenge?wallet=" +
-                                    encodeURIComponent(connected),
+                                sellerApiPath(connected, "/challenge"),
                             );
                             var chTxt = await chRes.text();
                             if (!chRes.ok)
@@ -3056,7 +3056,7 @@
 
                             setStatus("Submitting retirement…");
                             var res = await fetch(
-                                "/api/v1/facilitator/onboard/retire",
+                                sellerApiPath(connected, "/retire"),
                                 {
                                     method: "POST",
                                     headers: {

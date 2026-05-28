@@ -92,8 +92,8 @@ pub fn cluster_is_devnet(provider: &SolanaChainProvider) -> bool {
 }
 
 /// Canonical USDC mint for a given cluster. `None` for testnet (no
-/// canonical USDC). Used by the `/onboard` preview to pre-compute the
-/// per-mint escrow PDAs callers will most often want.
+/// canonical USDC). Used by the `/sellers/{wallet}/preview` endpoint to
+/// pre-compute the per-mint escrow PDAs callers will most often want.
 pub fn canonical_usdc_mint(provider: &SolanaChainProvider) -> Option<Pubkey> {
     if cluster_is_devnet(provider) {
         Some(USDC_DEVNET)
@@ -108,7 +108,7 @@ pub fn canonical_usdc_mint(provider: &SolanaChainProvider) -> Option<Pubkey> {
 }
 
 /// Friendly suffix to label the cluster's USDC entry in
-/// `/onboard.schemes[*].vaultPdaPreviews`. Mainnet returns just
+/// `/sellers/{wallet}/preview.schemes[*].vaultPdaPreviews`. Mainnet returns just
 /// `"USDC"`, devnet returns `"USDC (devnet)"`.
 pub fn canonical_usdc_label(provider: &SolanaChainProvider) -> &'static str {
     if cluster_is_devnet(provider) {

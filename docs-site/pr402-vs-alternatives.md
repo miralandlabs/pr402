@@ -45,7 +45,7 @@ This page compares **facilitators fairly** (pr402 · CDP · x402.org), then cove
 | **Solana `sla-escrow` rail** | **Yes** | No | No |
 | **On-chain buyer escrow** | **Yes** | No on Solana | No |
 | **Open oracle reference stack** | **Yes** ([`oracles/`](https://github.com/miraland-labs/oracles)) | No | No |
-| **Seller `/upgrade` (no PDA math)** | **Yes** | Different integration shape | Limited |
+| **Seller `/payment-required/enrich` (no PDA math)** | **Yes** | Different integration shape | Limited |
 | **Seller lifecycle UI** | **Yes** (Preview / Activate / Verify on ipay.sh) | No | No |
 | **Multi-chain (Base, Polygon, …)** | Solana-focused | **Yes** | Base Sepolia + Solana Devnet |
 | **Compliance / KYT** | Not positioned as core | **Yes** (CDP) | No |
@@ -56,7 +56,7 @@ This page compares **facilitators fairly** (pr402 · CDP · x402.org), then cove
 **Choose pr402** when you need **Solana depth**:
 
 1. **`sla-escrow`** — buyer escrow until delivery or oracle verdict (not available on CDP/x402.org Solana today).
-2. **Simplest seller server** — 402 + forward proof; **`/upgrade`**; blockhash-safe **`/settle`**.
+2. **Simplest seller server** — 402 + forward proof; **`/payment-required/enrich`**; blockhash-safe **`/settle`**.
 3. **Production-mirror rehearsal** — **`preview.ipay.sh`** matches **`ipay.sh`** (both rails, same OpenAPI, seller UI).
 4. **Oracle economy** — open-source profiles + `slaEscrowOracleProfiles[]` on `/capabilities`.
 5. **SplitVault economics** — sovereign **90 bps** after Activate, JIT alternative, clear fee floors.
@@ -128,7 +128,7 @@ Compare **facilitators only** (Part A).
 | Integrate your API | **Core product** | Yes | Testnet only |
 | Chain code in your server | **None** — 402 + `/settle` | Middleware patterns | Same idea |
 | Canonical `payTo` | **SplitVault PDA** | Wallet-style on Solana `exact` | Wallet-style |
-| Build 402 body | **`POST /upgrade`** | Framework middleware | Manual / samples |
+| Build 402 body | **`POST /payment-required/enrich`** | Framework middleware | Manual / samples |
 | Escrow / SLA SKUs | **`sla-escrow`** | Not on Solana | Not available |
 | Go-live path | **`preview.ipay.sh` → `ipay.sh`** | Devnet → Mainnet on CDP | Rewrite for production elsewhere |
 
@@ -166,7 +166,7 @@ What **is** distinctive about **`preview.ipay.sh`** among **facilitators**:
 | Paired hostname with production | `preview.ipay.sh` ↔ `ipay.sh` | Different URL or JSON `network` field |
 | **`sla-escrow` on Devnet** | Yes | No |
 | Seller **Preview / Activate** UI | Yes | No |
-| Same OpenAPI + `/upgrade` + builders | Yes | Partial or `exact`-only |
+| Same OpenAPI + `/payment-required/enrich` + builders | Yes | Partial or `exact`-only |
 | No account signup | Yes | CDP requires keys |
 
 **`pay` CLI `--sandbox` / `debugger.pay.sh`** rehearses **buying** against demo APIs — not a substitute for **`preview.ipay.sh`** when you need to test **your seller integration** end-to-end on pr402.

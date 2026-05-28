@@ -11,8 +11,8 @@ DROP TABLE IF EXISTS resource_providers CASCADE;
 -- Run once: psql "$DATABASE_URL" -f migrations/init.sql
 -- Idempotent: CREATE IF NOT EXISTS + parameter seeds use ON CONFLICT DO UPDATE.
 --
--- registration_verified_at: set when POST /api/v1/facilitator/onboard succeeds (wallet-signed challenge).
--- GET /api/v1/facilitator/onboard is preview-only and does not write resource_providers.
+-- registration_verified_at: set when POST /api/v1/facilitator/sellers/{wallet}/register succeeds (wallet-signed challenge).
+-- GET /api/v1/facilitator/sellers/{wallet}/preview is preview-only and does not write resource_providers.
 
 -- =============================================================================
 -- Core: resource providers + payment audit

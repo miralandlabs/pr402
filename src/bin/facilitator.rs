@@ -63,7 +63,7 @@ static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 /// `facilitator`, which does not match the `pr402` filter and hides verify/settle logs).
 /// Institutional audit log category (mirrors signer-payer baseline).
 const LOG_SERVER_LOG: &str = "server_log";
-const SCHEMA_VERSION: &str = "1.0.0";
+const SCHEMA_VERSION: &str = "1.1.0";
 
 // ── INFRA-4: Lightweight in-process rate limiter for build endpoints ─────────
 use std::sync::Mutex;
@@ -181,6 +181,9 @@ struct CapabilitiesResponse {
     /// Plural array — one entry per advertised profile (api-quality / onchain-transfer / file-delivery).
     #[serde(skip_serializing_if = "Option::is_none")]
     sla_escrow_oracle_profiles: Option<Vec<SlaEscrowOracleProfileInfo>>,
+    /// Static seller endpoint decision matrix (`public/seller-endpoint-guide.json`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seller_endpoint_guide: Option<serde_json::Value>,
 }
 
 /// Published pointers for one SLA-Escrow oracle profile (one entry of `slaEscrowOracleProfiles[]`).
@@ -230,11 +233,11 @@ struct CapabilitiesFeatures {
     sla_escrow: bool,
     unsigned_exact_payment_tx_build: bool,
     unsigned_sla_escrow_payment_tx_build: bool,
-    /// True when `GET /onboard` returns the `lifecycle` block (preview → activate → verify).
+    /// True when `GET /sellers/{wallet}/preview` returns the `lifecycle` block (preview → activate → verify).
     /// Agents can use this to decide whether to trust `nextStep` or fall back to parsing
     /// `schemes["exact"].status` + separately probing the registry.
     seller_lifecycle_block: bool,
-    /// True when `POST /onboard` accepts both base58 and base64 signature encodings.
+    /// True when `POST /sellers/{wallet}/register` accepts both base58 and base64 signature encodings.
     /// Browser wallet adapters return base64 natively — this flag lets clients skip the
     /// in-page base58 encoder when the server already accepts their raw output.
     accepts_base64_onboard_signature: bool,
@@ -274,21 +277,16 @@ struct CapabilitiesHttpEndpoints {
     /// `GET` — Vercel cron entry point for the sla-escrow settlement loop. Same auth
     /// + behavior as `sla_escrow_settle` with default request parameters.
     sla_escrow_settle_cron: HttpEndpointInfo,
-    /// `GET` — read-only PDA preview across all schemes (the "preview" step in the
-    /// seller lifecycle; no wallet, no signature, no DB/chain writes).
-    onboard_preview: HttpEndpointInfo,
-    /// `GET` — issues a short-lived HMAC challenge the seller wallet signs before
-    /// calling `POST /onboard` (the "verify identity" step).
-    onboard_challenge: HttpEndpointInfo,
-    /// `POST` — wallet-signed registry submit. Requires a challenge from
-    /// `GET /onboard/challenge`; writes a verified row in `resource_providers`.
-    onboard: HttpEndpointInfo,
-    /// `POST` — on-chain "activate" step. Builds the unsigned `CreateVault` (+ vault ATA)
-    /// tx the seller must sign and broadcast. Idempotent per `(wallet, asset)`.
-    onboard_provision: HttpEndpointInfo,
-    /// `POST` — off-chain retirement. Same HMAC challenge flow as `POST /onboard`;
-    /// flips `retired_at` + `inactive` so the wallet drops out of public discovery.
-    onboard_retire: HttpEndpointInfo,
+    /// `GET` — read-only multi-rail preview + lifecycle ladder (`/sellers/{wallet}/preview`).
+    seller_preview: HttpEndpointInfo,
+    /// `GET` — HMAC challenge before registry submit (`/sellers/{wallet}/challenge`).
+    seller_challenge: HttpEndpointInfo,
+    /// `POST` — wallet-signed registry submit (`/sellers/{wallet}/register`).
+    seller_register: HttpEndpointInfo,
+    /// `POST` — on-chain activate: unsigned CreateVault tx (`/sellers/provision-tx`).
+    seller_provision_tx: HttpEndpointInfo,
+    /// `POST` — off-chain retirement (`/sellers/{wallet}/retire`).
+    seller_retire: HttpEndpointInfo,
     /// `GET` — public seller directory (paged).
     providers: HttpEndpointInfo,
     /// `GET` — public seller directory single-wallet lookup. `{wallet}` is a path segment.
@@ -298,8 +296,10 @@ struct CapabilitiesHttpEndpoints {
     supported: HttpEndpointInfo,
     health: HttpEndpointInfo,
     capabilities: HttpEndpointInfo,
-    discovery: HttpEndpointInfo,
-    upgrade: HttpEndpointInfo,
+    /// `GET` — single-rail SchemeOnboardInfo (`/sellers/{wallet}/rails/{scheme}`).
+    seller_rail_info: HttpEndpointInfo,
+    /// `POST` — enrich naive PaymentRequired for HTTP 402 (`/payment-required/enrich`).
+    payment_required_enrich: HttpEndpointInfo,
 }
 
 #[derive(serde::Serialize)]
@@ -330,6 +330,10 @@ fn with_api_version_v1(mut res: Response<Body>, correlation_id: Option<&str>) ->
         }
     }
     res
+}
+
+fn seller_endpoint_guide_json() -> Option<serde_json::Value> {
+    serde_json::from_str(include_str!("../../public/seller-endpoint-guide.json")).ok()
 }
 
 fn chain_provider_for_build() -> Result<&'static Arc<ChainProvider>, &'static str> {
@@ -583,17 +587,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("POST", "/api/v1/facilitator/settle") => {
                     handle_settle(facilitator.clone(), body, correlation_hdr.as_deref()).await
                 }
-                ("GET", "/api/v1/facilitator/upgrade") => {
-                    // Browsers and health checks use GET; Vercel only forwarded POST/OPTIONS before,
-                    // so GET never reached this binary and Vercel returned 404.
+                ("GET", seller_api::PAYMENT_REQUIRED_ENRICH) => {
                     facilitator_response!()
                         .status(StatusCode::OK)
                         .header("Content-Type", "application/json")
                         .body(Body::Text(
                             serde_json::json!({
-                                "path": "/api/v1/facilitator/upgrade",
+                                "path": seller_api::PAYMENT_REQUIRED_ENRICH,
                                 "method": "POST",
-                                "summary": "Upgrade an X402 PaymentRequired between protocol or scheme versions.",
+                                "summary": "Enrich a naive PaymentRequired for HTTP 402 (vault PDA + extra metadata).",
                                 "request_body": "application/json — PaymentRequired",
                                 "openapi": "/openapi.json",
                             })
@@ -601,7 +603,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         ))
                         .unwrap()
                 }
-                ("POST", "/api/v1/facilitator/upgrade") => {
+                ("POST", seller_api::PAYMENT_REQUIRED_ENRICH) => {
                     handle_upgrade(facilitator.clone(), body).await
                 }
                 ("GET", "/api/v1/facilitator/supported") => {
@@ -669,23 +671,100 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         .body(Body::Binary(ICON_BYTES.to_vec()))
                         .unwrap()
                 }
-                ("GET", "/api/v1/facilitator/onboard/challenge") => {
-                    handle_onboard_challenge(&query).await
+                ("GET", p)
+                    if p.starts_with(seller_api::SELLERS_PREFIX)
+                        && p.ends_with("/preview")
+                        && p.len() > seller_api::SELLERS_PREFIX.len() + "/preview".len() =>
+                {
+                    if let Some(w) = seller_api::parse_sellers_wallet_suffix(p, "/preview") {
+                        handle_onboard_preview(
+                            facilitator.clone(),
+                            &seller_api::preview_query(&w),
+                        )
+                        .await
+                    } else {
+                        facilitator_response!()
+                            .status(StatusCode::NOT_FOUND)
+                            .header("Content-Type", "application/json")
+                            .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
+                            .unwrap()
+                    }
                 }
-                ("POST", "/api/v1/facilitator/onboard") => {
-                    handle_onboard_submit(facilitator.clone(), body).await
+                ("GET", p)
+                    if p.starts_with(seller_api::SELLERS_PREFIX)
+                        && p.ends_with("/challenge")
+                        && p.len() > seller_api::SELLERS_PREFIX.len() + "/challenge".len() =>
+                {
+                    if let Some(w) = seller_api::parse_sellers_wallet_suffix(p, "/challenge") {
+                        handle_onboard_challenge(&seller_api::challenge_query(&w)).await
+                    } else {
+                        facilitator_response!()
+                            .status(StatusCode::NOT_FOUND)
+                            .header("Content-Type", "application/json")
+                            .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
+                            .unwrap()
+                    }
                 }
-                ("GET", "/api/v1/facilitator/onboard") => {
-                    handle_onboard_preview(facilitator.clone(), &query).await
+                ("POST", p)
+                    if p.starts_with(seller_api::SELLERS_PREFIX)
+                        && p.ends_with("/register")
+                        && p.len() > seller_api::SELLERS_PREFIX.len() + "/register".len() =>
+                {
+                    if let Some(w) = seller_api::parse_sellers_wallet_suffix(p, "/register") {
+                        handle_onboard_submit(facilitator.clone(), &w, body).await
+                    } else {
+                        facilitator_response!()
+                            .status(StatusCode::NOT_FOUND)
+                            .header("Content-Type", "application/json")
+                            .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
+                            .unwrap()
+                    }
                 }
-                ("POST", "/api/v1/facilitator/onboard/provision") => {
+                ("POST", p)
+                    if p.starts_with(seller_api::SELLERS_PREFIX)
+                        && p.ends_with("/retire")
+                        && p.len() > seller_api::SELLERS_PREFIX.len() + "/retire".len() =>
+                {
+                    if let Some(w) = seller_api::parse_sellers_wallet_suffix(p, "/retire") {
+                        handle_onboard_retire(&w, body).await
+                    } else {
+                        facilitator_response!()
+                            .status(StatusCode::NOT_FOUND)
+                            .header("Content-Type", "application/json")
+                            .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
+                            .unwrap()
+                    }
+                }
+                ("GET", p)
+                    if p.starts_with(seller_api::SELLERS_PREFIX) && p.contains("/rails/") =>
+                {
+                    if let Some((w, scheme)) = seller_api::parse_sellers_rail(p) {
+                        let asset = query_param(&query, "asset");
+                        let q = seller_api::discovery_query(
+                            &w,
+                            &scheme,
+                            if asset.is_empty() {
+                                None
+                            } else {
+                                Some(&asset)
+                            },
+                        );
+                        handle_discovery(facilitator.clone(), &q).await
+                    } else {
+                        facilitator_response!()
+                            .status(StatusCode::NOT_FOUND)
+                            .header("Content-Type", "application/json")
+                            .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
+                            .unwrap()
+                    }
+                }
+                ("POST", seller_api::PROVISION_TX) => {
                     if let Some(limited) = check_build_rate_limit() {
                         limited
                     } else {
                         handle_onboard_provision(facilitator.clone(), body).await
                     }
                 }
-                ("POST", "/api/v1/facilitator/onboard/retire") => handle_onboard_retire(body).await,
                 ("GET", "/api/v1/facilitator/providers") => {
                     handle_public_providers_list(&query).await
                 }
@@ -704,9 +783,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 ("GET", "/api/v1/facilitator/vault-snapshot") => {
                     handle_vault_snapshot(&query).await
-                }
-                ("GET", "/api/v1/facilitator/discovery") => {
-                    handle_discovery(facilitator.clone(), &query).await
                 }
                 ("POST", "/api/v1/facilitator/build-exact-payment-tx") => {
                     if let Some(limited) = check_build_rate_limit() {
@@ -809,6 +885,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 mod handlers;
+use handlers::seller_api;
 use handlers::*;
 
 fn query_param(query: &str, key: &str) -> String {

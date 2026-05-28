@@ -62,7 +62,7 @@ When a request arrives without a valid `PAYMENT-SIGNATURE` header, respond with 
 **What you need first** — look up your vault PDA (one-time):
 
 ```bash
-curl -sS "$BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | jq .
+curl -sS "$BASE/api/v1/facilitator/sellers/YOUR_PUBKEY/rails/exact" | jq .
 # → Note the vaultPda value — that becomes your payTo
 ```
 
@@ -93,7 +93,7 @@ curl -sS "$BASE/api/v1/facilitator/discovery?wallet=YOUR_PUBKEY&scheme=exact" | 
 }
 ```
 
-> **Tip**: Copy `extra` from `GET /api/v1/facilitator/supported` → matching `kinds[]` entry + your wallet-specific fields. Or use the `**/upgrade`** endpoint to have the facilitator build this for you (see below).
+> **Tip**: Copy `extra` from `GET /api/v1/facilitator/supported` → matching `kinds[]` entry + your wallet-specific fields. Or use the **`/payment-required/enrich`** endpoint to have the facilitator build this for you (see below).
 
 ---
 
@@ -259,13 +259,13 @@ json.NewEncoder(w).Encode(premiumContent)
 
 ---
 
-## Shortcut: The `/upgrade` Endpoint
+## Shortcut: The `/payment-required/enrich` Endpoint
 
-Don't want to look up vault PDAs or merge `extra` fields? Post a minimal 402 body to `**POST /api/v1/facilitator/upgrade**` and get back a fully institutional response.
+Don't want to look up vault PDAs or merge `extra` fields? Post a minimal 402 body to `**POST /api/v1/facilitator/payment-required/enrich**` and get back a fully institutional response.
 
 ```bash
 # Your naive 402 body (bare wallet as payTo):
-curl -X POST "$BASE/api/v1/facilitator/upgrade" \
+curl -X POST "$BASE/api/v1/facilitator/payment-required/enrich" \
   -H "Content-Type: application/json" \
   -d '{
     "x402Version": 2,
@@ -289,9 +289,9 @@ Cache the result and return it as your 402 response.
 
 | What                          | Endpoint                                              | Method   | Notes                                                                                   |
 | ----------------------------- | ----------------------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
-| Discover your `payTo` PDA     | `/api/v1/facilitator/discovery?wallet=X&scheme=exact` | GET      |                                                                                         |
-| Full onboard preview          | `/api/v1/facilitator/onboard?wallet=X`                | GET      |                                                                                         |
-| Upgrade naive 402             | `/api/v1/facilitator/upgrade`                         | POST     |                                                                                         |
+| Discover your `payTo` PDA     | `/api/v1/facilitator/sellers/X/rails/exact` | GET      |                                                                                         |
+| Full onboard preview          | `/api/v1/facilitator/sellers/{X}/preview`              | GET      |                                                                                         |
+| Upgrade naive 402             | `/api/v1/facilitator/payment-required/enrich`                         | POST     |                                                                                         |
 | **Settle (verify + execute)** | `**/api/v1/facilitator/settle`**                      | **POST** | Verifies internally, then executes on-chain. Idempotent.                                |
 | Verify (dry-run only)         | `/api/v1/facilitator/verify`                          | POST     | Optional pre-flight check. No on-chain cost. Returns `correlationId` for audit linkage. |
 | Supported schemes/rails       | `/api/v1/facilitator/supported`                       | GET      |                                                                                         |

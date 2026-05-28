@@ -1,7 +1,7 @@
 //! Devnet E2E helper: sign an **unsigned** `VersionedTransaction` (bincode) from the facilitator.
 //!
 //! - **Legacy** messages (`build-exact-payment-tx`, etc.): `try_partial_sign` + `recentBlockhash`.
-//! - **v0** messages (`POST /onboard/provision` sovereign tx): [`VersionedTransaction::try_new`].
+//! - **v0** messages (`POST /sellers/provision-tx` sovereign tx): [`VersionedTransaction::try_new`].
 //!
 //! ```text
 //! curl -s .../build-exact-payment-tx -d @body.json | jq -r .transaction \

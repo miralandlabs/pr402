@@ -283,7 +283,7 @@ pub async fn build_sla_escrow_payment_tx(
     .await
 }
 
-/// `POST .../onboard/provision` — UniversalSettle seller provisioning (per asset).
+/// `POST .../sellers/provision-tx` — UniversalSettle seller provisioning (per asset).
 pub async fn build_onboard_provision_tx(
     facilitator_base_url: &str,
     wallet: &str,

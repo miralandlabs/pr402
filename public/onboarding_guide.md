@@ -35,7 +35,7 @@ If you already have SOL and wish to fully control your vault setup:
 
 ### Agentic Provisioning (Protocol On-Chain)
 For autonomous agents and backend services:
-1. **Build**: `POST /api/v1/facilitator/onboard/provision` with JSON body `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `USDT`, or a base58 mint). Under the facilitator's application-layer policy, use **one asset per merchant wallet**; repeats for the same `(wallet, asset)` are idempotent. For another token, use **another seller wallet** (see above).
+1. **Build**: `POST /api/v1/facilitator/sellers/provision-tx` with JSON body `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `USDT`, or a base58 mint). Under the facilitator's application-layer policy, use **one asset per merchant wallet**; repeats for the same `(wallet, asset)` are idempotent. For another token, use **another seller wallet** (see above).
 2. **Sign**: If the response includes `transaction`, sign the base64 bincode `VersionedTransaction` locally. If `alreadyProvisioned` is true, there is nothing to send for that asset.
 3. **Send**: Broadcast to Solana when a transaction is present.
 
@@ -43,7 +43,7 @@ For autonomous agents and backend services:
 - **Discounted Fees**: You receive an ongoing **10 bps (0.10%) discount** on all protocol fees. (Standard: **1.00%** → Your Rate: **0.90%**).
 - **No Setup Fee**: You avoid the one-time $1.00 provisioning recovery fee.
 
-**Registry (Off-Chain Discovery)**: After provisioning your vault on-chain, use the Facilitator API (`/onboard/challenge`) to persist your verified metadata in the database for high-fidelity discovery.
+**Registry (Off-Chain Discovery)**: After provisioning your vault on-chain, use the Facilitator API (`/sellers/{wallet}/challenge`) to persist your verified metadata in the database for high-fidelity discovery.
 
 ### Path B: Facilitated Onboarding (Shadow/JIT)
 If you have no SOL up front, the **facilitator** can still **provision** the UniversalSettle SplitVault when buyers start paying (subject to deployment limits—see facilitator logs for JIT / quota behavior). You do **not** need to self-fund `create_vault` first.
@@ -54,10 +54,10 @@ The facilitator’s **one-asset-per-wallet registry policy** (above) governs **o
 
 **Important for your HTTP 402 body:** Buyers must pay into the **SplitVault rail PDAs** this facilitator verifies—not a bare wallet address in `payTo`. Before publishing `accepts[]`:
 
-1. Resolve canonical addresses with **`GET /api/v1/facilitator/discovery?wallet=<YOUR_PUBKEY>&scheme=exact`**, **or**
-2. Post a minimal draft body to **`POST /api/v1/facilitator/upgrade`** so the response injects the correct **`payTo`** vault PDA and `extra` metadata.
+1. Resolve canonical addresses with **`GET /api/v1/facilitator/sellers/{YOUR_PUBKEY}/rails/exact`**, **or**
+2. Post a minimal draft body to **`POST /api/v1/facilitator/payment-required/enrich`** so the response injects the correct **`payTo`** vault PDA and `extra` metadata.
 
-Put your **merchant identity** in **`extra.merchantWallet`**; keep **`payTo`** as the vault PDA from discovery/upgrade. The buyer’s payment flow may call **`build-exact-payment-tx`**, which runs **vault setup** (`ensure_vault_setup`) when UniversalSettle is configured—see pr402 `exact_payment_build`.
+Put your **merchant identity** in **`extra.merchantWallet`**; keep **`payTo`** as the vault PDA from `/sellers/{wallet}/rails/{scheme}` or `/payment-required/enrich`. The buyer’s payment flow may call **`build-exact-payment-tx`**, which runs **vault setup** (`ensure_vault_setup`) when UniversalSettle is configured—see pr402 `exact_payment_build`.
 
 **Standard Model (fees / recovery):**
    - **Standard Fee**: You are charged the standard protocol fee (**1.00%**) until sovereign discount applies.

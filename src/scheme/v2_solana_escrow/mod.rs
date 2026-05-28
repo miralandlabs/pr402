@@ -312,7 +312,7 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
     ) -> Result<crate::seller_provision::SellerProvisionTxResponse, X402SchemeFacilitatorError>
     {
         Err(X402SchemeFacilitatorError::InvalidPayload(
-            "Seller SplitVault provisioning is only supported on v2:solana:exact (UniversalSettle); use POST /api/v1/facilitator/onboard/provision with the exact scheme deployment."
+            "Seller SplitVault provisioning is only supported on v2:solana:exact (UniversalSettle); use POST /api/v1/facilitator/sellers/provision-tx with the exact scheme deployment."
                 .into(),
         ))
     }
