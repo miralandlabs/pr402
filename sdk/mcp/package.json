@@ -1,6 +1,6 @@
 {
   "name": "@pr402/mcp-server",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "MCP server for pr402 on Solana — buyer auto-pay and seller facilitator tools via @pr402/client.",
   "main": "dist/server.js",
   "types": "dist/server.d.ts",
@@ -10,7 +10,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",

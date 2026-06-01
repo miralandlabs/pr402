@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@miraland-labs/pr402-client` are documented here.
+All notable changes to `@pr402/client` are documented here.
 
 ## 0.3.0
 
@@ -22,7 +22,7 @@ All notable changes to `@miraland-labs/pr402-client` are documented here.
 
 ### Added
 
-- **`pr402-buy` CLI.** `npx @miraland-labs/pr402-client pr402-buy …` walks the
+- **`pr402-buy` CLI.** `npx @pr402/client pr402-buy …` walks the
   full x402 lifecycle (fetch 402 → build → sign → settle → retry) against
   any seller URL. Seller-agnostic; uses the same `X402AgentClient` the
   library exposes so the CLI and importable API evolve together.

@@ -72,19 +72,39 @@ function registerBuyerTools(server) {
                 isError: true,
             };
         }
-        const secret = Uint8Array.from(JSON.parse((0, node_fs_1.readFileSync)(kpPath, 'utf8')));
-        const wallet = web3_js_1.Keypair.fromSecretKey(secret);
-        const client = new client_1.X402AgentClient(wallet);
-        const res = await client.fetchWithAutoPay(String(args.url), String(args.preferredMint));
-        const body = await res.text();
-        return {
-            content: [
-                {
-                    type: 'text',
-                    text: JSON.stringify({ status: res.status, body: safeJson(body) }, null, 2),
-                },
-            ],
-        };
+        try {
+            const parsed = JSON.parse((0, node_fs_1.readFileSync)(kpPath, 'utf8'));
+            if (!Array.isArray(parsed) || parsed.length !== 64) {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: 'Keypair file must be a JSON array of 64 bytes.',
+                        },
+                    ],
+                    isError: true,
+                };
+            }
+            const wallet = web3_js_1.Keypair.fromSecretKey(Uint8Array.from(parsed));
+            const client = new client_1.X402AgentClient(wallet);
+            const res = await client.fetchWithAutoPay(String(args.url), String(args.preferredMint));
+            const body = await res.text();
+            return {
+                content: [
+                    {
+                        type: 'text',
+                        text: JSON.stringify({ status: res.status, body: safeJson(body) }, null, 2),
+                    },
+                ],
+            };
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return {
+                content: [{ type: 'text', text: message }],
+                isError: true,
+            };
+        }
     });
 }
 function safeJson(text) {

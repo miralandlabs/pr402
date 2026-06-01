@@ -4,7 +4,7 @@
 
 Tools are thin HTTP wrappers around the facilitator REST API via [`@pr402/client`](https://www.npmjs.com/package/@pr402/client) — **no MCP logic lives in the Rust facilitator**.
 
-Machine-readable tool list: **`GET /agent-tools.json`** on any pr402 deployment (e.g. [preview](https://preview.ipay.sh/agent-tools.json)).
+Machine-readable tool list: **`GET /agent-tools.json`** on any pr402 deployment (e.g. [mainnet](https://ipay.sh/agent-tools.json), [devnet preview](https://preview.ipay.sh/agent-tools.json)).
 
 ## Install
 
@@ -26,16 +26,21 @@ node dist/server.js
 An MCP server — not a CLI. It speaks JSON-RPC on **stdin/stdout**; there is no `--help` flag. Configure it in Cursor or Claude Desktop (below), or run manually:
 
 ```bash
-export PR402_FACILITATOR_URL=https://preview.ipay.sh
 export PR402_PAYER_KEYPAIR_JSON=/path/to/keypair.json  # pr402_pay_http_resource only
 npx -y @pr402/mcp-server
+```
+
+Defaults to **`https://ipay.sh`** (Mainnet). For Devnet preview:
+
+```bash
+export PR402_FACILITATOR_URL=https://preview.ipay.sh
 ```
 
 ## Environment
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
-| `PR402_FACILITATOR_URL` | No | `https://preview.ipay.sh` | Facilitator origin (Devnet preview). Use `https://ipay.sh` for Mainnet. |
+| `PR402_FACILITATOR_URL` | No | `https://ipay.sh` | Facilitator origin (Mainnet). Use `https://preview.ipay.sh` for Devnet preview. |
 | `PR402_PAYER_KEYPAIR_JSON` | For `pr402_pay_http_resource` only | — | Path to Solana keypair JSON (64-byte array file). Never commit this file. |
 
 ## Cursor config
@@ -49,7 +54,6 @@ Project file **`.cursor/mcp.json`** (or user-level MCP settings):
       "command": "npx",
       "args": ["-y", "@pr402/mcp-server"],
       "env": {
-        "PR402_FACILITATOR_URL": "https://preview.ipay.sh",
         "PR402_PAYER_KEYPAIR_JSON": "/absolute/path/to/buyer-keypair.json"
       }
     }
@@ -68,7 +72,7 @@ Copy-paste example: [x402-buyer-starter `examples/mcp/cursor-mcp.json`](https://
       "command": "node",
       "args": ["/absolute/path/to/pr402/sdk/mcp/dist/server.js"],
       "env": {
-        "PR402_FACILITATOR_URL": "https://preview.ipay.sh"
+        "PR402_PAYER_KEYPAIR_JSON": "/absolute/path/to/buyer-keypair.json"
       }
     }
   }
@@ -100,14 +104,16 @@ Add under `claude_desktop_config.json` → `mcpServers` (same shape as Cursor; u
 | `pr402://agent-integration` | Buyer/seller runbook |
 | `pr402://payto-semantics` | `payTo` PDA semantics |
 
-## Try it (Devnet)
+## Try it
 
-After configuring a funded Devnet keypair:
+After configuring a funded keypair on the target cluster:
 
-1. Ask your MCP host to call **`pr402_pay_http_resource`** with a preview seller URL, e.g. spl-token balance check or solrisk wallet-risk API.
+1. Ask your MCP host to call **`pr402_pay_http_resource`** with a seller URL on the same cluster as your facilitator (Mainnet by default).
 2. Or call **`pr402_get_capabilities`** to confirm `solanaNetwork` and feature flags.
 
-Runbook: [`/agent-integration.md`](https://preview.ipay.sh/agent-integration.md) · Buyer quick start: [`/quickstart-buyer.md`](https://preview.ipay.sh/quickstart-buyer.md).
+For Devnet, set `PR402_FACILITATOR_URL=https://preview.ipay.sh` and use preview sellers.
+
+Runbook: [`/agent-integration.md`](https://ipay.sh/agent-integration.md) · Buyer quick start: [`/quickstart-buyer.md`](https://ipay.sh/quickstart-buyer.md).
 
 ## Other agent stacks
 

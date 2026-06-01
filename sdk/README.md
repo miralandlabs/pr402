@@ -17,7 +17,7 @@ GET target → 402 Challenge → Facilitator builds tx → Agent signs → Retry
 | SDK | Path | Runtime |
 |-----|------|---------|
 | **Rust** | `sdk/rust/` | `cargo add pr402-client` |
-| **TypeScript** | `sdk/ts/` | `npm install @miraland-labs/pr402-client` |
+| **TypeScript** | `sdk/ts/` | `npm install @pr402/client` |
 
 Both expose a single entry point: `fetchWithAutoPay(url, preferredMint)`.
 
@@ -42,7 +42,7 @@ println!("{}", res.text().await?);
 
 ```typescript
 import { Keypair } from '@solana/web3.js';
-import { X402AgentClient } from '@miraland-labs/pr402-client';
+import { X402AgentClient } from '@pr402/client';
 
 const wallet = Keypair.fromSecretKey(/* ... */);
 const client = new X402AgentClient(wallet);
