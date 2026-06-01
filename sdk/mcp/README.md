@@ -8,11 +8,25 @@ Machine-readable tool list: **`GET /agent-tools.json`** on any pr402 deployment 
 
 ## Install
 
+Library and CLI both install from the same package:
+
 ```bash
+# Project dependency
+npm install @pr402/mcp-server
+
+# Global CLI
 npm install -g @pr402/mcp-server
-# or run without a global install:
+
+# Or run without installing (from any directory **except** this package's root)
 npx -y @pr402/mcp-server
+# equivalent explicit bin name:
+npx -y @pr402/mcp-server pr402-mcp
 ```
+
+> **Troubleshooting `sh: pr402-mcp: command not found`:** If your shell cwd is
+> `pr402/sdk/mcp` (this repo), `npx` resolves the local `package.json` and does
+> not install the bin shim. `cd` elsewhere first, or run locally with
+> `node dist/server.js` after `npm run build`.
 
 **Monorepo / from source:**
 
