@@ -62,7 +62,7 @@ pr402-buy -r … -p … -m … | jq .
 ## Use the library
 
 ```ts
-import { X402AgentClient, X402Error } from "@miraland-labs/pr402-client";
+import { X402AgentClient, X402Error } from "@pr402/client";
 import { Keypair } from "@solana/web3.js";
 import * as fs from "node:fs";
 

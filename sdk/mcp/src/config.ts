@@ -1,4 +1,4 @@
-const DEFAULT_FACILITATOR = 'https://preview.ipay.sh';
+const DEFAULT_FACILITATOR = 'https://ipay.sh';
 
 export function facilitatorBase(): string {
   const raw = (process.env.PR402_FACILITATOR_URL || DEFAULT_FACILITATOR).replace(
