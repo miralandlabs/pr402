@@ -67,6 +67,7 @@ Schema `1.2.0` adds optional pointers:
 - `agentManifest.resourceRegister`
 - `agentManifest.resourceIndex`
 - `agentManifest.merchantOrigins`
+- `agentManifest.srmSpec`
 - `features.publicResourceDirectory`
 
 ## Client libraries
