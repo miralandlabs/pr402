@@ -21,6 +21,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "@pr402/client": "^0.3.0",
+    "@pr402/discovery": "file:../discovery",
     "@solana/web3.js": "^1.87.0",
     "zod": "^3.25.76"
   },

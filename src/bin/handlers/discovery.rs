@@ -75,6 +75,7 @@ pub async fn handle_capabilities(
             build_response_signer_pubkeys: true,
             // Directory surface requires Postgres (lists read from `resource_providers`).
             public_provider_directory: pr402_db().is_some(),
+            public_resource_directory: pr402_db().is_some(),
         },
         http_endpoints: CapabilitiesHttpEndpoints {
             verify: HttpEndpointInfo {
@@ -192,6 +193,31 @@ pub async fn handle_capabilities(
                 path: seller_api::PAYMENT_REQUIRED_ENRICH,
                 auth: None,
             },
+            resources: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/resources",
+                auth: None,
+            },
+            resource_register_challenge: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/resources/register/challenge",
+                auth: None,
+            },
+            resource_register: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/resources/register",
+                auth: None,
+            },
+            resource_retire: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/resources/retire",
+                auth: None,
+            },
+            resource_probe: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/resources/probe",
+                auth: None,
+            },
         },
         agent_manifest: AgentManifest {
             open_api: "/openapi.json",
@@ -201,6 +227,11 @@ pub async fn handle_capabilities(
             seller_onboarding_guide: "/onboarding_guide.md",
             buyer_quick_start: "/quickstart-buyer.md",
             x402_spec: "https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md",
+            resource_search: "/api/v1/facilitator/resources",
+            resource_register: "/resources",
+            resource_index: "/dist/resource-index.json",
+            merchant_origins: "/api/v1/facilitator/providers",
+            srm_spec: "/x402-resources.schema.json",
         },
         sla_escrow_oracle_profiles,
         seller_endpoint_guide: seller_endpoint_guide_json(),

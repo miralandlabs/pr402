@@ -1,0 +1,107 @@
+# Discovery Indexer — external cron scheduler for preview and production.
+#
+# Keeps the Layer 3 payable-resource directory honest: harvests SRM manifests,
+# re-probes every listed resourceUrl for a live HTTP 402, writes last_probe_* back
+# to Postgres (which gates GET /resources), and rebuilds the static index.
+#
+# Unlike settlement-keeper-cron (which curls HTTP endpoints with a bearer token),
+# the indexer connects DIRECTLY to Postgres, so each environment needs a DATABASE_URL.
+#
+# Drives both deployments (production runs after preview to stagger load):
+#   - Preview (develop / devnet):  PR402_PREVIEW_BASE_URL + PR402_PREVIEW_DATABASE_URL
+#   - Production (main / mainnet): PR402_BASE_URL         + PR402_DATABASE_URL
+#
+# Required repository secrets:
+#   PR402_PREVIEW_BASE_URL     — preview facilitator origin (no trailing slash)
+#   PR402_BASE_URL             — production facilitator origin (no trailing slash)
+#   PR402_PREVIEW_DATABASE_URL — preview Postgres connection string
+#   PR402_DATABASE_URL         — production Postgres connection string
+#
+# Each job skips (exit 0) if its env's secrets are unset, so the workflow is safe to
+# merge before secrets are configured. Schedule is hourly — liveness probing hits
+# external seller endpoints, so it is intentionally gentler than the */5 keeper cron.
+# Adjust the cron below if you need fresher liveness.
+name: Discovery Indexer Cron
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+  # Run once when this workflow is updated on main (e.g. develop → main merge).
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/discovery-indexer-cron.yml
+
+jobs:
+  preview-indexer:
+    name: Preview indexer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Harvest + probe + rebuild index (preview)
+        env:
+          FACILITATOR_URL: ${{ secrets.PR402_PREVIEW_BASE_URL }}
+          DATABASE_URL: ${{ secrets.PR402_PREVIEW_DATABASE_URL }}
+          TARGET: preview
+        run: |
+          set -euo pipefail
+          BASE="${FACILITATOR_URL%/}"
+          if [[ -z "$BASE" ]]; then
+            echo "::warning::PR402_PREVIEW_BASE_URL not set — skipping preview indexer"
+            exit 0
+          fi
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "::warning::PR402_PREVIEW_DATABASE_URL not set — skipping preview indexer"
+            exit 0
+          fi
+          export FACILITATOR_URL="$BASE"
+          echo "Target: ${TARGET} (${BASE})"
+          cd scripts/discovery-indexer
+          npm install --no-audit --no-fund
+          node index.mjs --harvest
+
+  production-indexer:
+    name: Production indexer
+    needs: preview-indexer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Harvest + probe + rebuild index (production)
+        env:
+          FACILITATOR_URL: ${{ secrets.PR402_BASE_URL }}
+          DATABASE_URL: ${{ secrets.PR402_DATABASE_URL }}
+          TARGET: production
+        run: |
+          set -euo pipefail
+          BASE="${FACILITATOR_URL%/}"
+          if [[ -z "$BASE" ]]; then
+            echo "::warning::PR402_BASE_URL not set — skipping production indexer"
+            exit 0
+          fi
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "::warning::PR402_DATABASE_URL not set — skipping production indexer"
+            exit 0
+          fi
+          export FACILITATOR_URL="$BASE"
+          echo "Target: ${TARGET} (${BASE})"
+          cd scripts/discovery-indexer
+          npm install --no-audit --no-fund
+          node index.mjs --harvest

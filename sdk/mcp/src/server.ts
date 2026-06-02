@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { registerBuyerTools } from './tools/buyer';
+import { registerDiscoveryTools } from './tools/discovery';
 import { registerSellerTools } from './tools/seller';
 import { registerResources } from './resources/index';
 
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
   });
 
   registerBuyerTools(server);
+  registerDiscoveryTools(server);
   registerSellerTools(server);
   registerResources(server);
 

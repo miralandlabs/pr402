@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ipay.sh/x402-resources.schema.json",
+  "title": "Seller Resource Manifest",
+  "type": "object",
+  "required": ["schemaVersion", "origin", "merchantWallet", "resources"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "0.1.0" },
+    "origin": { "type": "string", "format": "uri" },
+    "merchantWallet": { "type": "string", "minLength": 32, "maxLength": 64 },
+    "facilitatorHint": { "type": "string", "format": "uri" },
+    "resources": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/resourceEntry" }
+    }
+  },
+  "$defs": {
+    "resourceEntry": {
+      "type": "object",
+      "required": ["id", "title", "method", "resourceUrl", "scheme"],
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "title": { "type": "string", "maxLength": 64 },
+        "description": { "type": "string", "maxLength": 280 },
+        "useCase": { "type": "string", "maxLength": 255 },
+        "category": { "type": "string", "maxLength": 32, "pattern": "^[a-z0-9-]+$" },
+        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+        "resourceUrl": { "type": "string", "format": "uri" },
+        "scheme": { "type": "string", "enum": ["exact", "sla-escrow"] },
+        "network": { "type": "string" },
+        "intentContractUrl": { "type": "string", "format": "uri" },
+        "tags": {
+          "type": "array",
+          "maxItems": 5,
+          "items": { "type": "string", "maxLength": 32, "pattern": "^[a-z0-9-]+$" }
+        }
+      }
+    }
+  }
+}

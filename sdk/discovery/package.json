@@ -1,0 +1,25 @@
+{
+  "name": "@pr402/discovery",
+  "version": "0.1.0",
+  "description": "Agent resource discovery client for pr402 GET /resources and 402 probes.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "commonjs",
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/miralandlabs/pr402",
+    "directory": "sdk/discovery"
+  }
+}

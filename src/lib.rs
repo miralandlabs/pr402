@@ -12,6 +12,29 @@ pub mod db;
 pub mod exact_payment_build;
 pub mod facilitator;
 pub mod onboard_auth;
+pub mod payable_resource;
+#[cfg(feature = "facilitator-http")]
+pub mod resource_probe;
+#[cfg(not(feature = "facilitator-http"))]
+pub mod resource_probe {
+    //! Stub when built without `facilitator-http` (no `reqwest`).
+    #[derive(Debug, Clone)]
+    pub struct ResourceProbeResult {
+        pub ok: bool,
+        pub http_status: Option<u16>,
+        pub scheme: Option<String>,
+        pub error: Option<String>,
+    }
+
+    pub async fn probe_resource_url(_method: &str, _url: &str) -> ResourceProbeResult {
+        ResourceProbeResult {
+            ok: false,
+            http_status: None,
+            scheme: None,
+            error: Some("402 probe requires facilitator-http feature".into()),
+        }
+    }
+}
 #[cfg(feature = "facilitator-http")]
 pub mod oracle_health;
 #[cfg(not(feature = "facilitator-http"))]
