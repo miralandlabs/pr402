@@ -53,7 +53,7 @@ Seller-owned catalog at `{origin}/.well-known/x402-resources.json`. See [SRM.md]
 
 ## Static index
 
-[`public/dist/resource-index.json`](../public/dist/resource-index.json) — built by [`scripts/discovery-indexer/index.mjs`](../scripts/discovery-indexer/index.mjs) from public `payable_resources` rows.
+[`public/dist/resource-index.json`](../public/dist/resource-index.json) — built by [`discovery-indexer/index.mjs`](../discovery-indexer/index.mjs) from public `payable_resources` rows.
 
 ## Scheduling
 

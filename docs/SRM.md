@@ -47,7 +47,7 @@ Search metadata is advisory. **Live HTTP 402** on `resourceUrl` (`PaymentRequire
 
 ## Harvest pipeline
 
-The [discovery indexer](../scripts/discovery-indexer/index.mjs) reads verified merchant origins directly from Postgres (the same set surfaced by `GET /providers`), fetches each SRM, enforces origin binding (resource host must match the merchant origin), upserts `payable_resources` with `source = manifest_harvest`, and runs a 402 probe before public listing.
+The [discovery indexer](../discovery-indexer/index.mjs) reads verified merchant origins directly from Postgres (the same set surfaced by `GET /providers`), fetches each SRM, enforces origin binding (resource host must match the merchant origin), upserts `payable_resources` with `source = manifest_harvest`, and runs a 402 probe before public listing.
 
 Human sellers can also register resources at [`/resources`](../public/resources/index.html) (wallet-signed API).
 

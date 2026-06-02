@@ -3,6 +3,8 @@ node_modules/
 dist/
 !sdk/mcp/dist/
 !sdk/mcp/dist/**
+!public/dist/
+!public/dist/**
 # Cargo.lock
 .env
 .env.*

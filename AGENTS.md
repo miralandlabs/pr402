@@ -14,7 +14,7 @@ verifies/settles Solana payments and hosts merchant + resource discovery.
 - `src/db/mod.rs` — all Postgres access; public response structs live here.
 - `migrations/` — `init.sql` is the canonical full schema; `NNN_*.sql` are incremental.
 - `public/` — static assets + UI (`/`, `/resources`); routes mirrored in `vercel.json`.
-- `sdk/` — `discovery`, `mcp`, `client` (TypeScript). `scripts/discovery-indexer/` — harvester.
+- `sdk/` — `discovery`, `mcp`, `client` (TypeScript). `discovery-indexer/` — harvester (root-level).
 
 ## Hard boundaries (do not cross without explicit human approval)
 
