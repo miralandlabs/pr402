@@ -356,6 +356,52 @@
       ]
     },
     {
+      "src": "/dist/resource-index.json",
+      "dest": "/public/dist/resource-index.json"
+    },
+    {
+      "src": "/x402-resources.schema.json",
+      "dest": "/public/x402-resources.schema.json"
+    },
+    {
+      "src": "/resources",
+      "dest": "/public/resources/index.html"
+    },
+    {
+      "src": "/resources/",
+      "dest": "/public/resources/index.html"
+    },
+    {
+      "src": "/api/v1/facilitator/resources/register/challenge",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "HEAD", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/resources/register",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/resources/retire",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/resources/probe",
+      "dest": "/src/bin/facilitator",
+      "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/resources",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "HEAD", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/sellers/(?<wallet>[^/]+)/resources",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "HEAD", "POST", "OPTIONS"]
+    },
+    {
       "src": "/api/v1/facilitator/build-sla-escrow-settle-tx",
       "dest": "/src/bin/facilitator",
       "methods": [

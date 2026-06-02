@@ -10,6 +10,9 @@ In-repo documentation for **operators, maintainers, and integrators** who work f
 |----------|----------|---------|
 | [AGENT_INTEGRATION.md](./AGENT_INTEGRATION.md) | Buyers / agents | Pointer to served buyer runbook [`public/agent-integration.md`](../public/agent-integration.md) |
 | [SELLER_INTEGRATION.md](./SELLER_INTEGRATION.md) | Sellers / RPs | Pointer to served seller runbook [`public/onboarding_guide.md`](../public/onboarding_guide.md) |
+| [DISCOVERY.md](./DISCOVERY.md) | Integrators / agents | Three-layer discovery model; `/providers` vs `/resources`; SRM + static index + indexer cron |
+| [SRM.md](./SRM.md) | Sellers / maintainers | Seller Resource Manifest format (`/.well-known/x402-resources.json`) + harvest pipeline |
+| [DISCOVERY_CODE_REVIEW.md](./DISCOVERY_CODE_REVIEW.md) | Reviewers | Review checklist for the discovery + sla-escrow change set |
 | [CRON_OPERATIONS.md](./CRON_OPERATIONS.md) | Operators | Settlement keeper crons (vault sweep, sla-escrow settle/close), auth, tuning |
 | [OPS_RECOVERY_PLAYBOOK.md](./OPS_RECOVERY_PLAYBOOK.md) | Operators | Manual recovery for abnormal DB/chain states (verify-only rows, audit gaps, split-brain settle) |
 | [SLA_ESCROW_FEE_PAYER_AND_SETTLE.md](./SLA_ESCROW_FEE_PAYER_AND_SETTLE.md) | Maintainers | Fee-payer layouts, `/verify` + `/settle` branching for sla-escrow vs exact |

@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS parameters CASCADE;
 DROP TABLE IF EXISTS escrow_lifecycle_events CASCADE;
 DROP TABLE IF EXISTS escrow_details CASCADE;
 DROP TABLE IF EXISTS payment_attempts CASCADE;
+DROP TABLE IF EXISTS payable_resources CASCADE;
 DROP TABLE IF EXISTS resource_providers CASCADE;
 
 
@@ -71,6 +72,76 @@ CREATE INDEX IF NOT EXISTS idx_resource_providers_public_listing
       AND registration_verified_at IS NOT NULL
       AND inactive = FALSE
       AND retired_at IS NULL;
+
+-- Layer 3: one row per payable HTTP resource (PaymentRequired.resource.url).
+-- Populated via wallet-signed POST /resources/register, manifest harvest, or indexer.
+-- See migrations/008_payable_resources.sql for incremental apply on existing DBs.
+
+CREATE TABLE IF NOT EXISTS payable_resources (
+    id                          BIGSERIAL PRIMARY KEY,
+
+    wallet_pubkey               TEXT NOT NULL,
+    resource_provider_id        BIGINT REFERENCES resource_providers(id) ON DELETE SET NULL,
+
+    resource_url                TEXT NOT NULL,
+    http_method                 TEXT NOT NULL DEFAULT 'GET',
+    seller_resource_id          TEXT,
+
+    title                       TEXT NOT NULL,
+    description                 TEXT,
+    use_case                    TEXT,
+    category                    TEXT,
+    tags                        TEXT[],
+
+    scheme                      TEXT NOT NULL,
+    network                     TEXT,
+    intent_contract_url         TEXT,
+    facilitator_hint            TEXT,
+
+    listing_opt_in              BOOLEAN NOT NULL DEFAULT FALSE,
+    registration_verified_at    TIMESTAMPTZ,
+    verified_schema_version     INTEGER NOT NULL DEFAULT 1,
+    inactive                    BOOLEAN NOT NULL DEFAULT FALSE,
+    retired_at                  TIMESTAMPTZ,
+
+    source                      TEXT NOT NULL DEFAULT 'register_ui',
+
+    manifest_origin             TEXT,
+    manifest_sha256             TEXT,
+
+    last_probe_at               TIMESTAMPTZ,
+    last_probe_ok               BOOLEAN,
+    last_probe_error            TEXT,
+    last_probe_http_status      INTEGER,
+    last_probe_scheme           TEXT,
+
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT payable_resources_scheme_check
+        CHECK (scheme IN ('exact', 'sla-escrow'))
+);
+
+ALTER TABLE payable_resources ENABLE ROW LEVEL SECURITY;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payable_resources_resource_url
+    ON payable_resources (resource_url);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payable_resources_wallet_slug
+    ON payable_resources (wallet_pubkey, seller_resource_id)
+    WHERE seller_resource_id IS NOT NULL AND retired_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_payable_resources_public_listing
+    ON payable_resources (updated_at DESC)
+    WHERE listing_opt_in = TRUE
+      AND registration_verified_at IS NOT NULL
+      AND inactive = FALSE
+      AND retired_at IS NULL
+      AND last_probe_ok = TRUE;
+
+CREATE INDEX IF NOT EXISTS idx_payable_resources_wallet_active
+    ON payable_resources (wallet_pubkey, updated_at DESC)
+    WHERE retired_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS payment_attempts (
     id                   BIGSERIAL PRIMARY KEY,

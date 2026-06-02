@@ -755,7 +755,7 @@ pub async fn handle_seller_payments_list(query: &str, body: Body) -> Response<Bo
 
 /// Minimal RFC3339 parser backed by `SystemTime`. Accepts the subset we actually emit
 /// (`YYYY-MM-DDTHH:MM:SS[.ffffff]Z`). No dep on `chrono` / `time`.
-fn parse_rfc3339_to_system_time(s: &str) -> Result<std::time::SystemTime, String> {
+pub fn parse_rfc3339_to_system_time(s: &str) -> Result<std::time::SystemTime, String> {
     // Expected: 1970-01-01T00:00:00.000000Z or without fractional seconds.
     let s = s.trim();
     if !s.ends_with('Z') {

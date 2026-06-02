@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>pr402 — List payable APIs</title>
+        <link rel="icon" type="image/png" href="/pr402.png" />
+        <style>
+            :root {
+                color-scheme: light dark;
+                --bg: light-dark(#fdfdfb, #0a0a0a);
+                --fg: light-dark(#1a1a1a, #e6e6e6);
+                --dim: light-dark(#4a4a4a, #9a9a9a);
+                --rule: light-dark(#e5e4df, #1f1f1f);
+                --accent: light-dark(#3a7d0c, #a3e635);
+                --font: ui-monospace, "JetBrains Mono", Menlo, monospace;
+            }
+            body {
+                font-family: var(--font);
+                background: var(--bg);
+                color: var(--fg);
+                margin: 0;
+                padding: 2rem 1rem;
+                line-height: 1.5;
+            }
+            main {
+                max-width: 720px;
+                margin: 0 auto;
+            }
+            h1 {
+                font-size: 1.25rem;
+                margin: 0 0 0.5rem;
+            }
+            p {
+                color: var(--dim);
+                margin: 0 0 1rem;
+            }
+            a {
+                color: var(--accent);
+            }
+            label {
+                display: block;
+                font-size: 12px;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--dim);
+                margin: 1rem 0 0.25rem;
+            }
+            input,
+            textarea,
+            select {
+                width: 100%;
+                box-sizing: border-box;
+                font: inherit;
+                padding: 0.5rem;
+                border: 1px solid var(--rule);
+                background: transparent;
+                color: inherit;
+            }
+            textarea {
+                min-height: 4rem;
+            }
+            .row {
+                display: flex;
+                gap: 0.5rem;
+                flex-wrap: wrap;
+                margin: 1rem 0;
+            }
+            button {
+                font: inherit;
+                padding: 0.5rem 0.75rem;
+                border: 1px solid var(--rule);
+                background: transparent;
+                color: inherit;
+                cursor: pointer;
+            }
+            button.primary {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
+            pre {
+                background: var(--rule);
+                padding: 0.75rem;
+                overflow: auto;
+                font-size: 12px;
+            }
+            .err {
+                color: #ef4444;
+            }
+        </style>
+        <script src="/wallet.js" defer></script>
+    </head>
+    <body>
+        <main>
+            <h1>List payable APIs</h1>
+            <p>
+                Layer 3 resource registration — separate from
+                <a href="/">merchant onboarding</a>. Complete Preview → Activate →
+                Verify on the home page first.
+            </p>
+            <div id="wallet-slot"></div>
+            <div id="status" class="dim"></div>
+
+            <h2>Your resources</h2>
+            <pre id="list-out">Connect wallet to load.</pre>
+
+            <h2>Register one resource</h2>
+            <label for="resourceUrl">Resource URL (must match merchant origin host)</label>
+            <input id="resourceUrl" placeholder="https://your-api.example/api/premium" />
+            <label for="title">Title</label>
+            <input id="title" placeholder="Premium API" />
+            <label for="description">Description</label>
+            <textarea id="description"></textarea>
+            <label for="scheme">Scheme</label>
+            <select id="scheme">
+                <option value="exact">exact</option>
+                <option value="sla-escrow">sla-escrow</option>
+            </select>
+            <label><input type="checkbox" id="listingOptIn" /> List publicly (after 402 probe)</label>
+            <div class="row">
+                <button class="primary" id="btn-register">Sign &amp; register</button>
+                <button id="btn-probe">Test 402 probe (selected id)</button>
+            </div>
+            <pre id="form-out"></pre>
+        </main>
+        <script>
+            (function () {
+                var wallet = "";
+                var lastId = null;
+                var statusEl = document.getElementById("status");
+                var listOut = document.getElementById("list-out");
+                var formOut = document.getElementById("form-out");
+
+                function setStatus(msg, err) {
+                    statusEl.textContent = msg || "";
+                    statusEl.className = err ? "err" : "";
+                }
+
+                function base58Encode(bytes) {
+                    var ALPH =
+                        "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+                    var zeros = 0;
+                    while (zeros < bytes.length && bytes[zeros] === 0) zeros++;
+                    var num = 0n;
+                    for (var i = zeros; i < bytes.length; i++)
+                        num = num * 256n + BigInt(bytes[i]);
+                    var out = "";
+                    while (num > 0n) {
+                        var mod = Number(num % 58n);
+                        num = num / 58n;
+                        out = ALPH[mod] + out;
+                    }
+                    for (var z = 0; z < zeros; z++) out = "1" + out;
+                    return out || "1";
+                }
+
+                function base64ToBytes(b64) {
+                    var bin = atob(b64);
+                    var out = new Uint8Array(bin.length);
+                    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+                    return out;
+                }
+
+                async function signedChallenge() {
+                    var chRes = await fetch(
+                        "/api/v1/facilitator/resources/register/challenge?wallet=" +
+                            encodeURIComponent(wallet),
+                    );
+                    var ch = await chRes.json();
+                    if (!chRes.ok) throw new Error(ch.error || chRes.status);
+                    var sigB64 = await window.MiracleMessageSigner(ch.message);
+                    var sigB58 = base58Encode(base64ToBytes(sigB64));
+                    return { message: ch.message, signature: sigB58 };
+                }
+
+                async function refreshList() {
+                    if (!wallet) return;
+                    var auth = await signedChallenge();
+                    var res = await fetch(
+                        "/api/v1/facilitator/sellers/" +
+                            encodeURIComponent(wallet) +
+                            "/resources",
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(auth),
+                        },
+                    );
+                    var txt = await res.text();
+                    listOut.textContent = txt;
+                    if (res.ok) {
+                        try {
+                            var data = JSON.parse(txt);
+                            if (data.entries && data.entries[0])
+                                lastId = data.entries[0].public.id;
+                        } catch (e) {}
+                    }
+                }
+
+                window.addEventListener("miracle-pubkey", function (ev) {
+                    wallet = (ev.detail && ev.detail.pubkey) || "";
+                    setStatus(wallet ? "Wallet: " + wallet : "Connect wallet");
+                    if (wallet) refreshList().catch(function (e) {
+                        setStatus(e.message, true);
+                    });
+                });
+
+                document.getElementById("btn-register").addEventListener(
+                    "click",
+                    async function () {
+                        if (!wallet) return setStatus("Connect wallet first", true);
+                        try {
+                            var auth = await signedChallenge();
+                            var body = {
+                                wallet: wallet,
+                                message: auth.message,
+                                signature: auth.signature,
+                                resource: {
+                                    resourceUrl: document.getElementById("resourceUrl").value,
+                                    title: document.getElementById("title").value,
+                                    description:
+                                        document.getElementById("description").value ||
+                                        undefined,
+                                    scheme: document.getElementById("scheme").value,
+                                    listingOptIn:
+                                        document.getElementById("listingOptIn").checked,
+                                },
+                            };
+                            var res = await fetch(
+                                "/api/v1/facilitator/resources/register",
+                                {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify(body),
+                                },
+                            );
+                            formOut.textContent = await res.text();
+                            await refreshList();
+                        } catch (e) {
+                            formOut.textContent = String(e.message || e);
+                        }
+                    },
+                );
+
+                document.getElementById("btn-probe").addEventListener(
+                    "click",
+                    async function () {
+                        if (!wallet) return setStatus("Connect wallet first", true);
+                        if (!lastId) return (formOut.textContent = "No resource id");
+                        try {
+                            var auth = await signedChallenge();
+                            var res = await fetch("/api/v1/facilitator/resources/probe", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    wallet: wallet,
+                                    message: auth.message,
+                                    signature: auth.signature,
+                                    id: lastId,
+                                }),
+                            });
+                            formOut.textContent = await res.text();
+                            await refreshList();
+                        } catch (e) {
+                            formOut.textContent = String(e.message || e);
+                        }
+                    },
+                );
+            })();
+        </script>
+    </body>
+</html>

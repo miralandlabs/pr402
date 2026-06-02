@@ -9,7 +9,7 @@ keywords = ["x402", "solana", "payments", "serverless", "vercel"]
 categories = ["cryptography", "finance", "stablecoins"]
 
 [features]
-default = []
+default = ["facilitator-http"]
 ## Optional `reqwest` client (`sdk::http`); release `facilitator` binary size unchanged with/without—entrypoint never uses it, LTO strips `reqwest`.
 facilitator-http = ["dep:reqwest"]
 

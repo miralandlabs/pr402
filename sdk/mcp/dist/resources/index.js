@@ -22,6 +22,18 @@ const RESOURCES = [
         mimeType: 'text/markdown',
     },
     {
+        uri: 'pr402://resource-index',
+        path: '/dist/resource-index.json',
+        name: 'pr402 resource index',
+        mimeType: 'application/json',
+    },
+    {
+        uri: 'pr402://resources',
+        path: '/api/v1/facilitator/resources',
+        name: 'pr402 payable resources search',
+        mimeType: 'application/json',
+    },
+    {
         uri: 'pr402://payto-semantics',
         path: '/agent-payTo-semantics.json',
         name: 'pr402 payTo semantics',

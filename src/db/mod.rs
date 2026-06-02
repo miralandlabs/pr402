@@ -115,6 +115,120 @@ impl PublicProviderEntry {
     }
 }
 
+/// One row emitted by public resource search (`GET /resources`).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicResourceEntry {
+    pub id: i64,
+    pub wallet_pubkey: String,
+    pub resource_url: String,
+    pub http_method: String,
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_case: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    pub tags: Vec<String>,
+    pub scheme: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intent_contract_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub merchant_origin: Option<String>,
+    pub registration_verified_at: String,
+    pub updated_at: String,
+}
+
+impl PublicResourceEntry {
+    fn from_row(row: &tokio_postgres::Row, merchant_origin: Option<String>) -> Self {
+        Self {
+            id: row.get("id"),
+            wallet_pubkey: row.get("wallet_pubkey"),
+            resource_url: row.get("resource_url"),
+            http_method: row.get("http_method"),
+            title: row.get("title"),
+            description: row.try_get("description").ok(),
+            use_case: row.try_get("use_case").ok(),
+            category: row.try_get("category").ok(),
+            tags: row
+                .try_get::<_, Option<Vec<String>>>("tags")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+            scheme: row.get("scheme"),
+            network: row.try_get("network").ok(),
+            intent_contract_url: row.try_get("intent_contract_url").ok(),
+            merchant_origin,
+            registration_verified_at: row
+                .try_get::<_, Option<std::time::SystemTime>>("registration_verified_at")
+                .ok()
+                .flatten()
+                .map(system_time_to_rfc3339)
+                .unwrap_or_default(),
+            updated_at: row
+                .try_get::<_, std::time::SystemTime>("updated_at")
+                .map(system_time_to_rfc3339)
+                .unwrap_or_default(),
+        }
+    }
+}
+
+/// Owner dashboard row — includes probe diagnostics omitted from public search.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnerResourceEntry {
+    #[serde(flatten)]
+    pub public: PublicResourceEntry,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seller_resource_id: Option<String>,
+    pub listing_opt_in: bool,
+    pub inactive: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retired_at: Option<String>,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_probe_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_probe_ok: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_probe_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_probe_http_status: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_probe_scheme: Option<String>,
+}
+
+impl OwnerResourceEntry {
+    fn from_row(row: &tokio_postgres::Row, merchant_origin: Option<String>) -> Self {
+        let retired_at = row
+            .try_get::<_, Option<std::time::SystemTime>>("retired_at")
+            .ok()
+            .flatten()
+            .map(system_time_to_rfc3339);
+        let last_probe_at = row
+            .try_get::<_, Option<std::time::SystemTime>>("last_probe_at")
+            .ok()
+            .flatten()
+            .map(system_time_to_rfc3339);
+        Self {
+            public: PublicResourceEntry::from_row(row, merchant_origin),
+            seller_resource_id: row.try_get("seller_resource_id").ok(),
+            listing_opt_in: row.get("listing_opt_in"),
+            inactive: row.get("inactive"),
+            retired_at,
+            source: row.get("source"),
+            last_probe_at,
+            last_probe_ok: row.try_get("last_probe_ok").ok(),
+            last_probe_error: row.try_get("last_probe_error").ok(),
+            last_probe_http_status: row.try_get("last_probe_http_status").ok(),
+            last_probe_scheme: row.try_get("last_probe_scheme").ok(),
+        }
+    }
+}
+
 /// One row emitted by [`Pr402Db::list_seller_payments`]. Mirrors the `payment_attempts`
 /// columns a seller actually needs to reconcile — no verify/settle error prose.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -555,13 +669,22 @@ impl Pr402Db {
     /// Returns the count of rows updated. Zero = wallet was not in the registry; callers
     /// should surface that as a no-op success, not an error.
     pub async fn retire_resource_provider(&self, wallet_pubkey: &str) -> Result<u64, DbError> {
-        const SQL: &str = r#"
+        const SQL_RP: &str = r#"
             UPDATE resource_providers SET
                 retired_at     = COALESCE(retired_at, NOW()),
                 inactive       = TRUE,
                 listing_opt_in = FALSE,
                 updated_at     = NOW()
              WHERE wallet_pubkey = $1
+        "#;
+        const SQL_PR: &str = r#"
+            UPDATE payable_resources SET
+                retired_at     = COALESCE(retired_at, NOW()),
+                inactive       = TRUE,
+                listing_opt_in = FALSE,
+                updated_at     = NOW()
+             WHERE wallet_pubkey = $1
+               AND retired_at IS NULL
         "#;
 
         let mut client = self.conn().await?;
@@ -571,7 +694,21 @@ impl Pr402Db {
         })?;
         Self::deallocate_all_signer_style(&tx).await;
 
-        let res = match timeout(Self::QUERY_TIMEOUT, tx.execute(SQL, &[&wallet_pubkey])).await {
+        let pr_res = match timeout(Self::QUERY_TIMEOUT, tx.execute(SQL_PR, &[&wallet_pubkey])).await
+        {
+            Ok(Ok(_)) => Ok(()),
+            Ok(Err(e)) => {
+                error!(target: "server_log", error = %format_err_chain(&e), "retire payable_resources cascade failed");
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => Err(DbError::Timeout),
+        };
+        if let Err(e) = pr_res {
+            let _ = tx.rollback().await;
+            return Err(e);
+        }
+
+        let res = match timeout(Self::QUERY_TIMEOUT, tx.execute(SQL_RP, &[&wallet_pubkey])).await {
             Ok(Ok(n)) => Ok(n),
             Ok(Err(e)) => {
                 error!(target: "server_log", error = %format_err_chain(&e), "retire_resource_provider failed");
@@ -2066,5 +2203,471 @@ impl Pr402Db {
             tx.rollback().await.ok();
         }
         result
+    }
+
+    /// Merchant origin (`service_url`) for origin-binding checks.
+    pub async fn get_merchant_service_url(
+        &self,
+        wallet_pubkey: &str,
+    ) -> Result<Option<String>, DbError> {
+        const SQL: &str = r#"
+            SELECT service_url
+              FROM resource_providers
+             WHERE wallet_pubkey = $1
+               AND registration_verified_at IS NOT NULL
+               AND retired_at IS NULL
+               AND service_url IS NOT NULL
+               AND service_url <> ''
+             ORDER BY updated_at DESC
+             LIMIT 1
+        "#;
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&wallet_pubkey])).await;
+        let out = match res {
+            Ok(Ok(Some(row))) => Ok(Some(row.get("service_url"))),
+            Ok(Ok(None)) => Ok(None),
+            Ok(Err(e)) => Err(DbError::Query(format_err_chain(&e))),
+            Err(_) => Err(DbError::Timeout),
+        };
+        if out.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        out
+    }
+
+    /// Active verified resource_provider id for FK linkage.
+    async fn active_resource_provider_id(
+        &self,
+        wallet_pubkey: &str,
+    ) -> Result<Option<i64>, DbError> {
+        const SQL: &str = r#"
+            SELECT id FROM resource_providers
+             WHERE wallet_pubkey = $1
+               AND registration_verified_at IS NOT NULL
+               AND retired_at IS NULL
+             ORDER BY updated_at DESC
+             LIMIT 1
+        "#;
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&wallet_pubkey])).await;
+        let out = match res {
+            Ok(Ok(Some(row))) => Ok(Some(row.get("id"))),
+            Ok(Ok(None)) => Ok(None),
+            Ok(Err(e)) => Err(DbError::Query(format_err_chain(&e))),
+            Err(_) => Err(DbError::Timeout),
+        };
+        if out.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        out
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_payable_resource(
+        &self,
+        wallet_pubkey: &str,
+        resource_url: &str,
+        http_method: &str,
+        seller_resource_id: Option<&str>,
+        title: &str,
+        description: Option<&str>,
+        use_case: Option<&str>,
+        category: Option<&str>,
+        tags: Option<&[String]>,
+        scheme: &str,
+        network: Option<&str>,
+        intent_contract_url: Option<&str>,
+        facilitator_hint: Option<&str>,
+        listing_opt_in: bool,
+        source: &str,
+    ) -> Result<i64, DbError> {
+        let rp_id = self.active_resource_provider_id(wallet_pubkey).await?;
+        let Some(rp_id) = rp_id else {
+            return Err(DbError::Query(
+                "merchant not verified; complete Layer 2 onboarding first".into(),
+            ));
+        };
+
+        const SQL: &str = r#"
+            INSERT INTO payable_resources (
+                wallet_pubkey, resource_provider_id, resource_url, http_method,
+                seller_resource_id, title, description, use_case, category, tags,
+                scheme, network, intent_contract_url, facilitator_hint,
+                listing_opt_in, registration_verified_at, source, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                $11, $12, $13, $14, $15, NOW(), $16, NOW()
+            )
+            ON CONFLICT (resource_url) DO UPDATE SET
+                resource_provider_id = EXCLUDED.resource_provider_id,
+                http_method = EXCLUDED.http_method,
+                seller_resource_id = COALESCE(EXCLUDED.seller_resource_id, payable_resources.seller_resource_id),
+                title = EXCLUDED.title,
+                description = EXCLUDED.description,
+                use_case = EXCLUDED.use_case,
+                category = EXCLUDED.category,
+                tags = EXCLUDED.tags,
+                scheme = EXCLUDED.scheme,
+                network = EXCLUDED.network,
+                intent_contract_url = EXCLUDED.intent_contract_url,
+                facilitator_hint = EXCLUDED.facilitator_hint,
+                listing_opt_in = EXCLUDED.listing_opt_in,
+                registration_verified_at = NOW(),
+                source = EXCLUDED.source,
+                inactive = FALSE,
+                retired_at = NULL,
+                updated_at = NOW()
+            WHERE payable_resources.wallet_pubkey = EXCLUDED.wallet_pubkey
+            RETURNING id
+        "#;
+
+        let tags_owned: Option<Vec<String>> = tags.map(|t| t.to_vec());
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query_opt(
+                SQL,
+                &[
+                    &wallet_pubkey,
+                    &rp_id,
+                    &resource_url,
+                    &http_method,
+                    &seller_resource_id,
+                    &title,
+                    &description,
+                    &use_case,
+                    &category,
+                    &tags_owned,
+                    &scheme,
+                    &network,
+                    &intent_contract_url,
+                    &facilitator_hint,
+                    &listing_opt_in,
+                    &source,
+                ],
+            ),
+        )
+        .await;
+        let id = match res {
+            Ok(Ok(Some(row))) => row.get("id"),
+            // Conflict on `resource_url` whose existing row belongs to another wallet: the
+            // `ON CONFLICT ... WHERE wallet_pubkey = EXCLUDED.wallet_pubkey` guard updated no row.
+            Ok(Ok(None)) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Query(
+                    "resourceUrl is already registered to a different wallet".into(),
+                ));
+            }
+            Ok(Err(e)) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Timeout);
+            }
+        };
+        tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        Ok(id)
+    }
+
+    pub async fn retire_payable_resource(
+        &self,
+        wallet_pubkey: &str,
+        id: Option<i64>,
+        resource_url: Option<&str>,
+    ) -> Result<u64, DbError> {
+        let sql = if id.is_some() {
+            r#"
+            UPDATE payable_resources SET
+                retired_at = COALESCE(retired_at, NOW()),
+                inactive = TRUE,
+                listing_opt_in = FALSE,
+                updated_at = NOW()
+             WHERE wallet_pubkey = $1 AND id = $2 AND retired_at IS NULL
+            "#
+        } else {
+            r#"
+            UPDATE payable_resources SET
+                retired_at = COALESCE(retired_at, NOW()),
+                inactive = TRUE,
+                listing_opt_in = FALSE,
+                updated_at = NOW()
+             WHERE wallet_pubkey = $1 AND resource_url = $2 AND retired_at IS NULL
+            "#
+        };
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = if let Some(rid) = id {
+            timeout(
+                Self::QUERY_TIMEOUT,
+                tx.execute(sql, &[&wallet_pubkey, &rid]),
+            )
+            .await
+        } else {
+            let url = resource_url.unwrap_or("");
+            timeout(
+                Self::QUERY_TIMEOUT,
+                tx.execute(sql, &[&wallet_pubkey, &url]),
+            )
+            .await
+        };
+        match res {
+            Ok(Ok(n)) => {
+                tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+                Ok(n)
+            }
+            Ok(Err(e)) => {
+                tx.rollback().await.ok();
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                tx.rollback().await.ok();
+                Err(DbError::Timeout)
+            }
+        }
+    }
+
+    pub async fn get_payable_resource_row(
+        &self,
+        id: i64,
+    ) -> Result<Option<(String, String, String)>, DbError> {
+        const SQL: &str = r#"SELECT wallet_pubkey, resource_url, http_method FROM payable_resources WHERE id = $1"#;
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&id])).await;
+        let out = match res {
+            Ok(Ok(Some(row))) => Ok(Some((
+                row.get("wallet_pubkey"),
+                row.get("resource_url"),
+                row.get("http_method"),
+            ))),
+            Ok(Ok(None)) => Ok(None),
+            Ok(Err(e)) => Err(DbError::Query(format_err_chain(&e))),
+            Err(_) => Err(DbError::Timeout),
+        };
+        if out.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        out
+    }
+
+    pub async fn get_payable_resource_row_by_url(
+        &self,
+        resource_url: &str,
+    ) -> Result<Option<(i64, String)>, DbError> {
+        const SQL: &str =
+            r#"SELECT id, http_method FROM payable_resources WHERE resource_url = $1"#;
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&resource_url])).await;
+        let out = match res {
+            Ok(Ok(Some(row))) => Ok(Some((row.get("id"), row.get("http_method")))),
+            Ok(Ok(None)) => Ok(None),
+            Ok(Err(e)) => Err(DbError::Query(format_err_chain(&e))),
+            Err(_) => Err(DbError::Timeout),
+        };
+        if out.is_ok() {
+            tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        } else {
+            tx.rollback().await.ok();
+        }
+        out
+    }
+
+    pub async fn record_resource_probe(
+        &self,
+        id: i64,
+        ok: bool,
+        http_status: Option<i32>,
+        scheme: Option<&str>,
+        error: Option<&str>,
+    ) -> Result<(), DbError> {
+        const SQL: &str = r#"
+            UPDATE payable_resources SET
+                last_probe_at = NOW(),
+                last_probe_ok = $2,
+                last_probe_http_status = $3,
+                last_probe_scheme = $4,
+                last_probe_error = $5,
+                updated_at = NOW()
+             WHERE id = $1
+        "#;
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = timeout(
+            Self::QUERY_TIMEOUT,
+            tx.execute(SQL, &[&id, &ok, &http_status, &scheme, &error]),
+        )
+        .await;
+        match res {
+            Ok(Ok(_)) => {
+                tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                tx.rollback().await.ok();
+                Err(DbError::Query(format_err_chain(&e)))
+            }
+            Err(_) => {
+                tx.rollback().await.ok();
+                Err(DbError::Timeout)
+            }
+        }
+    }
+
+    pub async fn list_owner_resources(
+        &self,
+        wallet_pubkey: &str,
+    ) -> Result<Vec<OwnerResourceEntry>, DbError> {
+        const SQL: &str = r#"
+            SELECT pr.*, rp.service_url AS merchant_service_url
+              FROM payable_resources pr
+              LEFT JOIN resource_providers rp ON rp.id = pr.resource_provider_id
+             WHERE pr.wallet_pubkey = $1
+             ORDER BY pr.updated_at DESC
+        "#;
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = timeout(Self::QUERY_TIMEOUT, tx.query(SQL, &[&wallet_pubkey])).await;
+        let rows = match res {
+            Ok(Ok(rows)) => rows,
+            Ok(Err(e)) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Timeout);
+            }
+        };
+        tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        Ok(rows
+            .iter()
+            .map(|row| {
+                let origin: Option<String> = row.try_get("merchant_service_url").ok();
+                OwnerResourceEntry::from_row(row, origin)
+            })
+            .collect())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn list_public_resources(
+        &self,
+        limit: i64,
+        cursor_updated_at: Option<std::time::SystemTime>,
+        q: Option<&str>,
+        category: Option<&str>,
+        scheme: Option<&str>,
+        tag: Option<&str>,
+    ) -> Result<Vec<PublicResourceEntry>, DbError> {
+        let limit = limit.clamp(1, 100);
+        let q_pat = q.filter(|s| !s.is_empty()).map(|s| format!("%{s}%"));
+
+        const SQL: &str = r#"
+            SELECT pr.*, rp.service_url AS merchant_service_url
+              FROM payable_resources pr
+              LEFT JOIN resource_providers rp ON rp.id = pr.resource_provider_id
+             WHERE pr.listing_opt_in = TRUE
+               AND pr.registration_verified_at IS NOT NULL
+               AND pr.inactive = FALSE
+               AND pr.retired_at IS NULL
+               AND pr.last_probe_ok = TRUE
+               AND ($2::timestamptz IS NULL OR pr.updated_at < $2::timestamptz)
+               AND ($3::text IS NULL OR (
+                    pr.title ILIKE $3 OR pr.description ILIKE $3
+                    OR pr.use_case ILIKE $3 OR EXISTS (
+                        SELECT 1 FROM unnest(pr.tags) t WHERE t ILIKE $3
+                    )
+               ))
+               AND ($4::text IS NULL OR pr.category = $4)
+               AND ($5::text IS NULL OR pr.scheme = $5)
+               AND ($6::text IS NULL OR $6 = ANY(pr.tags))
+             ORDER BY pr.updated_at DESC
+             LIMIT $1
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+        let res = timeout(
+            Self::QUERY_TIMEOUT,
+            tx.query(
+                SQL,
+                &[&limit, &cursor_updated_at, &q_pat, &category, &scheme, &tag],
+            ),
+        )
+        .await;
+        let rows = match res {
+            Ok(Ok(rows)) => rows,
+            Ok(Err(e)) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Timeout);
+            }
+        };
+        tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        Ok(rows
+            .iter()
+            .map(|row| {
+                let origin: Option<String> = row.try_get("merchant_service_url").ok();
+                PublicResourceEntry::from_row(row, origin)
+            })
+            .collect())
+    }
+
+    pub async fn list_public_resources_for_index(
+        &self,
+    ) -> Result<Vec<PublicResourceEntry>, DbError> {
+        self.list_public_resources(10_000, None, None, None, None, None)
+            .await
     }
 }

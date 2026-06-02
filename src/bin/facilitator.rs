@@ -63,7 +63,7 @@ static CHAIN_PROVIDER: OnceLock<Arc<ChainProvider>> = OnceLock::new();
 /// `facilitator`, which does not match the `pr402` filter and hides verify/settle logs).
 /// Institutional audit log category (mirrors signer-payer baseline).
 const LOG_SERVER_LOG: &str = "server_log";
-const SCHEMA_VERSION: &str = "1.1.0";
+const SCHEMA_VERSION: &str = "1.2.0";
 
 // ── INFRA-4: Lightweight in-process rate limiter for build endpoints ─────────
 use std::sync::Mutex;
@@ -247,6 +247,8 @@ struct CapabilitiesFeatures {
     /// True when `GET /providers` + `GET /providers/{wallet}` return the public seller
     /// directory. Absent on deployments without a database.
     public_provider_directory: bool,
+    /// True when `GET /resources` returns the public payable-resource directory.
+    public_resource_directory: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -300,6 +302,16 @@ struct CapabilitiesHttpEndpoints {
     seller_rail_info: HttpEndpointInfo,
     /// `POST` — enrich naive PaymentRequired for HTTP 402 (`/payment-required/enrich`).
     payment_required_enrich: HttpEndpointInfo,
+    /// `GET` — public payable-resource search.
+    resources: HttpEndpointInfo,
+    /// `GET` — HMAC challenge before resource register.
+    resource_register_challenge: HttpEndpointInfo,
+    /// `POST` — wallet-signed resource register.
+    resource_register: HttpEndpointInfo,
+    /// `POST` — wallet-signed resource retire.
+    resource_retire: HttpEndpointInfo,
+    /// `POST` — 402 probe for one resource row.
+    resource_probe: HttpEndpointInfo,
 }
 
 #[derive(serde::Serialize)]
@@ -312,6 +324,11 @@ struct AgentManifest {
     seller_onboarding_guide: &'static str,
     buyer_quick_start: &'static str,
     x402_spec: &'static str,
+    resource_search: &'static str,
+    resource_register: &'static str,
+    resource_index: &'static str,
+    merchant_origins: &'static str,
+    srm_spec: &'static str,
 }
 
 fn with_api_version_v1(mut res: Response<Body>, correlation_id: Option<&str>) -> Response<Body> {
@@ -767,6 +784,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 ("GET", "/api/v1/facilitator/providers") => {
                     handle_public_providers_list(&query).await
+                }
+                ("GET", REGISTER_CHALLENGE) => {
+                    handle_resource_register_challenge(&query).await
+                }
+                ("POST", REGISTER) => {
+                    handle_resource_register(body).await
+                }
+                ("POST", RETIRE) => {
+                    handle_resource_retire(body).await
+                }
+                ("GET", RESOURCES_PREFIX) => {
+                    handle_public_resources_list(&query).await
+                }
+                ("POST", PROBE) => {
+                    handle_resource_probe(body).await
+                }
+                ("GET" | "POST", p)
+                    if p.starts_with(seller_api::SELLERS_PREFIX)
+                        && p.ends_with(SELLERS_RESOURCES_SUFFIX)
+                        && p.len()
+                            > seller_api::SELLERS_PREFIX.len() + SELLERS_RESOURCES_SUFFIX.len() =>
+                {
+                    if let Some(w) =
+                        seller_api::parse_sellers_wallet_suffix(p, SELLERS_RESOURCES_SUFFIX)
+                    {
+                        handle_owner_resources(&w, &query, body).await
+                    } else {
+                        facilitator_response!()
+                            .status(StatusCode::NOT_FOUND)
+                            .header("Content-Type", "application/json")
+                            .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
+                            .unwrap()
+                    }
                 }
                 // Single-wallet directory lookup. The handler is given the wallet pubkey
                 // as the trailing path segment; guard with `len > prefix.len()` so the
