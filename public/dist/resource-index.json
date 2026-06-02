@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "1.0.0",
+  "generatedAt": null,
+  "facilitator": "https://ipay.sh",
+  "notice": "Advisory metadata only. Authoritative payment terms come from live HTTP 402 on each resourceUrl.",
+  "entries": []
+}

@@ -142,7 +142,7 @@ Confirm every planned route exists in **both** Rust router **and** Vercel routes
 
 | Component | Files | Check |
 |-----------|-------|-------|
-| Indexer | `scripts/discovery-indexer/index.mjs` | `--harvest` needs `DATABASE_URL` + `pg`; without DB only rebuilds from API |
+| Indexer | `discovery-indexer/index.mjs` | `--harvest` needs `DATABASE_URL` + `pg`; without DB only rebuilds from API |
 | Static index | `public/dist/resource-index.json` | Placeholder vs generated; not hand-curated services |
 | `@pr402/discovery` | `sdk/discovery/` | Builds; `searchResources` / `probeResource` match API |
 | MCP | `sdk/mcp/src/tools/discovery.ts` | Tools registered; `@pr402/discovery` dependency resolves |
