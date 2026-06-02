@@ -3,8 +3,27 @@
 use serde_json::Value;
 use std::time::Duration;
 use tracing::warn;
+use url::Url;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Compare two URLs on scheme + host + port + path only, ignoring the query string.
+///
+/// The probed URL often carries example query args (so the endpoint reaches its 402
+/// gate instead of a 400 input-validation error), while a seller's 402 may advertise
+/// a canonical `resource.url` without those request-specific params. Binding on
+/// origin+path keeps the liveness check meaningful without forcing query equality.
+fn same_origin_path(a: &str, b: &str) -> bool {
+    match (Url::parse(a), Url::parse(b)) {
+        (Ok(ua), Ok(ub)) => {
+            ua.scheme() == ub.scheme()
+                && ua.host_str() == ub.host_str()
+                && ua.port_or_known_default() == ub.port_or_known_default()
+                && ua.path() == ub.path()
+        }
+        _ => false,
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ResourceProbeResult {
@@ -116,13 +135,16 @@ pub async fn probe_resource_url(method: &str, url: &str) -> ResourceProbeResult 
         .get("resource")
         .and_then(|r| r.get("url"))
         .and_then(|u| u.as_str());
-    if resource_url != Some(url) {
+    if !resource_url
+        .map(|ru| same_origin_path(ru, url))
+        .unwrap_or(false)
+    {
         return ResourceProbeResult {
             ok: false,
             http_status: Some(402),
             scheme: scheme.clone(),
             error: Some(format!(
-                "402 resource.url mismatch (expected {url}, got {:?})",
+                "402 resource.url origin/path mismatch (probed {url}, got {:?})",
                 resource_url
             )),
         };
