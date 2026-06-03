@@ -96,6 +96,10 @@ async function harvestManifests() {
 
       for (const r of manifest.resources) {
         if (!r.resourceUrl || !r.title || !r.scheme) continue;
+        if (!r.id) {
+          console.warn(`skip ${r.resourceUrl}: manifest resource needs an "id" (harvest dedupes on wallet+id)`);
+          continue;
+        }
         const hostOk =
           new URL(r.resourceUrl).host.toLowerCase() === new URL(origin).host.toLowerCase();
         if (!hostOk) {
@@ -113,7 +117,11 @@ async function harvestManifests() {
           FROM resource_providers rp
           WHERE rp.wallet_pubkey = $1 AND rp.registration_verified_at IS NOT NULL AND rp.retired_at IS NULL
           LIMIT 1
-          ON CONFLICT (resource_url) DO UPDATE SET
+          ON CONFLICT (wallet_pubkey, seller_resource_id)
+            WHERE seller_resource_id IS NOT NULL AND retired_at IS NULL
+          DO UPDATE SET
+            resource_url = EXCLUDED.resource_url,
+            http_method = EXCLUDED.http_method,
             title = EXCLUDED.title,
             description = EXCLUDED.description,
             use_case = EXCLUDED.use_case,
@@ -123,8 +131,7 @@ async function harvestManifests() {
             intent_contract_url = EXCLUDED.intent_contract_url,
             source = 'manifest_harvest',
             manifest_origin = EXCLUDED.manifest_origin,
-            updated_at = NOW()
-          WHERE payable_resources.wallet_pubkey = EXCLUDED.wallet_pubkey`,
+            updated_at = NOW()`,
           [
             p.wallet_pubkey,
             r.resourceUrl,
