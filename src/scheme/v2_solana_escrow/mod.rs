@@ -331,12 +331,15 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             X402SchemeFacilitatorError::OnchainFailure("SLAEscrow bank not loaded".to_string())
         })?;
 
-        // In SLA-Escrow, the "Vault" (payTo) is the Escrow account for a specific mint.
+        // In SLA-Escrow, payTo is the per-mint Escrow PDA (derive_escrow_pda(mint, bank)),
+        // not the Bank PDA (`bank_pda` / extra.bankAddress). When `asset` is omitted, default
+        // to the cluster canonical USDC mint — pr402 production flows (e.g. buy-spl-token) pay
+        // in USDC, not native SOL. Fall back to SOL only when no canonical USDC (e.g. testnet).
         let mint = if let Some(a) = asset {
             Pubkey::from_str(a)
                 .map_err(|e| X402SchemeFacilitatorError::InvalidPayload(e.to_string()))?
         } else {
-            Pubkey::default() // Default to Native SOL discovery
+            crate::seller_provision::canonical_usdc_mint(self.provider.as_ref()).unwrap_or_default()
         };
 
         let (escrow_pda, _) = self.provider.get_escrow_pda(mint, bank_pda);
@@ -344,15 +347,17 @@ impl X402SchemeFacilitator for V2SolanaSLAEscrowFacilitator {
             .provider
             .get_sla_escrow_sol_storage_pda(mint, bank_pda, escrow_pda);
 
+        let mint_label = if mint == Pubkey::default() {
+            "SOL".to_string()
+        } else if Some(mint) == crate::seller_provision::canonical_usdc_mint(self.provider.as_ref())
+        {
+            crate::seller_provision::canonical_usdc_label(self.provider.as_ref()).to_string()
+        } else {
+            "Asset".to_string()
+        };
+
         Ok(crate::facilitator::SchemeOnboardInfo {
-            label: format!(
-                "SLA Escrow ({})",
-                if mint == Pubkey::default() {
-                    "SOL"
-                } else {
-                    "Asset"
-                }
-            ),
+            label: format!("SLA Escrow ({mint_label})"),
             role: "Institutional Escrow".to_string(),
             vault_pda: escrow_pda.to_string(),
             sol_storage_pda: sol_storage_pda.to_string(),
