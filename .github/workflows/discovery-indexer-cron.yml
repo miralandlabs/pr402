@@ -72,7 +72,10 @@ jobs:
 
   production-indexer:
     name: Production indexer
+    # Wait for preview to stagger load, but still run if preview fails/skips
+    # (e.g. a preview-only DB outage must not block production indexing).
     needs: preview-indexer
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
