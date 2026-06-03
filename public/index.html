@@ -1989,7 +1989,7 @@
                                         values</span
                                     >
                                 </th>
-                                <th class="col-wallet">wallet</th>
+                                <th class="col-wallet">seller</th>
                                 <th class="col-probed">probed</th>
                                 <th class="col-actions">actions</th>
                             </tr>
@@ -3406,13 +3406,30 @@
                             .replace(/"/g, "&quot;");
                     }
 
+                    function canonicalUsdcMintForNetwork() {
+                        var net = (
+                            window.__PR402_SOLANA_NETWORK__ || ""
+                        ).toLowerCase();
+                        if (net === "devnet") {
+                            return "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+                        }
+                        return "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+                    }
+
                     function railsHref(wallet, scheme) {
-                        return (
+                        var base =
                             "/api/v1/facilitator/sellers/" +
                             encodeURIComponent(wallet) +
                             "/rails/" +
-                            encodeURIComponent(scheme)
-                        );
+                            encodeURIComponent(scheme);
+                        if (scheme === "sla-escrow") {
+                            return (
+                                base +
+                                "?asset=" +
+                                encodeURIComponent(canonicalUsdcMintForNetwork())
+                            );
+                        }
+                        return base;
                     }
 
                     function showDirectoryTable(show) {
@@ -3483,6 +3500,10 @@
                                 esc(e.resourceUrl) +
                                 '" target="_blank" rel="noopener">402</a><a href="' +
                                 esc(railsHref(e.walletPubkey, e.scheme)) +
+                                '" title="' +
+                                (e.scheme === "sla-escrow"
+                                    ? "payTo = USDC escrow PDA (vaultPda); bankPda is separate"
+                                    : "payTo = split vault PDA") +
                                 '">rails</a></td>';
                             tbody.appendChild(tr);
                             rowCount += 1;
@@ -3618,7 +3639,16 @@
                             if (ev.key === "Enter") fetchPage(true);
                         });
 
-                    fetchPage(true);
+                    (async function () {
+                        try {
+                            var hres = await fetch("/api/v1/facilitator/health");
+                            if (hres.ok)
+                                applyHealthToGlobals(await hres.json());
+                        } catch (e) {
+                            /* rails USDC mint falls back to mainnet constant */
+                        }
+                        fetchPage(true);
+                    })();
                 }
 
                 // ---- theme toggle: auto → light → dark → auto, persisted in localStorage ----

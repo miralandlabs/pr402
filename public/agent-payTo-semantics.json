@@ -9,13 +9,13 @@
     },
     "sla-escrow": {
       "kind": "escrowPda",
-      "resolve": "GET /api/v1/facilitator/sellers/{seller}/rails/sla-escrow?asset=<mint> → vaultPda",
+      "resolve": "GET /api/v1/facilitator/sellers/{seller}/rails/sla-escrow?asset=<mint> → vaultPda (escrow PDA for that mint; omit asset only to use facilitator default USDC on mainnet/devnet)",
       "fundPaymentSeller": "extra.merchantWallet or extra.beneficiary (seller payout wallet; not payTo)",
-      "bankPda": "supported.kinds[].extra.bankAddress (instruction account; not payTo)",
-      "verifyMatches": "payTo equals derive_escrow_pda(mint, bank) for payment asset"
+      "bankPda": "supported.kinds[].extra.bankAddress (institutional bank account; instruction account — not payTo)",
+      "verifyMatches": "payTo equals derive_escrow_pda(accepts[].asset mint, bank) — e.g. USDC escrow PDA on mainnet, not native SOL unless asset is SOL"
     }
   },
-  "onboardNote": "GET /api/v1/facilitator/sellers/{wallet}/preview returns per-scheme previews. For sla-escrow, preview vaultPda is for preview mint only; use GET /api/v1/facilitator/sellers/{wallet}/rails/sla-escrow?asset=<mint> for each accepts[].asset.",
+  "onboardNote": "GET /api/v1/facilitator/sellers/{wallet}/preview returns per-scheme previews (legacy vaultPda on sla-escrow is SOL; see vaultPdaPreviews for USDC). GET .../rails/sla-escrow defaults to canonical USDC when asset is omitted; pass asset=<mint> to match each accepts[].asset from live 402.",
   "paymentMintAllowlist": {
     "parameter": "PR402_ALLOWED_PAYMENT_MINTS",
     "permissiveWhenEmpty": true,
