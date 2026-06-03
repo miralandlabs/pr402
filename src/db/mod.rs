@@ -138,6 +138,10 @@ pub struct PublicResourceEntry {
     pub intent_contract_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub merchant_origin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seller_resource_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_probe_at: Option<String>,
     pub registration_verified_at: String,
     pub updated_at: String,
 }
@@ -162,6 +166,12 @@ impl PublicResourceEntry {
             network: row.try_get("network").ok(),
             intent_contract_url: row.try_get("intent_contract_url").ok(),
             merchant_origin,
+            seller_resource_id: row.try_get("seller_resource_id").ok(),
+            last_probe_at: row
+                .try_get::<_, Option<std::time::SystemTime>>("last_probe_at")
+                .ok()
+                .flatten()
+                .map(system_time_to_rfc3339),
             registration_verified_at: row
                 .try_get::<_, Option<std::time::SystemTime>>("registration_verified_at")
                 .ok()
@@ -182,14 +192,14 @@ impl PublicResourceEntry {
 pub struct OwnerResourceEntry {
     #[serde(flatten)]
     pub public: PublicResourceEntry,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing)]
     pub seller_resource_id: Option<String>,
     pub listing_opt_in: bool,
     pub inactive: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retired_at: Option<String>,
     pub source: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing)]
     pub last_probe_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_probe_ok: Option<bool>,

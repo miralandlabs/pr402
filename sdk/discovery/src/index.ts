@@ -21,6 +21,8 @@ export type PublicResourceEntry = {
   network?: string;
   intentContractUrl?: string;
   merchantOrigin?: string;
+  sellerResourceId?: string;
+  lastProbeAt?: string;
   registrationVerifiedAt: string;
   updatedAt: string;
 };
