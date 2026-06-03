@@ -571,14 +571,24 @@
                 min-width: 12rem;
                 flex: 1 1 14rem;
             }
+            .directory-scroll {
+                overflow: auto;
+                max-height: min(70vh, 28rem);
+                margin-top: 0.75rem;
+                border: 1px solid var(--rule);
+                background: var(--bg-alt);
+                -webkit-overflow-scrolling: touch;
+            }
             table.directory {
                 width: 100%;
+                min-width: 52rem;
                 border-collapse: collapse;
                 font-size: 12px;
+                table-layout: fixed;
             }
             table.directory th,
             table.directory td {
-                padding: 0.5rem 0.6rem;
+                padding: 0.55rem 0.65rem;
                 border-top: 1px solid var(--rule);
                 text-align: left;
                 vertical-align: top;
@@ -589,10 +599,83 @@
                 font-size: 10px;
                 letter-spacing: 0.1em;
                 text-transform: uppercase;
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                background: var(--bg-alt);
+                box-shadow: 0 1px 0 var(--rule);
+            }
+            table.directory .col-title {
+                width: 26%;
+                min-width: 11rem;
+            }
+            table.directory .col-scheme {
+                width: 7%;
+            }
+            table.directory .col-origin {
+                width: 14%;
+                word-break: break-word;
+            }
+            table.directory .col-resource {
+                width: 30%;
+            }
+            table.directory .col-wallet {
+                width: 9%;
+            }
+            table.directory .col-probed {
+                width: 11%;
+                font-size: 11px;
+            }
+            table.directory .col-actions {
+                width: 8%;
+            }
+            table.directory .dir-title-main {
+                display: block;
+                font-weight: 600;
+                line-height: 1.35;
+                margin-bottom: 0.2rem;
+            }
+            table.directory .dir-title-meta {
+                display: block;
+                color: var(--fg-faint);
+                font-size: 11px;
+                line-height: 1.4;
+                margin-top: 0.15rem;
+            }
+            table.directory .resource-url-note {
+                margin: 0 0 0.35rem;
+                font-size: 10px;
+                line-height: 1.35;
+                color: var(--fg-faint);
+                letter-spacing: 0.02em;
+            }
+            table.directory .resource-url-scroll {
+                overflow-x: auto;
+                max-width: 100%;
+                padding: 0.35rem 0.45rem;
+                border: 1px dotted var(--rule);
+                background: var(--bg);
+                white-space: nowrap;
+                font-size: 11px;
+                -webkit-overflow-scrolling: touch;
+            }
+            table.directory .resource-url-scroll a {
+                color: var(--blue);
+            }
+            table.directory .resource-url-scroll .method {
+                margin-left: 0.5rem;
+                color: var(--fg-dim);
+                font-size: 10px;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
             }
             table.directory .actions a {
-                margin-right: 0.75rem;
+                display: block;
+                margin-bottom: 0.25rem;
                 white-space: nowrap;
+            }
+            table.directory .actions a:last-child {
+                margin-bottom: 0;
             }
             #directory-status {
                 font-size: 12px;
@@ -1806,7 +1889,9 @@
                     <code>payTo</code> via
                     <a href="/agent-payTo-semantics.json">payTo semantics</a>
                     (<code>GET /sellers/{wallet}/rails/{scheme}</code>), not from
-                    this table.
+                    this table. Listed <code>resourceUrl</code> values are
+                    probe examples — substitute your own path/query parameters
+                    before calling.
                 </p>
                 <p class="hint" style="color: var(--fg-faint); font-size: 12px">
                     Agent flow:
@@ -1850,20 +1935,31 @@
                     </button>
                 </div>
                 <div id="directory-status" aria-live="polite"></div>
-                <table class="directory" id="directory-table" hidden>
-                    <thead>
-                        <tr>
-                            <th>title</th>
-                            <th>scheme</th>
-                            <th>origin</th>
-                            <th>resource</th>
-                            <th>wallet</th>
-                            <th>probed</th>
-                            <th>actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="directory-tbody"></tbody>
-                </table>
+                <div class="directory-scroll" id="directory-scroll" hidden>
+                    <table class="directory" id="directory-table">
+                        <colgroup>
+                            <col class="col-title" />
+                            <col class="col-scheme" />
+                            <col class="col-origin" />
+                            <col class="col-resource" />
+                            <col class="col-wallet" />
+                            <col class="col-probed" />
+                            <col class="col-actions" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th class="col-title">title</th>
+                                <th class="col-scheme">scheme</th>
+                                <th class="col-origin">origin</th>
+                                <th class="col-resource">resource</th>
+                                <th class="col-wallet">wallet</th>
+                                <th class="col-probed">probed</th>
+                                <th class="col-actions">actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="directory-tbody"></tbody>
+                    </table>
+                </div>
             </section>
 
             <!-- Oracle recruiting -->
@@ -3241,7 +3337,7 @@
                 // ---- ecosystem directory (GET /resources) ----
                 function initResourceDirectory() {
                     var statusEl = document.getElementById("directory-status");
-                    var tableEl = document.getElementById("directory-table");
+                    var scrollEl = document.getElementById("directory-scroll");
                     var tbody = document.getElementById("directory-tbody");
                     var qEl = document.getElementById("dir-q");
                     var schemeEl = document.getElementById("dir-scheme");
@@ -3282,33 +3378,45 @@
                         );
                     }
 
+                    function showDirectoryTable(show) {
+                        if (scrollEl) scrollEl.hidden = !show;
+                    }
+
                     function appendRows(entries) {
-                        if (!entries || !entries.length) return;
-                        if (tableEl) tableEl.hidden = false;
+                        if (!entries || !entries.length) {
+                            showDirectoryTable(false);
+                            return;
+                        }
+                        showDirectoryTable(true);
                         entries.forEach(function (e) {
                             var tr = document.createElement("tr");
-                            var tags =
+                            var tagsMeta =
                                 e.tags && e.tags.length
-                                    ? " · " + e.tags.join(", ")
+                                    ? '<span class="dir-title-meta">tags: ' +
+                                      esc(e.tags.join(", ")) +
+                                      "</span>"
                                     : "";
+                            var slugMeta = e.sellerResourceId
+                                ? '<span class="dir-title-meta">id: ' +
+                                  esc(e.sellerResourceId) +
+                                  "</span>"
+                                : "";
                             var origin = e.merchantOrigin || "—";
                             var probed = e.lastProbeAt || e.updatedAt || "—";
-                            var slug = e.sellerResourceId
-                                ? " · id " + esc(e.sellerResourceId)
-                                : "";
+                            var method = esc(e.httpMethod || "GET");
                             tr.innerHTML =
-                                "<td><strong>" +
+                                '<td class="col-title"><span class="dir-title-main">' +
                                 esc(e.title) +
-                                "</strong>" +
-                                esc(tags) +
-                                esc(slug) +
+                                "</span>" +
+                                tagsMeta +
+                                slugMeta +
                                 "</td>" +
-                                '<td><span class="pill ' +
+                                '<td class="col-scheme"><span class="pill ' +
                                 (e.scheme === "sla-escrow" ? "amber" : "accent") +
                                 '">' +
                                 esc(e.scheme) +
                                 "</span></td>" +
-                                "<td>" +
+                                '<td class="col-origin">' +
                                 (e.merchantOrigin
                                     ? '<a href="' +
                                       esc(e.merchantOrigin) +
@@ -3317,24 +3425,27 @@
                                       "</a>"
                                     : "—") +
                                 "</td>" +
-                                "<td><a href=\"" +
+                                '<td class="col-resource">' +
+                                '<p class="resource-url-note">Probe example URL — path and query values are placeholders; use your own when calling.</p>' +
+                                '<div class="resource-url-scroll" tabindex="0" title="Scroll horizontally for full URL">' +
+                                '<a href="' +
                                 esc(e.resourceUrl) +
                                 '" rel="noopener">' +
                                 esc(e.resourceUrl) +
-                                "</a> <code>" +
-                                esc(e.httpMethod || "GET") +
-                                "</code></td>" +
-                                "<td title=\"" +
+                                '</a><span class="method">' +
+                                method +
+                                "</span></div></td>" +
+                                '<td class="col-wallet" title="' +
                                 esc(e.walletPubkey) +
                                 '"><code>' +
                                 esc(truncWallet(e.walletPubkey)) +
                                 "</code></td>" +
-                                "<td><code>" +
+                                '<td class="col-probed"><code>' +
                                 esc(probed) +
                                 "</code></td>" +
-                                '<td class="actions"><a href="' +
+                                '<td class="col-actions actions"><a href="' +
                                 esc(e.resourceUrl) +
-                                '" target="_blank" rel="noopener">402</a> <a href="' +
+                                '" target="_blank" rel="noopener">402</a><a href="' +
                                 esc(railsHref(e.walletPubkey, e.scheme)) +
                                 '">rails</a></td>';
                             tbody.appendChild(tr);
@@ -3440,7 +3551,7 @@
                                     notice,
                             );
                             if (!rowCount && !nextCursor) {
-                                if (tableEl) tableEl.hidden = true;
+                                showDirectoryTable(false);
                                 setStatus(
                                     "No probe-approved resources match this filter.",
                                 );
