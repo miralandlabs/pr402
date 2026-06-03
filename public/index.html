@@ -1685,9 +1685,11 @@
                             </button>
                         </div>
                         <div class="hint">
-                            GET /api/v1/facilitator/sellers/{wallet}/challenge →
-                            wallet signs message → POST
-                            /api/v1/facilitator/sellers/{wallet}/register
+                            Use <strong>connect wallet</strong> and pick an account in
+                            the modal (same as Activate) before
+                            <strong>sign &amp; register</strong>. GET
+                            /api/v1/facilitator/sellers/{wallet}/challenge → sign
+                            → POST /register
                         </div>
                         <div
                             class="probe-output"
@@ -2846,6 +2848,11 @@
                     );
                     var connectedB58 = null;
                     var userTypedWallet = false;
+                    // `autoConnect` in wallet.js may bind the first detected wallet silently.
+                    // Treat the adapter as user-confirmed only after an explicit “connect wallet” click
+                    // (same expectation as Activate → provision-tx).
+                    var userSelectedWallet = false;
+                    var pickPending = false;
 
                     function truncate(pk) {
                         if (!pk) return "";
@@ -2875,8 +2882,10 @@
                     function apply(pk) {
                         var next = pk && typeof pk === "string" ? pk : null;
                         connectedB58 = next;
-                        if (btnProvision) btnProvision.disabled = !next;
-                        if (btnVerify) btnVerify.disabled = !next;
+                        if (btnProvision)
+                            btnProvision.disabled = !next || !userSelectedWallet;
+                        if (btnVerify)
+                            btnVerify.disabled = !next || !userSelectedWallet;
                         paint(btnConnect);
                         paint(btnConnectV);
                         // Reflect the connected pubkey into the shared ladder input unless the user has
@@ -2901,8 +2910,14 @@
                                     ? d.pubkeyBase58
                                     : null,
                             );
+                            if (pickPending) {
+                                pickPending = false;
+                                userSelectedWallet = true;
+                            }
                         } else {
                             apply(null);
+                            userSelectedWallet = false;
+                            pickPending = false;
                         }
                     });
 
@@ -2914,15 +2929,7 @@
                         });
                     }
 
-                    function onConnectClick() {
-                        if (connectedB58) {
-                            if (window.MiracleWalletDisconnecter) {
-                                try {
-                                    window.MiracleWalletDisconnecter();
-                                } catch (_) {}
-                            }
-                            return;
-                        }
+                    function showWalletModal() {
                         var hasProvider = !!(
                             window.solana ||
                             window.phantom ||
@@ -2931,7 +2938,6 @@
                         );
                         if (window.ShowWalletModal) {
                             if (!hasProvider) {
-                                // Surface the hint on both step outputs so whichever the user is looking at catches it.
                                 var msg =
                                     "No Solana wallet detected. Install Phantom, Solflare, or Backpack to continue.";
                                 ["out-provision", "out-verify"].forEach(
@@ -2947,6 +2953,32 @@
                             window.ShowWalletModal();
                         }
                     }
+
+                    function openWalletPicker() {
+                        pickPending = true;
+                        userSelectedWallet = false;
+                        if (connectedB58 && window.MiracleWalletDisconnecter) {
+                            try {
+                                window.MiracleWalletDisconnecter();
+                            } catch (_) {}
+                        }
+                        showWalletModal();
+                    }
+
+                    function onConnectClick() {
+                        if (connectedB58) {
+                            userSelectedWallet = false;
+                            pickPending = false;
+                            if (window.MiracleWalletDisconnecter) {
+                                try {
+                                    window.MiracleWalletDisconnecter();
+                                } catch (_) {}
+                            }
+                            return;
+                        }
+                        pickPending = true;
+                        showWalletModal();
+                    }
                     if (btnConnect)
                         btnConnect.addEventListener("click", onConnectClick);
                     if (btnConnectV)
@@ -2960,6 +2992,10 @@
                         currentPubkey: function () {
                             return connectedB58;
                         },
+                        isUserSelected: function () {
+                            return userSelectedWallet;
+                        },
+                        openWalletPicker: openWalletPicker,
                     };
                 }
 
@@ -3132,9 +3168,29 @@
                     }
 
                     btnVerify.addEventListener("click", async function () {
+                        await ensureWalletBundle();
+                        var walletInput =
+                            document.getElementById("wallet-input");
                         var connected = walletState.currentPubkey();
-                        if (!connected) {
-                            setStatus("Connect a wallet first.", true);
+                        var inputPk =
+                            walletInput &&
+                            (walletInput.value || "").trim();
+                        if (!connected || !walletState.isUserSelected()) {
+                            setStatus(
+                                "Use “connect wallet” above and pick the account in the modal, then click sign & register again.",
+                                true,
+                            );
+                            walletState.openWalletPicker();
+                            return;
+                        }
+                        if (inputPk && inputPk !== connected) {
+                            setStatus(
+                                "Pubkey field (“" +
+                                    inputPk.slice(0, 4) +
+                                    "…”) does not match the connected wallet. Connect the matching account or clear the field.",
+                                true,
+                            );
+                            walletState.openWalletPicker();
                             return;
                         }
                         if (typeof window.MiracleMessageSigner !== "function") {
