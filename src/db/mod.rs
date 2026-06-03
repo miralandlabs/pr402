@@ -2335,6 +2335,41 @@ impl Pr402Db {
             RETURNING id
         "#;
 
+        const SELECT_SLUG_SQL: &str = r#"
+            SELECT id FROM payable_resources
+            WHERE wallet_pubkey = $1 AND seller_resource_id = $2 AND retired_at IS NULL
+            LIMIT 1
+        "#;
+        // resource_url is globally unique, so this finds the lone *other* owner (if any).
+        const URL_OWNER_SQL: &str =
+            r#"SELECT wallet_pubkey FROM payable_resources WHERE resource_url = $1 AND id <> $2"#;
+        // Same column set as the INSERT upsert, but addressed by id so the slug row can adopt a
+        // new resource_url without tripping the (wallet_pubkey, seller_resource_id) slug index.
+        const UPDATE_BY_ID_SQL: &str = r#"
+            UPDATE payable_resources SET
+                resource_provider_id = $2,
+                resource_url = $3,
+                http_method = $4,
+                seller_resource_id = COALESCE($5, seller_resource_id),
+                title = $6,
+                description = $7,
+                use_case = $8,
+                category = $9,
+                tags = $10,
+                scheme = $11,
+                network = $12,
+                intent_contract_url = $13,
+                facilitator_hint = $14,
+                listing_opt_in = $15,
+                registration_verified_at = NOW(),
+                source = $16,
+                inactive = FALSE,
+                retired_at = NULL,
+                updated_at = NOW()
+            WHERE id = $17 AND wallet_pubkey = $1
+            RETURNING id
+        "#;
+
         let tags_owned: Option<Vec<String>> = tags.map(|t| t.to_vec());
         let mut client = self.conn().await?;
         let tx = client
@@ -2342,31 +2377,119 @@ impl Pr402Db {
             .await
             .map_err(|_| DbError::TransactionFailed)?;
         Self::deallocate_all_signer_style(&tx).await;
-        let res = timeout(
-            Self::QUERY_TIMEOUT,
-            tx.query_opt(
-                SQL,
-                &[
-                    &wallet_pubkey,
-                    &rp_id,
-                    &resource_url,
-                    &http_method,
-                    &seller_resource_id,
-                    &title,
-                    &description,
-                    &use_case,
-                    &category,
-                    &tags_owned,
-                    &scheme,
-                    &network,
-                    &intent_contract_url,
-                    &facilitator_hint,
-                    &listing_opt_in,
-                    &source,
-                ],
-            ),
-        )
-        .await;
+
+        // A resource's stable identity is (wallet, seller_resource_id). If this seller already
+        // has an active row under that slug, update it in place so the endpoint URL can change
+        // without colliding on the slug index. Slug-less registrations fall through to the
+        // URL-keyed upsert below, which keeps its own cross-wallet guard.
+        let slug_target: Option<i64> = if let Some(sid) = seller_resource_id {
+            match timeout(
+                Self::QUERY_TIMEOUT,
+                tx.query_opt(SELECT_SLUG_SQL, &[&wallet_pubkey, &sid]),
+            )
+            .await
+            {
+                Ok(Ok(row)) => row.map(|r| r.get("id")),
+                Ok(Err(e)) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Query(format_err_chain(&e)));
+                }
+                Err(_) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Timeout);
+                }
+            }
+        } else {
+            None
+        };
+
+        // Before moving a slug onto a new URL, make sure no other row already owns that URL —
+        // surface the same friendly errors instead of a raw unique-constraint failure.
+        if let Some(id) = slug_target {
+            match timeout(
+                Self::QUERY_TIMEOUT,
+                tx.query_opt(URL_OWNER_SQL, &[&resource_url, &id]),
+            )
+            .await
+            {
+                Ok(Ok(Some(row))) => {
+                    let owner: String = row.get("wallet_pubkey");
+                    tx.rollback().await.ok();
+                    return Err(DbError::Query(if owner == wallet_pubkey {
+                        "resourceUrl is already used by another of your resources".into()
+                    } else {
+                        "resourceUrl is already registered to a different wallet".into()
+                    }));
+                }
+                Ok(Ok(None)) => {}
+                Ok(Err(e)) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Query(format_err_chain(&e)));
+                }
+                Err(_) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Timeout);
+                }
+            }
+        }
+
+        let res = match slug_target {
+            Some(id) => {
+                timeout(
+                    Self::QUERY_TIMEOUT,
+                    tx.query_opt(
+                        UPDATE_BY_ID_SQL,
+                        &[
+                            &wallet_pubkey,
+                            &rp_id,
+                            &resource_url,
+                            &http_method,
+                            &seller_resource_id,
+                            &title,
+                            &description,
+                            &use_case,
+                            &category,
+                            &tags_owned,
+                            &scheme,
+                            &network,
+                            &intent_contract_url,
+                            &facilitator_hint,
+                            &listing_opt_in,
+                            &source,
+                            &id,
+                        ],
+                    ),
+                )
+                .await
+            }
+            None => {
+                timeout(
+                    Self::QUERY_TIMEOUT,
+                    tx.query_opt(
+                        SQL,
+                        &[
+                            &wallet_pubkey,
+                            &rp_id,
+                            &resource_url,
+                            &http_method,
+                            &seller_resource_id,
+                            &title,
+                            &description,
+                            &use_case,
+                            &category,
+                            &tags_owned,
+                            &scheme,
+                            &network,
+                            &intent_contract_url,
+                            &facilitator_hint,
+                            &listing_opt_in,
+                            &source,
+                        ],
+                    ),
+                )
+                .await
+            }
+        };
         let id = match res {
             Ok(Ok(Some(row))) => row.get("id"),
             // Conflict on `resource_url` whose existing row belongs to another wallet: the
