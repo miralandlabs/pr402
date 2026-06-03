@@ -68,7 +68,10 @@ jobs:
 
   production-cron:
     name: Production cron
+    # Wait for preview to stagger RPC load, but still run if preview fails/skips
+    # (e.g. a preview-only outage must not block production settlement).
     needs: preview-cron
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
