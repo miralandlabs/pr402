@@ -578,6 +578,19 @@
                 border: 1px solid var(--rule);
                 background: var(--bg-alt);
                 -webkit-overflow-scrolling: touch;
+                scrollbar-width: thin;
+                scrollbar-color: var(--fg-faint) transparent;
+            }
+            .directory-scroll::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+            .directory-scroll::-webkit-scrollbar-thumb {
+                background: var(--fg-faint);
+                border-radius: 4px;
+            }
+            .directory-scroll::-webkit-scrollbar-track {
+                background: transparent;
             }
             table.directory {
                 width: 100%;
@@ -606,18 +619,28 @@
                 box-shadow: 0 1px 0 var(--rule);
             }
             table.directory .col-title {
-                width: 26%;
-                min-width: 11rem;
+                width: 30%;
+                min-width: 13rem;
             }
             table.directory .col-scheme {
                 width: 7%;
             }
             table.directory .col-origin {
-                width: 14%;
+                width: 13%;
                 word-break: break-word;
             }
             table.directory .col-resource {
-                width: 30%;
+                width: 27%;
+            }
+            table.directory th.col-resource .th-hint {
+                display: block;
+                margin-top: 0.25rem;
+                font-weight: 400;
+                letter-spacing: 0;
+                text-transform: none;
+                color: var(--fg-faint);
+                line-height: 1.35;
+                white-space: normal;
             }
             table.directory .col-wallet {
                 width: 9%;
@@ -642,13 +665,6 @@
                 line-height: 1.4;
                 margin-top: 0.15rem;
             }
-            table.directory .resource-url-note {
-                margin: 0 0 0.35rem;
-                font-size: 10px;
-                line-height: 1.35;
-                color: var(--fg-faint);
-                letter-spacing: 0.02em;
-            }
             table.directory .resource-url-scroll {
                 overflow-x: auto;
                 max-width: 100%;
@@ -658,6 +674,21 @@
                 white-space: nowrap;
                 font-size: 11px;
                 -webkit-overflow-scrolling: touch;
+                scrollbar-width: thin;
+                scrollbar-color: var(--fg-faint) transparent;
+            }
+            table.directory .resource-url-scroll::-webkit-scrollbar {
+                height: 6px;
+            }
+            table.directory .resource-url-scroll::-webkit-scrollbar-thumb {
+                background: var(--fg-faint);
+                border-radius: 3px;
+            }
+            table.directory .resource-url-scroll::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            table.directory .col-probed code {
+                word-break: break-all;
             }
             table.directory .resource-url-scroll a {
                 color: var(--blue);
@@ -1951,7 +1982,13 @@
                                 <th class="col-title">title</th>
                                 <th class="col-scheme">scheme</th>
                                 <th class="col-origin">origin</th>
-                                <th class="col-resource">resource</th>
+                                <th class="col-resource">
+                                    resource
+                                    <span class="th-hint"
+                                        >Example URLs — replace path/query with your
+                                        values</span
+                                    >
+                                </th>
                                 <th class="col-wallet">wallet</th>
                                 <th class="col-probed">probed</th>
                                 <th class="col-actions">actions</th>
@@ -3426,7 +3463,6 @@
                                     : "—") +
                                 "</td>" +
                                 '<td class="col-resource">' +
-                                '<p class="resource-url-note">Probe example URL — path and query values are placeholders; use your own when calling.</p>' +
                                 '<div class="resource-url-scroll" tabindex="0" title="Scroll horizontally for full URL">' +
                                 '<a href="' +
                                 esc(e.resourceUrl) +
