@@ -543,6 +543,66 @@
                 font-size: 12px;
             }
 
+            /* ecosystem directory */
+            .directory-controls {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem 0.75rem;
+                align-items: center;
+                margin: 0.75rem 0 1rem;
+                font-size: 13px;
+            }
+            .directory-controls label {
+                color: var(--fg-dim);
+                font-size: 11px;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+            .directory-controls input,
+            .directory-controls select {
+                font-family: inherit;
+                font-size: 13px;
+                padding: 0.35rem 0.5rem;
+                border: 1px solid var(--rule);
+                background: var(--bg-alt);
+                color: var(--fg);
+            }
+            .directory-controls input[type="search"] {
+                min-width: 12rem;
+                flex: 1 1 14rem;
+            }
+            table.directory {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 12px;
+            }
+            table.directory th,
+            table.directory td {
+                padding: 0.5rem 0.6rem;
+                border-top: 1px solid var(--rule);
+                text-align: left;
+                vertical-align: top;
+            }
+            table.directory th {
+                font-weight: 600;
+                color: var(--fg-dim);
+                font-size: 10px;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+            }
+            table.directory .actions a {
+                margin-right: 0.75rem;
+                white-space: nowrap;
+            }
+            #directory-status {
+                font-size: 12px;
+                color: var(--fg-faint);
+                margin-top: 0.5rem;
+            }
+            #directory-status.is-error {
+                color: var(--red);
+            }
+
             /* endpoint table */
             table.endpoints {
                 width: 100%;
@@ -1073,7 +1133,8 @@
                     >
                     <a href="/openapi.json">openapi.json</a>
                     <a href="/api/v1/facilitator/capabilities">capabilities</a>
-                    <a href="/resources">list payable apis</a>
+                    <a href="#directory">browse payable APIs</a>
+                    <a href="/resources">register your API</a>
                     <a href="/api/v1/facilitator/health">health</a>
                     <a href="/agent-integration.md">agent-integration.md</a>
                     <a href="/agent-payTo-semantics.json">payTo semantics</a>
@@ -1731,6 +1792,78 @@
                     workspace (three sibling profiles: api-quality,
                     onchain-transfer, file-delivery).
                 </p>
+            </section>
+
+            <!-- Public payable resource directory (Layer 3) -->
+            <section id="directory">
+                <h2><span class="hash">§</span>ecosystem · payable APIs</h2>
+                <p class="muted">
+                    Advisory directory of probe-approved payable resources on this
+                    facilitator. Pricing and <code>accepts[]</code> are
+                    authoritative from live
+                    <strong>HTTP 402</strong> on each
+                    <code>resourceUrl</code>. Resolve
+                    <code>payTo</code> via
+                    <a href="/agent-payTo-semantics.json">payTo semantics</a>
+                    (<code>GET /sellers/{wallet}/rails/{scheme}</code>), not from
+                    this table.
+                </p>
+                <p class="hint" style="color: var(--fg-faint); font-size: 12px">
+                    Agent flow:
+                    <a href="/api/v1/facilitator/capabilities">capabilities</a>
+                    →
+                    <a href="/api/v1/facilitator/resources">resources</a>
+                    (or
+                    <a href="/dist/resource-index.json">resource-index.json</a>)
+                    → rails → live 402.
+                    <a href="/resources">Register your API</a>
+                    for wallet-signed listing.
+                </p>
+                <div class="directory-controls">
+                    <label for="dir-q">search</label>
+                    <input
+                        type="search"
+                        id="dir-q"
+                        placeholder="title, description, tags…"
+                        autocomplete="off"
+                    />
+                    <label for="dir-scheme">scheme</label>
+                    <select id="dir-scheme">
+                        <option value="">any</option>
+                        <option value="exact">exact</option>
+                        <option value="sla-escrow">sla-escrow</option>
+                    </select>
+                    <label for="dir-category">category</label>
+                    <input
+                        type="text"
+                        id="dir-category"
+                        placeholder="category"
+                        size="12"
+                    />
+                    <label for="dir-tag">tag</label>
+                    <input type="text" id="dir-tag" placeholder="tag" size="10" />
+                    <button class="btn" type="button" id="btn-dir-search">
+                        search
+                    </button>
+                    <button class="btn" type="button" id="btn-dir-more">
+                        load more
+                    </button>
+                </div>
+                <div id="directory-status" aria-live="polite"></div>
+                <table class="directory" id="directory-table" hidden>
+                    <thead>
+                        <tr>
+                            <th>title</th>
+                            <th>scheme</th>
+                            <th>origin</th>
+                            <th>resource</th>
+                            <th>wallet</th>
+                            <th>probed</th>
+                            <th>actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="directory-tbody"></tbody>
+                </table>
             </section>
 
             <!-- Oracle recruiting -->
@@ -3105,6 +3238,242 @@
                     });
                 }
 
+                // ---- ecosystem directory (GET /resources) ----
+                function initResourceDirectory() {
+                    var statusEl = document.getElementById("directory-status");
+                    var tableEl = document.getElementById("directory-table");
+                    var tbody = document.getElementById("directory-tbody");
+                    var qEl = document.getElementById("dir-q");
+                    var schemeEl = document.getElementById("dir-scheme");
+                    var catEl = document.getElementById("dir-category");
+                    var tagEl = document.getElementById("dir-tag");
+                    var btnSearch = document.getElementById("btn-dir-search");
+                    var btnMore = document.getElementById("btn-dir-more");
+                    if (!statusEl || !tbody) return;
+
+                    var directoryEnabled = null;
+                    var nextCursor = null;
+                    var rowCount = 0;
+
+                    function setStatus(msg, isError) {
+                        statusEl.textContent = msg || "";
+                        statusEl.classList.toggle("is-error", !!isError);
+                    }
+
+                    function truncWallet(w) {
+                        if (!w || w.length < 12) return w || "—";
+                        return w.slice(0, 4) + "…" + w.slice(-4);
+                    }
+
+                    function esc(s) {
+                        if (s == null) return "";
+                        return String(s)
+                            .replace(/&/g, "&amp;")
+                            .replace(/</g, "&lt;")
+                            .replace(/"/g, "&quot;");
+                    }
+
+                    function railsHref(wallet, scheme) {
+                        return (
+                            "/api/v1/facilitator/sellers/" +
+                            encodeURIComponent(wallet) +
+                            "/rails/" +
+                            encodeURIComponent(scheme)
+                        );
+                    }
+
+                    function appendRows(entries) {
+                        if (!entries || !entries.length) return;
+                        if (tableEl) tableEl.hidden = false;
+                        entries.forEach(function (e) {
+                            var tr = document.createElement("tr");
+                            var tags =
+                                e.tags && e.tags.length
+                                    ? " · " + e.tags.join(", ")
+                                    : "";
+                            var origin = e.merchantOrigin || "—";
+                            var probed = e.lastProbeAt || e.updatedAt || "—";
+                            var slug = e.sellerResourceId
+                                ? " · id " + esc(e.sellerResourceId)
+                                : "";
+                            tr.innerHTML =
+                                "<td><strong>" +
+                                esc(e.title) +
+                                "</strong>" +
+                                esc(tags) +
+                                esc(slug) +
+                                "</td>" +
+                                '<td><span class="pill ' +
+                                (e.scheme === "sla-escrow" ? "amber" : "accent") +
+                                '">' +
+                                esc(e.scheme) +
+                                "</span></td>" +
+                                "<td>" +
+                                (e.merchantOrigin
+                                    ? '<a href="' +
+                                      esc(e.merchantOrigin) +
+                                      '" rel="noopener">' +
+                                      esc(origin) +
+                                      "</a>"
+                                    : "—") +
+                                "</td>" +
+                                "<td><a href=\"" +
+                                esc(e.resourceUrl) +
+                                '" rel="noopener">' +
+                                esc(e.resourceUrl) +
+                                "</a> <code>" +
+                                esc(e.httpMethod || "GET") +
+                                "</code></td>" +
+                                "<td title=\"" +
+                                esc(e.walletPubkey) +
+                                '"><code>' +
+                                esc(truncWallet(e.walletPubkey)) +
+                                "</code></td>" +
+                                "<td><code>" +
+                                esc(probed) +
+                                "</code></td>" +
+                                '<td class="actions"><a href="' +
+                                esc(e.resourceUrl) +
+                                '" target="_blank" rel="noopener">402</a> <a href="' +
+                                esc(railsHref(e.walletPubkey, e.scheme)) +
+                                '">rails</a></td>';
+                            tbody.appendChild(tr);
+                            rowCount += 1;
+                        });
+                    }
+
+                    async function loadStaticIndex() {
+                        setStatus("Loading static resource-index.json …");
+                        var res = await fetch("/dist/resource-index.json");
+                        if (!res.ok)
+                            throw new Error("HTTP " + res.status);
+                        var data = await res.json();
+                        tbody.innerHTML = "";
+                        rowCount = 0;
+                        nextCursor = null;
+                        if (btnMore) btnMore.disabled = true;
+                        appendRows(data.entries || []);
+                        var gen = data.generatedAt
+                            ? " · generated " + data.generatedAt
+                            : "";
+                        setStatus(
+                            (data.entries ? data.entries.length : 0) +
+                                " entries (static index)" +
+                                gen +
+                                (data.notice ? " · " + data.notice : ""),
+                        );
+                    }
+
+                    async function ensureDirectoryFlag() {
+                        if (directoryEnabled !== null) return directoryEnabled;
+                        try {
+                            var res = await fetch(
+                                "/api/v1/facilitator/capabilities",
+                            );
+                            if (!res.ok) {
+                                directoryEnabled = false;
+                                return false;
+                            }
+                            var cap = await res.json();
+                            directoryEnabled = !!(
+                                cap.features &&
+                                cap.features.publicResourceDirectory
+                            );
+                        } catch (e) {
+                            directoryEnabled = false;
+                        }
+                        return directoryEnabled;
+                    }
+
+                    function buildQuery(cursor) {
+                        var params = new URLSearchParams();
+                        params.set("limit", "50");
+                        if (cursor) params.set("cursor", cursor);
+                        if (qEl && qEl.value.trim())
+                            params.set("q", qEl.value.trim());
+                        if (schemeEl && schemeEl.value)
+                            params.set("scheme", schemeEl.value);
+                        if (catEl && catEl.value.trim())
+                            params.set("category", catEl.value.trim());
+                        if (tagEl && tagEl.value.trim())
+                            params.set("tag", tagEl.value.trim());
+                        return params.toString();
+                    }
+
+                    async function fetchPage(reset) {
+                        if (reset) {
+                            tbody.innerHTML = "";
+                            rowCount = 0;
+                            nextCursor = null;
+                        }
+                        var enabled = await ensureDirectoryFlag();
+                        if (!enabled) {
+                            try {
+                                await loadStaticIndex();
+                            } catch (e) {
+                                setStatus(
+                                    "Public resource directory disabled on this host and static index unavailable.",
+                                    true,
+                                );
+                            }
+                            return;
+                        }
+                        setStatus("Loading …");
+                        if (btnMore) btnMore.disabled = true;
+                        try {
+                            var qs = buildQuery(nextCursor);
+                            var res = await fetch(
+                                "/api/v1/facilitator/resources?" + qs,
+                            );
+                            var txt = await res.text();
+                            if (!res.ok)
+                                throw new Error(txt || "HTTP " + res.status);
+                            var data = JSON.parse(txt);
+                            appendRows(data.entries || []);
+                            nextCursor = data.nextCursor || null;
+                            if (btnMore) btnMore.disabled = !nextCursor;
+                            var notice = data.notice ? " · " + data.notice : "";
+                            setStatus(
+                                rowCount +
+                                    " listed" +
+                                    (nextCursor ? " · more available" : "") +
+                                    notice,
+                            );
+                            if (!rowCount && !nextCursor) {
+                                if (tableEl) tableEl.hidden = true;
+                                setStatus(
+                                    "No probe-approved resources match this filter.",
+                                );
+                            }
+                        } catch (e) {
+                            setStatus(
+                                e && e.message ? e.message : String(e),
+                                true,
+                            );
+                            try {
+                                await loadStaticIndex();
+                            } catch (e2) {
+                                /* keep primary error */
+                            }
+                        }
+                    }
+
+                    if (btnSearch)
+                        btnSearch.addEventListener("click", function () {
+                            fetchPage(true);
+                        });
+                    if (btnMore)
+                        btnMore.addEventListener("click", function () {
+                            fetchPage(false);
+                        });
+                    if (qEl)
+                        qEl.addEventListener("keydown", function (ev) {
+                            if (ev.key === "Enter") fetchPage(true);
+                        });
+
+                    fetchPage(true);
+                }
+
                 // ---- theme toggle: auto → light → dark → auto, persisted in localStorage ----
                 function initThemeToggle() {
                     var btn = document.getElementById("theme-toggle");
@@ -3207,6 +3576,7 @@
                     syncCurlProbe();
                     initTabs();
                     initCapabilitiesProbe();
+                    initResourceDirectory();
                     initLifecycleLadder();
                     initOracleEmail();
                     var walletState = initWalletState();
