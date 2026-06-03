@@ -29,6 +29,19 @@ async function fetchJson(url) {
   return res.json();
 }
 
+// Compare two URLs on scheme + host + path only, ignoring the query string: the
+// probed URL may carry example params (to reach the 402 gate instead of a 400),
+// while the seller's 402 may advertise a canonical resource.url without them.
+function sameOriginPath(a, b) {
+  try {
+    const ua = new URL(a);
+    const ub = new URL(b);
+    return ua.protocol === ub.protocol && ua.host === ub.host && ua.pathname === ub.pathname;
+  } catch {
+    return false;
+  }
+}
+
 async function probeResource(resourceUrl, httpMethod = "GET") {
   const method = httpMethod.toUpperCase();
   const res = await fetch(resourceUrl, { method, redirect: "manual" });
@@ -44,8 +57,8 @@ async function probeResource(resourceUrl, httpMethod = "GET") {
   const scheme = body?.accepts?.[0]?.scheme;
   const url = body?.resource?.url;
   if (!scheme) return { ok: false, httpStatus: 402, error: "missing accepts[0].scheme" };
-  if (url !== resourceUrl) {
-    return { ok: false, httpStatus: 402, error: `resource.url mismatch (${url})` };
+  if (!sameOriginPath(url, resourceUrl)) {
+    return { ok: false, httpStatus: 402, error: `resource.url origin/path mismatch (${url})` };
   }
   return { ok: true, httpStatus: 402, scheme };
 }
