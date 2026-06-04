@@ -119,8 +119,8 @@
                 <span id="status"></span>
             </div>
             <p class="dim" style="font-size: 12px">
-                Pick an account in the wallet modal before signing. The page does
-                not use browser auto-connect silently.
+                Connect wallet before signing. If you use multiple accounts,
+                pick the correct one in the modal.
             </p>
 
             <h2>Your resources</h2>
@@ -151,8 +151,6 @@
         <script>
             (function () {
                 var wallet = "";
-                var userSelectedWallet = false;
-                var pickPending = false;
                 var lastId = null;
                 var statusEl = document.getElementById("status");
                 var listOut = document.getElementById("list-out");
@@ -168,7 +166,7 @@
 
                 function paintConnect() {
                     if (!btnConnect) return;
-                    if (wallet && userSelectedWallet) {
+                    if (wallet) {
                         btnConnect.textContent =
                             (wallet.length > 10
                                 ? wallet.slice(0, 4) + "…" + wallet.slice(-4)
@@ -180,9 +178,8 @@
                         btnConnect.classList.remove("is-connected");
                         btnConnect.removeAttribute("title");
                     }
-                    var ready = wallet && userSelectedWallet;
-                    if (btnRegister) btnRegister.disabled = !ready;
-                    if (btnProbe) btnProbe.disabled = !ready;
+                    if (btnRegister) btnRegister.disabled = !wallet;
+                    if (btnProbe) btnProbe.disabled = !wallet;
                 }
 
                 function base58Encode(bytes) {
@@ -230,26 +227,10 @@
                     if (window.ShowWalletModal) window.ShowWalletModal();
                 }
 
-                function openWalletPicker() {
-                    pickPending = true;
-                    userSelectedWallet = false;
-                    wallet = "";
-                    paintConnect();
-                    if (window.MiracleWalletDisconnecter) {
-                        try {
-                            window.MiracleWalletDisconnecter();
-                        } catch (_) {}
-                    }
-                    showWalletModal();
-                }
-
                 function requireWalletForSign() {
-                    if (!wallet || !userSelectedWallet) {
-                        setStatus(
-                            "Connect wallet and pick an account in the modal, then try again.",
-                            true,
-                        );
-                        openWalletPicker();
+                    if (!wallet) {
+                        setStatus("Connect wallet first.", true);
+                        showWalletModal();
                         return false;
                     }
                     if (typeof window.MiracleMessageSigner !== "function") {
@@ -272,7 +253,7 @@
                 }
 
                 async function refreshList() {
-                    if (!wallet || !userSelectedWallet) return;
+                    if (!wallet) return;
                     var auth = await signedChallenge();
                     var res = await fetch(
                         "/api/v1/facilitator/sellers/" +
@@ -302,22 +283,12 @@
                             : "";
                     if (pk && ev.detail && ev.detail.pubkey && ev.detail.pubkey.length) {
                         wallet = pk;
-                        if (pickPending) {
-                            pickPending = false;
-                            userSelectedWallet = true;
-                        }
                     } else {
                         wallet = "";
-                        userSelectedWallet = false;
-                        pickPending = false;
                     }
-                    setStatus(
-                        userSelectedWallet
-                            ? "Wallet: " + wallet
-                            : "Connect wallet and pick an account",
-                    );
+                    setStatus(wallet ? "Wallet: " + wallet : "");
                     paintConnect();
-                    if (userSelectedWallet)
+                    if (wallet)
                         refreshList().catch(function (e) {
                             setStatus(e.message, true);
                         });
@@ -325,9 +296,7 @@
 
                 if (btnConnect) {
                     btnConnect.addEventListener("click", function () {
-                        if (wallet && userSelectedWallet) {
-                            userSelectedWallet = false;
-                            pickPending = false;
+                        if (wallet) {
                             wallet = "";
                             paintConnect();
                             if (window.MiracleWalletDisconnecter) {
@@ -338,7 +307,7 @@
                             setStatus("Disconnected.");
                             return;
                         }
-                        openWalletPicker();
+                        showWalletModal();
                     });
                 }
 
