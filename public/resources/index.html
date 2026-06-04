@@ -65,6 +65,7 @@
                 gap: 0.5rem;
                 flex-wrap: wrap;
                 margin: 1rem 0;
+                align-items: center;
             }
             button {
                 font: inherit;
@@ -78,6 +79,14 @@
                 border-color: var(--accent);
                 color: var(--accent);
             }
+            button:disabled {
+                opacity: 0.45;
+                cursor: not-allowed;
+            }
+            button.is-connected {
+                border-color: var(--accent);
+                color: var(--accent);
+            }
             pre {
                 background: var(--rule);
                 padding: 0.75rem;
@@ -87,19 +96,32 @@
             .err {
                 color: #ef4444;
             }
+            #miracle-wallet-adapter {
+                position: absolute;
+                left: -9999px;
+                width: 1px;
+                height: 1px;
+                overflow: hidden;
+            }
         </style>
-        <script src="/wallet.js" defer></script>
     </head>
     <body>
         <main>
             <h1>List payable APIs</h1>
             <p>
                 Layer 3 resource registration — separate from
-                <a href="/">merchant onboarding</a>. Complete Preview → Activate →
-                Verify on the home page first.
+                <a href="/#directory">browse payable APIs</a> on the home page.
+                Complete Preview → Activate → Verify on
+                <a href="/">merchant onboarding</a> first.
             </p>
-            <div id="wallet-slot"></div>
-            <div id="status" class="dim"></div>
+            <div class="row" id="wallet-slot">
+                <button type="button" id="btn-wallet-connect">connect wallet</button>
+                <span id="status"></span>
+            </div>
+            <p class="dim" style="font-size: 12px">
+                Connect wallet before signing. If you use multiple accounts,
+                pick the correct one in the modal.
+            </p>
 
             <h2>Your resources</h2>
             <pre id="list-out">Connect wallet to load.</pre>
@@ -118,11 +140,14 @@
             </select>
             <label><input type="checkbox" id="listingOptIn" /> List publicly (after 402 probe)</label>
             <div class="row">
-                <button class="primary" id="btn-register">Sign &amp; register</button>
-                <button id="btn-probe">Test 402 probe (selected id)</button>
+                <button class="primary" id="btn-register" disabled>
+                    Sign &amp; register
+                </button>
+                <button id="btn-probe" disabled>Test 402 probe (selected id)</button>
             </div>
             <pre id="form-out"></pre>
         </main>
+        <div id="miracle-wallet-adapter" aria-hidden="true"></div>
         <script>
             (function () {
                 var wallet = "";
@@ -130,10 +155,31 @@
                 var statusEl = document.getElementById("status");
                 var listOut = document.getElementById("list-out");
                 var formOut = document.getElementById("form-out");
+                var btnConnect = document.getElementById("btn-wallet-connect");
+                var btnRegister = document.getElementById("btn-register");
+                var btnProbe = document.getElementById("btn-probe");
 
                 function setStatus(msg, err) {
                     statusEl.textContent = msg || "";
                     statusEl.className = err ? "err" : "";
+                }
+
+                function paintConnect() {
+                    if (!btnConnect) return;
+                    if (wallet) {
+                        btnConnect.textContent =
+                            (wallet.length > 10
+                                ? wallet.slice(0, 4) + "…" + wallet.slice(-4)
+                                : wallet) + " ✓";
+                        btnConnect.classList.add("is-connected");
+                        btnConnect.title = "connected — click to disconnect";
+                    } else {
+                        btnConnect.textContent = "connect wallet";
+                        btnConnect.classList.remove("is-connected");
+                        btnConnect.removeAttribute("title");
+                    }
+                    if (btnRegister) btnRegister.disabled = !wallet;
+                    if (btnProbe) btnProbe.disabled = !wallet;
                 }
 
                 function base58Encode(bytes) {
@@ -159,6 +205,39 @@
                     var out = new Uint8Array(bin.length);
                     for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
                     return out;
+                }
+
+                var walletBundleStarted = false;
+                async function ensureWalletBundle() {
+                    if (walletBundleStarted) return;
+                    walletBundleStarted = true;
+                    await new Promise(function (resolve, reject) {
+                        var s = document.createElement("script");
+                        s.src = "/wallet.js";
+                        s.async = true;
+                        s.onload = resolve;
+                        s.onerror = reject;
+                        document.head.appendChild(s);
+                    });
+                    if (typeof MountWalletAdapter === "function")
+                        MountWalletAdapter();
+                }
+
+                function showWalletModal() {
+                    if (window.ShowWalletModal) window.ShowWalletModal();
+                }
+
+                function requireWalletForSign() {
+                    if (!wallet) {
+                        setStatus("Connect wallet first.", true);
+                        showWalletModal();
+                        return false;
+                    }
+                    if (typeof window.MiracleMessageSigner !== "function") {
+                        setStatus("Wallet bundle not ready.", true);
+                        return false;
+                    }
+                    return true;
                 }
 
                 async function signedChallenge() {
@@ -198,74 +277,102 @@
                 }
 
                 window.addEventListener("miracle-pubkey", function (ev) {
-                    wallet = (ev.detail && ev.detail.pubkey) || "";
-                    setStatus(wallet ? "Wallet: " + wallet : "Connect wallet");
-                    if (wallet) refreshList().catch(function (e) {
-                        setStatus(e.message, true);
-                    });
+                    var pk =
+                        ev.detail && typeof ev.detail.pubkeyBase58 === "string"
+                            ? ev.detail.pubkeyBase58
+                            : "";
+                    if (pk && ev.detail && ev.detail.pubkey && ev.detail.pubkey.length) {
+                        wallet = pk;
+                    } else {
+                        wallet = "";
+                    }
+                    setStatus(wallet ? "Wallet: " + wallet : "");
+                    paintConnect();
+                    if (wallet)
+                        refreshList().catch(function (e) {
+                            setStatus(e.message, true);
+                        });
                 });
 
-                document.getElementById("btn-register").addEventListener(
-                    "click",
-                    async function () {
-                        if (!wallet) return setStatus("Connect wallet first", true);
-                        try {
-                            var auth = await signedChallenge();
-                            var body = {
+                if (btnConnect) {
+                    btnConnect.addEventListener("click", function () {
+                        if (wallet) {
+                            wallet = "";
+                            paintConnect();
+                            if (window.MiracleWalletDisconnecter) {
+                                try {
+                                    window.MiracleWalletDisconnecter();
+                                } catch (_) {}
+                            }
+                            setStatus("Disconnected.");
+                            return;
+                        }
+                        showWalletModal();
+                    });
+                }
+
+                btnRegister.addEventListener("click", async function () {
+                    if (!requireWalletForSign()) return;
+                    try {
+                        var auth = await signedChallenge();
+                        var body = {
+                            wallet: wallet,
+                            message: auth.message,
+                            signature: auth.signature,
+                            resource: {
+                                resourceUrl: document.getElementById("resourceUrl").value,
+                                title: document.getElementById("title").value,
+                                description:
+                                    document.getElementById("description").value ||
+                                    undefined,
+                                scheme: document.getElementById("scheme").value,
+                                listingOptIn:
+                                    document.getElementById("listingOptIn").checked,
+                            },
+                        };
+                        var res = await fetch(
+                            "/api/v1/facilitator/resources/register",
+                            {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(body),
+                            },
+                        );
+                        formOut.textContent = await res.text();
+                        await refreshList();
+                    } catch (e) {
+                        formOut.textContent = String(e.message || e);
+                    }
+                });
+
+                btnProbe.addEventListener("click", async function () {
+                    if (!requireWalletForSign()) return;
+                    if (!lastId) return (formOut.textContent = "No resource id");
+                    try {
+                        var auth = await signedChallenge();
+                        var res = await fetch("/api/v1/facilitator/resources/probe", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
                                 wallet: wallet,
                                 message: auth.message,
                                 signature: auth.signature,
-                                resource: {
-                                    resourceUrl: document.getElementById("resourceUrl").value,
-                                    title: document.getElementById("title").value,
-                                    description:
-                                        document.getElementById("description").value ||
-                                        undefined,
-                                    scheme: document.getElementById("scheme").value,
-                                    listingOptIn:
-                                        document.getElementById("listingOptIn").checked,
-                                },
-                            };
-                            var res = await fetch(
-                                "/api/v1/facilitator/resources/register",
-                                {
-                                    method: "POST",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify(body),
-                                },
-                            );
-                            formOut.textContent = await res.text();
-                            await refreshList();
-                        } catch (e) {
-                            formOut.textContent = String(e.message || e);
-                        }
-                    },
-                );
+                                id: lastId,
+                            }),
+                        });
+                        formOut.textContent = await res.text();
+                        await refreshList();
+                    } catch (e) {
+                        formOut.textContent = String(e.message || e);
+                    }
+                });
 
-                document.getElementById("btn-probe").addEventListener(
-                    "click",
-                    async function () {
-                        if (!wallet) return setStatus("Connect wallet first", true);
-                        if (!lastId) return (formOut.textContent = "No resource id");
-                        try {
-                            var auth = await signedChallenge();
-                            var res = await fetch("/api/v1/facilitator/resources/probe", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                    wallet: wallet,
-                                    message: auth.message,
-                                    signature: auth.signature,
-                                    id: lastId,
-                                }),
-                            });
-                            formOut.textContent = await res.text();
-                            await refreshList();
-                        } catch (e) {
-                            formOut.textContent = String(e.message || e);
-                        }
-                    },
-                );
+                document.addEventListener("DOMContentLoaded", function () {
+                    ensureWalletBundle().catch(function (e) {
+                        setStatus("Wallet bundle failed to load.", true);
+                    });
+                    paintConnect();
+                });
             })();
         </script>
     </body>
