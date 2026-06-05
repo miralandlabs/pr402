@@ -2746,82 +2746,6 @@
                         }
                     };
 
-                    window.__PR402_FETCH_GO_LIVE_RESOURCES__ = async function (
-                        wallet,
-                    ) {
-                        if (
-                            !wallet ||
-                            typeof window.MiracleMessageSigner !== "function"
-                        ) {
-                            return null;
-                        }
-                        try {
-                            var chRes = await fetch(
-                                "/api/v1/facilitator/resources/register/challenge?wallet=" +
-                                    encodeURIComponent(wallet),
-                            );
-                            var ch = await chRes.json();
-                            if (!chRes.ok) return null;
-                            var sigB64 =
-                                await window.MiracleMessageSigner(ch.message);
-                            var sigB58 = base58Encode(
-                                base64ToBytes(sigB64),
-                            );
-                            var res = await fetch(
-                                "/api/v1/facilitator/sellers/" +
-                                    encodeURIComponent(wallet) +
-                                    "/resources",
-                                {
-                                    method: "POST",
-                                    headers: {
-                                        "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                        message: ch.message,
-                                        signature: sigB58,
-                                    }),
-                                },
-                            );
-                            if (!res.ok) return null;
-                            var data = await res.json();
-                            var entries = data.entries || [];
-                            var status = {
-                                hasResources: entries.length > 0,
-                                hasProbeOk: entries.some(function (e) {
-                                    return e.lastProbeOk === true;
-                                }),
-                            };
-                            try {
-                                localStorage.setItem(
-                                    "pr402-go-live-" + wallet,
-                                    JSON.stringify({
-                                        step5: status.hasResources,
-                                        step6: status.hasProbeOk,
-                                        at: Date.now(),
-                                    }),
-                                );
-                            } catch (_) {}
-                            var input =
-                                document.getElementById("wallet-input");
-                            var lcWallet =
-                                input && (input.value || "").trim();
-                            if (
-                                typeof window.__PR402_UPDATE_GO_LIVE__ ===
-                                    "function" &&
-                                lcWallet === wallet
-                            ) {
-                                window.__PR402_UPDATE_GO_LIVE__(
-                                    window.__PR402_LAST_LIFECYCLE__ || {},
-                                    status,
-                                    wallet,
-                                );
-                            }
-                            return status;
-                        } catch (_) {
-                            return null;
-                        }
-                    };
-
                     window.__PR402_UPDATE_GO_LIVE__(null);
 
                     var walletInputForGl =
@@ -2910,25 +2834,12 @@
                             typeof window.__PR402_UPDATE_GO_LIVE__ ===
                             "function"
                         ) {
+                            var walletPk =
+                                input && (input.value || "").trim();
                             window.__PR402_UPDATE_GO_LIVE__(
                                 lc,
                                 null,
-                                wallet,
-                            );
-                        }
-                        var connected =
-                            typeof window.__PR402_CONNECTED_WALLET__ ===
-                            "function"
-                                ? window.__PR402_CONNECTED_WALLET__()
-                                : null;
-                        if (
-                            connected &&
-                            connected === wallet &&
-                            typeof window.__PR402_FETCH_GO_LIVE_RESOURCES__ ===
-                                "function"
-                        ) {
-                            window.__PR402_FETCH_GO_LIVE_RESOURCES__(
-                                connected,
+                                walletPk || null,
                             );
                         }
                     }
@@ -3351,7 +3262,7 @@
                         showWalletModal();
                     }
 
-                    function onConnectClick() {
+                    async function onConnectClick() {
                         if (connectedB58) {
                             if (window.MiracleWalletDisconnecter) {
                                 try {
@@ -3360,12 +3271,21 @@
                             }
                             return;
                         }
+                        await ensureWalletBundle();
                         showWalletModal();
                     }
                     if (btnConnect)
-                        btnConnect.addEventListener("click", onConnectClick);
+                        btnConnect.addEventListener("click", function () {
+                            onConnectClick().catch(function (e) {
+                                console.error("connect wallet", e);
+                            });
+                        });
                     if (btnConnectV)
-                        btnConnectV.addEventListener("click", onConnectClick);
+                        btnConnectV.addEventListener("click", function () {
+                            onConnectClick().catch(function (e) {
+                                console.error("connect wallet", e);
+                            });
+                        });
 
                     paint(btnConnect);
                     paint(btnConnectV);

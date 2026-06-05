@@ -424,10 +424,10 @@
                     return out;
                 }
 
-                var walletBundleStarted = false;
+                var walletBundlePromise = null;
                 async function ensureWalletBundle() {
-                    if (walletBundleStarted) return;
-                    walletBundleStarted = true;
+                    if (walletBundlePromise) return walletBundlePromise;
+                    walletBundlePromise = (async function () {
                     await new Promise(function (resolve, reject) {
                         var s = document.createElement("script");
                         s.src = "/wallet.js";
@@ -438,10 +438,22 @@
                     });
                     if (typeof MountWalletAdapter === "function")
                         MountWalletAdapter();
+                    })();
+                    return walletBundlePromise;
                 }
 
-                function showWalletModal() {
-                    if (window.ShowWalletModal) window.ShowWalletModal();
+                async function showWalletModal() {
+                    try {
+                        await ensureWalletBundle();
+                    } catch (e) {
+                        setStatus("Wallet bundle failed to load.", true);
+                        return;
+                    }
+                    if (window.ShowWalletModal) {
+                        window.ShowWalletModal();
+                    } else {
+                        setStatus("Wallet UI not ready — try again.", true);
+                    }
                 }
 
                 function requireWalletForSign() {
@@ -545,7 +557,9 @@
                             if (preflightEl) preflightEl.classList.add("hidden");
                             return;
                         }
-                        showWalletModal();
+                        showWalletModal().catch(function (e) {
+                            setStatus(String(e.message || e), true);
+                        });
                     });
                 }
 
