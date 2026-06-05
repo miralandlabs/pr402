@@ -326,23 +326,25 @@ pub async fn handle_owner_resources(path_wallet: &str, query: &str, body: Body) 
         signature: String,
     }
 
-    let (message, signature) = match body {
-        Body::Text(ref s) if !s.is_empty() => {
-            let parsed: AuthBody = match serde_json::from_str(s) {
-                Ok(b) => b,
-                Err(e) => {
-                    return error_response(
-                        StatusCode::BAD_REQUEST,
-                        &format!("Invalid JSON: {}", e),
-                    );
-                }
-            };
-            (parsed.message, parsed.signature)
-        }
-        _ => (
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => String::new(),
+    };
+
+    let (message, signature) = if !body_str.is_empty() {
+        let parsed: AuthBody = match serde_json::from_str(&body_str) {
+            Ok(b) => b,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e));
+            }
+        };
+        (parsed.message, parsed.signature)
+    } else {
+        (
             query_param(query, "message"),
             query_param(query, "signature"),
-        ),
+        )
     };
 
     if message.is_empty() || signature.is_empty() {
