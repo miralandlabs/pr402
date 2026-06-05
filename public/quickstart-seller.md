@@ -117,11 +117,28 @@ Content-Type: application/json
 
 ## That's it!
 
-**No PDA derivation. No on-chain setup. No Solana SDK.**
-
-The `/payment-required/enrich` endpoint handles all institutional routing for you. For sovereign status (lower fees), see the full [onboarding guide](/onboarding_guide.md).
+**No PDA derivation. No Solana SDK** for accepting payments — `/payment-required/enrich` handles institutional routing.
 
 **Full reference:** `GET /seller-quick-start.md` and `GET /openapi.json` on the facilitator.
+
+---
+
+## Want to appear in the public directory?
+
+Payment integration (steps 1–5 above) is enough to **charge** for API calls. To **list** on [browse payable APIs](https://ipay.sh/#directory), follow the same **6-step go-live** on ipay.sh:
+
+| Step | What you do | Where |
+|------|-------------|-------|
+| 1 | API returns **402** when unpaid | Your server (this doc) |
+| 2 | **Activate** payment vault | [ipay.sh → go live](https://ipay.sh/#seller-lifecycle) |
+| 3 | **Register shop** (API website + sign) | Same page, step 3 |
+| 4 | Preview vault *(optional)* | Same page, step 4 |
+| 5 | **Add your API** | [/resources](https://ipay.sh/resources) |
+| 6 | **We verify 402** | Automatic after step 5 |
+
+Steps 2–3 require a one-time on-chain **Activate** (wallet signs). Use [preview.ipay.sh](https://preview.ipay.sh) on Devnet first.
+
+---
 
 ## Launch checklist
 

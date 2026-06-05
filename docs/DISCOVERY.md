@@ -1,6 +1,8 @@
 # Agent resource discovery (pr402)
 
-Three layers — do not collapse them:
+**Sellers:** use the **6-step go-live** on [ipay.sh](https://ipay.sh/#seller-lifecycle) and [/resources](https://ipay.sh/resources) — do not read this doc unless you are integrating agents or debugging listing gates.
+
+Three layers — do not collapse them (developer reference):
 
 | Layer | Entity | API / artifact |
 |-------|--------|----------------|
@@ -45,7 +47,7 @@ Separate from merchant `POST /sellers/{wallet}/register`:
 | GET/POST | `/api/v1/facilitator/sellers/{wallet}/resources` (signed) |
 | POST | `/api/v1/facilitator/resources/probe` (signed) |
 
-UI entry: [`/resources`](../public/resources/index.html) (link from root onboarding — not a fourth onboarding step).
+UI entry: [`/resources`](../public/resources/index.html) — **step 5 of 6** in the seller go-live path (steps 2–3 on the home page).
 
 ## Seller Resource Manifest (SRM)
 
