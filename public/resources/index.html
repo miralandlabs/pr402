@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>pr402 — List payable APIs</title>
+        <title>pr402 — Add your API (step 5)</title>
         <link rel="icon" type="image/png" href="/pr402.png" />
         <style>
             :root {
@@ -13,6 +13,7 @@
                 --dim: light-dark(#4a4a4a, #9a9a9a);
                 --rule: light-dark(#e5e4df, #1f1f1f);
                 --accent: light-dark(#3a7d0c, #a3e635);
+                --amber: light-dark(#a16207, #f5b841);
                 --font: ui-monospace, "JetBrains Mono", Menlo, monospace;
             }
             body {
@@ -92,9 +93,41 @@
                 padding: 0.75rem;
                 overflow: auto;
                 font-size: 12px;
+                white-space: pre-wrap;
             }
             .err {
                 color: #ef4444;
+            }
+            .ok {
+                color: var(--accent);
+            }
+            .step-badge {
+                display: inline-block;
+                font-size: 11px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                border: 1px solid var(--accent);
+                color: var(--accent);
+                padding: 0.15em 0.5em;
+                margin-bottom: 0.75rem;
+            }
+            .preflight {
+                border: 1px solid var(--amber);
+                padding: 0.75rem 1rem;
+                margin: 0 0 1rem;
+                font-size: 13px;
+            }
+            .preflight.hidden {
+                display: none;
+            }
+            .result-box {
+                margin-top: 0.75rem;
+                font-size: 13px;
+            }
+            details {
+                margin-top: 0.75rem;
+                font-size: 12px;
+                color: var(--dim);
             }
             #miracle-wallet-adapter {
                 position: absolute;
@@ -107,61 +140,99 @@
     </head>
     <body>
         <main>
-            <h1>List payable APIs</h1>
+            <p class="step-badge">Step 5 of 6 · Add your API</p>
+            <h1>Add your API to the directory</h1>
             <p>
-                Layer 3 resource registration — separate from
-                <a href="/#directory">browse payable APIs</a> on the home page.
-                Complete Preview → Activate → Verify on
-                <a href="/">merchant onboarding</a> first.
+                Same go-live path as the
+                <a href="/#seller-lifecycle">home page</a>. After you register,
+                we automatically check that your URL returns HTTP 402 (step 6).
+                Listed APIs appear in
+                <a href="/#directory">browse payable APIs</a>.
             </p>
+
+            <div class="preflight hidden" id="preflight">
+                <strong>Complete steps 2–3 on the home page first.</strong>
+                <span id="preflight-msg"></span>
+                <div class="row" style="margin: 0.5rem 0 0">
+                    <a href="/#seller-lifecycle">← back to steps 2–3</a>
+                </div>
+            </div>
+
             <div class="row" id="wallet-slot">
                 <button type="button" id="btn-wallet-connect">connect wallet</button>
                 <span id="status"></span>
             </div>
-            <p class="dim" style="font-size: 12px">
-                Connect wallet before signing. If you use multiple accounts,
-                pick the correct one in the modal.
+            <p style="font-size: 12px">
+                Connect the same wallet you used for Activate and Register shop.
             </p>
 
-            <h2>Your resources</h2>
-            <pre id="list-out">Connect wallet to load.</pre>
+            <h2>Your APIs</h2>
+            <div class="row" style="margin-top: 0">
+                <button type="button" id="btn-load-apis" disabled>
+                    Show my APIs
+                </button>
+                <span style="font-size: 12px; color: var(--dim)"
+                    >One wallet signature to load the list.</span
+                >
+            </div>
+            <pre id="list-out">Connect wallet, then click Show my APIs (optional).</pre>
 
-            <h2>Register one resource</h2>
-            <label for="resourceUrl">Resource URL (must match merchant origin host)</label>
-            <input id="resourceUrl" placeholder="https://your-api.example/api/premium" />
+            <h2>Register one API</h2>
+            <label for="resourceUrl">Payable API URL</label>
+            <input
+                id="resourceUrl"
+                placeholder="https://your-api.example/api/premium"
+            />
+            <p style="font-size: 12px; margin-top: 0.25rem">
+                Must use the same host as your API website from step 3.
+            </p>
             <label for="title">Title</label>
             <input id="title" placeholder="Premium API" />
             <label for="description">Description</label>
             <textarea id="description"></textarea>
-            <label for="scheme">Scheme</label>
-            <select id="scheme">
-                <option value="exact">exact</option>
-                <option value="sla-escrow">sla-escrow</option>
-            </select>
-            <label><input type="checkbox" id="listingOptIn" /> List publicly (after 402 probe)</label>
+            <label
+                ><input type="checkbox" id="listingOptIn" checked />
+                Show in public directory (we verify 402 automatically)</label
+            >
+            <details>
+                <summary>Advanced options</summary>
+                <label for="scheme">Payment scheme</label>
+                <select id="scheme">
+                    <option value="exact" selected>exact — instant payment</option>
+                    <option value="sla-escrow">sla-escrow — escrow + oracle</option>
+                </select>
+            </details>
             <div class="row">
                 <button class="primary" id="btn-register" disabled>
-                    Sign &amp; register
+                    Sign &amp; add API
                 </button>
-                <button id="btn-probe" disabled>Test 402 probe (selected id)</button>
             </div>
-            <pre id="form-out"></pre>
+            <div class="result-box" id="form-out" aria-live="polite"></div>
         </main>
         <div id="miracle-wallet-adapter" aria-hidden="true"></div>
         <script>
             (function () {
                 var wallet = "";
                 var lastId = null;
+                var shopReady = false;
+                var authCache = null;
                 var statusEl = document.getElementById("status");
                 var listOut = document.getElementById("list-out");
                 var formOut = document.getElementById("form-out");
+                var preflightEl = document.getElementById("preflight");
+                var preflightMsg = document.getElementById("preflight-msg");
                 var btnConnect = document.getElementById("btn-wallet-connect");
                 var btnRegister = document.getElementById("btn-register");
-                var btnProbe = document.getElementById("btn-probe");
+                var btnLoadApis = document.getElementById("btn-load-apis");
 
                 function setStatus(msg, err) {
                     statusEl.textContent = msg || "";
                     statusEl.className = err ? "err" : "";
+                }
+
+                function setFormResult(html, err) {
+                    formOut.innerHTML = html || "";
+                    formOut.className = "result-box" + (err ? " err" : " ok");
                 }
 
                 function paintConnect() {
@@ -178,8 +249,154 @@
                         btnConnect.classList.remove("is-connected");
                         btnConnect.removeAttribute("title");
                     }
-                    if (btnRegister) btnRegister.disabled = !wallet;
-                    if (btnProbe) btnProbe.disabled = !wallet;
+                    if (btnRegister) btnRegister.disabled = !wallet || !shopReady;
+                    if (btnLoadApis) btnLoadApis.disabled = !wallet || !shopReady;
+                }
+
+                function markGoLiveProgress(step6Ok) {
+                    if (!wallet) return;
+                    try {
+                        localStorage.setItem(
+                            "pr402-go-live-" + wallet,
+                            JSON.stringify({
+                                step5: true,
+                                step6: !!step6Ok,
+                                at: Date.now(),
+                            }),
+                        );
+                    } catch (_) {}
+                }
+
+                function clearAuthCache() {
+                    authCache = null;
+                }
+
+                async function getAuth(forceNew) {
+                    var now = Math.floor(Date.now() / 1000);
+                    if (
+                        !forceNew &&
+                        authCache &&
+                        authCache.expiresUnix > now + 15
+                    ) {
+                        return {
+                            message: authCache.message,
+                            signature: authCache.signature,
+                        };
+                    }
+                    var chRes = await fetch(
+                        "/api/v1/facilitator/resources/register/challenge?wallet=" +
+                            encodeURIComponent(wallet),
+                    );
+                    var ch = await chRes.json();
+                    if (!chRes.ok) throw new Error(ch.error || chRes.status);
+                    var sigB64 = await window.MiracleMessageSigner(ch.message);
+                    var sigB58 = base58Encode(base64ToBytes(sigB64));
+                    authCache = {
+                        message: ch.message,
+                        signature: sigB58,
+                        expiresUnix:
+                            ch.expiresUnix ||
+                            now + (ch.ttlSeconds || 300),
+                    };
+                    return {
+                        message: authCache.message,
+                        signature: authCache.signature,
+                    };
+                }
+
+                function probePlainEnglish(data) {
+                    if (!data) return "Could not read probe response.";
+                    if (data.ok) {
+                        return (
+                            "<strong>Step 6 complete.</strong> Your API returned HTTP 402. " +
+                            "You should appear in the public directory shortly."
+                        );
+                    }
+                    var status = data.httpStatus;
+                    var fix = "";
+                    if (status === 400) {
+                        fix =
+                            "Fix: your URL returned 400 (bad request), not 402. Add required query parameters or fix the path so unpaid calls hit your 402 gate.";
+                    } else if (status === 200 || status === 201) {
+                        fix =
+                            "Fix: your URL returned " +
+                            status +
+                            " without payment. Return HTTP 402 with your payment JSON when the caller has not paid.";
+                    } else if (status === 401 || status === 403) {
+                        fix =
+                            "Fix: your URL returned " +
+                            status +
+                            ". Unpaid requests should return 402, not auth errors.";
+                    } else if (status === 404) {
+                        fix =
+                            "Fix: URL not found (404). Check the path matches your live endpoint.";
+                    } else if (status) {
+                        fix =
+                            "Fix: we expected HTTP 402 but got " +
+                            status +
+                            ". Ensure unpaid requests return 402 with valid payment JSON.";
+                    } else if (data.error) {
+                        fix = "Fix: " + data.error;
+                    } else {
+                        fix =
+                            "Fix: ensure the URL is reachable and returns HTTP 402 when unpaid.";
+                    }
+                    return (
+                        "<strong>Step 6 — not passed yet.</strong> " +
+                        fix
+                    );
+                }
+
+                function prefillFromShop() {
+                    var urlInput = document.getElementById("resourceUrl");
+                    if (!urlInput || urlInput.value.trim()) return;
+                    try {
+                        var origin = localStorage.getItem("pr402-service-url");
+                        if (origin && origin.trim()) {
+                            urlInput.placeholder = origin.trim() + "/api/your-endpoint";
+                        }
+                    } catch (_) {}
+                }
+
+                async function checkShopReady() {
+                    shopReady = false;
+                    if (!wallet) {
+                        if (preflightEl) preflightEl.classList.add("hidden");
+                        paintConnect();
+                        return;
+                    }
+                    try {
+                        var res = await fetch(
+                            "/api/v1/facilitator/sellers/" +
+                                encodeURIComponent(wallet) +
+                                "/preview",
+                        );
+                        if (!res.ok) throw new Error("HTTP " + res.status);
+                        var data = await res.json();
+                        var lc = data.lifecycle || {};
+                        shopReady = !!lc.activated && !!lc.verified;
+                        if (preflightEl) {
+                            if (shopReady) {
+                                preflightEl.classList.add("hidden");
+                            } else {
+                                preflightEl.classList.remove("hidden");
+                                var parts = [];
+                                if (!lc.activated)
+                                    parts.push("Activate (step 2)");
+                                if (!lc.verified)
+                                    parts.push("Register shop (step 3)");
+                                preflightMsg.textContent =
+                                    " Still needed: " + parts.join(" and ") + ".";
+                            }
+                        }
+                    } catch (e) {
+                        if (preflightEl) {
+                            preflightEl.classList.remove("hidden");
+                            preflightMsg.textContent =
+                                " Could not check your progress — complete steps 2–3 on the home page.";
+                        }
+                    }
+                    paintConnect();
                 }
 
                 function base58Encode(bytes) {
@@ -207,10 +424,10 @@
                     return out;
                 }
 
-                var walletBundleStarted = false;
+                var walletBundlePromise = null;
                 async function ensureWalletBundle() {
-                    if (walletBundleStarted) return;
-                    walletBundleStarted = true;
+                    if (walletBundlePromise) return walletBundlePromise;
+                    walletBundlePromise = (async function () {
                     await new Promise(function (resolve, reject) {
                         var s = document.createElement("script");
                         s.src = "/wallet.js";
@@ -221,16 +438,35 @@
                     });
                     if (typeof MountWalletAdapter === "function")
                         MountWalletAdapter();
+                    })();
+                    return walletBundlePromise;
                 }
 
-                function showWalletModal() {
-                    if (window.ShowWalletModal) window.ShowWalletModal();
+                async function showWalletModal() {
+                    try {
+                        await ensureWalletBundle();
+                    } catch (e) {
+                        setStatus("Wallet bundle failed to load.", true);
+                        return;
+                    }
+                    if (window.ShowWalletModal) {
+                        window.ShowWalletModal();
+                    } else {
+                        setStatus("Wallet UI not ready — try again.", true);
+                    }
                 }
 
                 function requireWalletForSign() {
                     if (!wallet) {
                         setStatus("Connect wallet first.", true);
                         showWalletModal();
+                        return false;
+                    }
+                    if (!shopReady) {
+                        setStatus(
+                            "Complete Activate and Register shop on the home page first.",
+                            true,
+                        );
                         return false;
                     }
                     if (typeof window.MiracleMessageSigner !== "function") {
@@ -240,21 +476,9 @@
                     return true;
                 }
 
-                async function signedChallenge() {
-                    var chRes = await fetch(
-                        "/api/v1/facilitator/resources/register/challenge?wallet=" +
-                            encodeURIComponent(wallet),
-                    );
-                    var ch = await chRes.json();
-                    if (!chRes.ok) throw new Error(ch.error || chRes.status);
-                    var sigB64 = await window.MiracleMessageSigner(ch.message);
-                    var sigB58 = base58Encode(base64ToBytes(sigB64));
-                    return { message: ch.message, signature: sigB58 };
-                }
-
-                async function refreshList() {
+                async function refreshList(auth) {
                     if (!wallet) return;
-                    var auth = await signedChallenge();
+                    if (!auth) auth = await getAuth(false);
                     var res = await fetch(
                         "/api/v1/facilitator/sellers/" +
                             encodeURIComponent(wallet) +
@@ -270,10 +494,35 @@
                     if (res.ok) {
                         try {
                             var data = JSON.parse(txt);
-                            if (data.entries && data.entries[0])
-                                lastId = data.entries[0].public.id;
+                            var entries = data.entries || [];
+                            if (entries.length) {
+                                lastId = entries[entries.length - 1].public.id;
+                            }
                         } catch (e) {}
                     }
+                }
+
+                async function runProbe(id, auth) {
+                    if (!auth) auth = await getAuth(false);
+                    var res = await fetch("/api/v1/facilitator/resources/probe", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            wallet: wallet,
+                            message: auth.message,
+                            signature: auth.signature,
+                            id: id,
+                        }),
+                    });
+                    var txt = await res.text();
+                    var data;
+                    try {
+                        data = JSON.parse(txt);
+                    } catch (e) {
+                        throw new Error(txt || "Probe failed");
+                    }
+                    if (!res.ok) throw new Error(data.error || txt);
+                    return data;
                 }
 
                 window.addEventListener("miracle-pubkey", function (ev) {
@@ -287,17 +536,17 @@
                         wallet = "";
                     }
                     setStatus(wallet ? "Wallet: " + wallet : "");
+                    clearAuthCache();
                     paintConnect();
-                    if (wallet)
-                        refreshList().catch(function (e) {
-                            setStatus(e.message, true);
-                        });
+                    checkShopReady();
                 });
 
                 if (btnConnect) {
                     btnConnect.addEventListener("click", function () {
                         if (wallet) {
                             wallet = "";
+                            shopReady = false;
+                            clearAuthCache();
                             paintConnect();
                             if (window.MiracleWalletDisconnecter) {
                                 try {
@@ -305,29 +554,48 @@
                                 } catch (_) {}
                             }
                             setStatus("Disconnected.");
+                            if (preflightEl) preflightEl.classList.add("hidden");
                             return;
                         }
-                        showWalletModal();
+                        showWalletModal().catch(function (e) {
+                            setStatus(String(e.message || e), true);
+                        });
+                    });
+                }
+
+                if (btnLoadApis) {
+                    btnLoadApis.addEventListener("click", async function () {
+                        if (!requireWalletForSign()) return;
+                        try {
+                            listOut.textContent = "Loading…";
+                            await refreshList();
+                        } catch (e) {
+                            listOut.textContent = String(e.message || e);
+                        }
                     });
                 }
 
                 btnRegister.addEventListener("click", async function () {
                     if (!requireWalletForSign()) return;
+                    var listingOn =
+                        document.getElementById("listingOptIn").checked;
                     try {
-                        var auth = await signedChallenge();
+                        setFormResult("Registering your API…");
+                        clearAuthCache();
+                        var auth = await getAuth(true);
                         var body = {
                             wallet: wallet,
                             message: auth.message,
                             signature: auth.signature,
                             resource: {
-                                resourceUrl: document.getElementById("resourceUrl").value,
+                                resourceUrl:
+                                    document.getElementById("resourceUrl").value,
                                 title: document.getElementById("title").value,
                                 description:
                                     document.getElementById("description").value ||
                                     undefined,
                                 scheme: document.getElementById("scheme").value,
-                                listingOptIn:
-                                    document.getElementById("listingOptIn").checked,
+                                listingOptIn: listingOn,
                             },
                         };
                         var res = await fetch(
@@ -338,36 +606,61 @@
                                 body: JSON.stringify(body),
                             },
                         );
-                        formOut.textContent = await res.text();
-                        await refreshList();
-                    } catch (e) {
-                        formOut.textContent = String(e.message || e);
-                    }
-                });
+                        var txt = await res.text();
+                        var reg;
+                        try {
+                            reg = JSON.parse(txt);
+                        } catch (e) {
+                            setFormResult(txt, true);
+                            return;
+                        }
+                        if (!res.ok) {
+                            var errMsg = reg.error || txt;
+                            if (res.status === 403) {
+                                errMsg =
+                                    "Complete Register shop (step 3) on the home page first. " +
+                                    (reg.error || "");
+                            }
+                            setFormResult(errMsg, true);
+                            return;
+                        }
+                        var newId =
+                            reg.id ||
+                            (reg.public && reg.public.id) ||
+                            (reg.resource && reg.resource.id);
+                        if (newId) lastId = newId;
+                        markGoLiveProgress(false);
 
-                btnProbe.addEventListener("click", async function () {
-                    if (!requireWalletForSign()) return;
-                    if (!lastId) return (formOut.textContent = "No resource id");
-                    try {
-                        var auth = await signedChallenge();
-                        var res = await fetch("/api/v1/facilitator/resources/probe", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                wallet: wallet,
-                                message: auth.message,
-                                signature: auth.signature,
-                                id: lastId,
-                            }),
-                        });
-                        formOut.textContent = await res.text();
-                        await refreshList();
+                        if (listingOn && lastId) {
+                            setFormResult(
+                                "<strong>API registered.</strong> Running step 6 — checking your 402…",
+                            );
+                            try {
+                                var probe = await runProbe(lastId, auth);
+                                markGoLiveProgress(probe.ok);
+                                setFormResult(probePlainEnglish(probe), !probe.ok);
+                                await refreshList(auth);
+                            } catch (pe) {
+                                setFormResult(
+                                    "API registered, but step 6 check failed: " +
+                                        (pe.message || pe),
+                                    true,
+                                );
+                            }
+                        } else {
+                            markGoLiveProgress(false);
+                            setFormResult(
+                                "<strong>API registered.</strong> Turn on “Show in public directory” to run step 6 automatically.",
+                            );
+                            await refreshList(auth);
+                        }
                     } catch (e) {
-                        formOut.textContent = String(e.message || e);
+                        setFormResult(String(e.message || e), true);
                     }
                 });
 
                 document.addEventListener("DOMContentLoaded", function () {
+                    prefillFromShop();
                     ensureWalletBundle().catch(function (e) {
                         setStatus("Wallet bundle failed to load.", true);
                     });

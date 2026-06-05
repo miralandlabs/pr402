@@ -933,6 +933,94 @@
                 font-weight: 500;
                 vertical-align: 0.15em;
             }
+
+            /* Go-live checklist — one linear seller journey */
+            .go-live-checklist {
+                margin: 0 0 1.5rem;
+                border: 1px solid var(--rule);
+                background: var(--bg-alt);
+                padding: 1rem 1.1rem 1.1rem;
+            }
+            .go-live-lead {
+                margin: 0 0 1rem;
+                font-size: 13px;
+                color: var(--fg-dim);
+            }
+            .go-live-steps {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+            }
+            .go-live-step {
+                display: grid;
+                grid-template-columns: 2rem 1fr auto;
+                gap: 0.75rem 1rem;
+                align-items: center;
+                padding: 0.65rem 0;
+                border-top: 1px solid var(--rule);
+            }
+            .go-live-step:first-child {
+                border-top: none;
+                padding-top: 0;
+            }
+            .go-live-num {
+                display: inline-flex;
+                width: 1.75rem;
+                height: 1.75rem;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid var(--fg-faint);
+                color: var(--fg-dim);
+                font-weight: 700;
+                font-size: 12px;
+            }
+            .go-live-step[data-state="done"] .go-live-num {
+                border-color: var(--accent);
+                color: var(--accent);
+                background: var(--accent-soft);
+            }
+            .go-live-step[data-state="current"] .go-live-num {
+                border-color: var(--amber);
+                color: var(--amber);
+            }
+            .go-live-title {
+                font-size: 13px;
+                font-weight: 600;
+                margin: 0;
+            }
+            .go-live-desc {
+                font-size: 11px;
+                color: var(--fg-faint);
+                margin: 0.15rem 0 0;
+            }
+            .go-live-pill {
+                font-size: 10px;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                font-weight: 600;
+                padding: 0.2em 0.55em;
+                border: 1px solid var(--rule);
+                color: var(--fg-dim);
+                min-width: 5.5rem;
+                text-align: center;
+                white-space: nowrap;
+            }
+            .go-live-step[data-state="done"] .go-live-pill {
+                color: var(--accent);
+                border-color: var(--accent);
+            }
+            .go-live-step[data-state="current"] .go-live-pill {
+                color: var(--amber);
+                border-color: var(--amber);
+            }
+            .go-live-step[data-state="info"] .go-live-pill {
+                color: var(--fg-faint);
+                border-style: dashed;
+            }
+            .go-live-cta {
+                font-size: 11px;
+                margin-top: 0.25rem;
+            }
             .ladder-status {
                 font-size: 11px;
                 letter-spacing: 0.1em;
@@ -1248,7 +1336,7 @@
                     <a href="/openapi.json">openapi.json</a>
                     <a href="/api/v1/facilitator/capabilities">capabilities</a>
                     <a href="#directory">browse payable APIs</a>
-                    <a href="/resources">register your API</a>
+                    <a href="/resources">add your API · step 5</a>
                     <a href="/api/v1/facilitator/health">health</a>
                     <a href="/agent-integration.md">agent-integration.md</a>
                     <a href="/agent-payTo-semantics.json">payTo semantics</a>
@@ -1301,14 +1389,143 @@
 
             <!-- Seller lifecycle ladder -->
             <section id="seller-lifecycle">
-                <h2><span class="hash">§</span>seller lifecycle</h2>
+                <h2><span class="hash">§</span>go live · seller</h2>
                 <p class="muted">
-                    Three stages, in order. <strong>Preview</strong> is pure
-                    math — nothing changes. <strong>Activate</strong> puts your
-                    SplitVault on-chain and unlocks the sovereign fee tier.
-                    <strong>Verify</strong> is optional and registers your
-                    wallet in the off-chain discovery index.
+                    List your API in the
+                    <a href="#directory">public directory</a> by following the
+                    six steps below — same path on this page and on
+                    <a href="/resources">Add your API</a>. No extra setup beyond
+                    what each step asks for.
                 </p>
+
+                <div
+                    class="go-live-checklist"
+                    id="go-live-checklist"
+                    aria-label="Go live in 6 steps"
+                >
+                    <p class="go-live-lead">
+                        <strong>Go live in 6 steps.</strong> Do them in order.
+                        Steps 2–4 are on this page; steps 5–6 continue on
+                        <a href="/resources">Add your API</a>.
+                    </p>
+                    <ol class="go-live-steps">
+                        <li
+                            class="go-live-step"
+                            id="gl-step-1"
+                            data-state="info"
+                        >
+                            <span class="go-live-num">1</span>
+                            <div>
+                                <p class="go-live-title">
+                                    Your API returns 402 when unpaid
+                                </p>
+                                <p class="go-live-desc">
+                                    Integrate x402 on your server first.
+                                </p>
+                                <p class="go-live-cta">
+                                    <a
+                                        class="pr402-docs-link"
+                                        href="https://docs.ipay.sh/quickstart-seller.html"
+                                        >seller quickstart</a
+                                    >
+                                </p>
+                            </div>
+                            <span class="go-live-pill">on your server</span>
+                        </li>
+                        <li
+                            class="go-live-step"
+                            id="gl-step-2"
+                            data-state="pending"
+                        >
+                            <span class="go-live-num">2</span>
+                            <div>
+                                <p class="go-live-title">
+                                    Activate your payment vault
+                                </p>
+                                <p class="go-live-desc">
+                                    Connect wallet → activate below.
+                                </p>
+                                <p class="go-live-cta">
+                                    <a href="#ladder-activate">go to step 2</a>
+                                </p>
+                            </div>
+                            <span class="go-live-pill">not started</span>
+                        </li>
+                        <li
+                            class="go-live-step"
+                            id="gl-step-3"
+                            data-state="pending"
+                        >
+                            <span class="go-live-num">3</span>
+                            <div>
+                                <p class="go-live-title">
+                                    Register your shop
+                                </p>
+                                <p class="go-live-desc">
+                                    API website + sign with wallet.
+                                </p>
+                                <p class="go-live-cta">
+                                    <a href="#ladder-verify">go to step 3</a>
+                                </p>
+                            </div>
+                            <span class="go-live-pill">not started</span>
+                        </li>
+                        <li
+                            class="go-live-step"
+                            id="gl-step-4"
+                            data-state="pending"
+                        >
+                            <span class="go-live-num">4</span>
+                            <div>
+                                <p class="go-live-title">
+                                    Preview vault addresses
+                                    <span class="ladder-optional">optional</span>
+                                </p>
+                                <p class="go-live-desc">
+                                    Read-only — skip if you like.
+                                </p>
+                                <p class="go-live-cta">
+                                    <a href="#ladder-preview">go to step 4</a>
+                                </p>
+                            </div>
+                            <span class="go-live-pill">optional</span>
+                        </li>
+                        <li
+                            class="go-live-step"
+                            id="gl-step-5"
+                            data-state="pending"
+                        >
+                            <span class="go-live-num">5</span>
+                            <div>
+                                <p class="go-live-title">Add your API</p>
+                                <p class="go-live-desc">
+                                    URL, title, sign on the register page.
+                                </p>
+                                <p class="go-live-cta">
+                                    <a href="/resources">continue to step 5</a>
+                                </p>
+                            </div>
+                            <span class="go-live-pill">not started</span>
+                        </li>
+                        <li
+                            class="go-live-step"
+                            id="gl-step-6"
+                            data-state="pending"
+                        >
+                            <span class="go-live-num">6</span>
+                            <div>
+                                <p class="go-live-title">
+                                    We verify your 402
+                                </p>
+                                <p class="go-live-desc">
+                                    Automatic after step 5 when listing
+                                    publicly.
+                                </p>
+                            </div>
+                            <span class="go-live-pill">automatic</span>
+                        </li>
+                    </ol>
+                </div>
 
                 <!-- Facilitator fee schedule · mirrors the live Universalsettle Config account on mainnet
              and the sla-escrow Escrow parameters. Numbers here match what /capabilities returns;
@@ -1448,47 +1665,10 @@
                         />
                     </div>
                     <p class="hint">
-                        All three stages operate on this pubkey. Step 2 and Step
-                        3 require the wallet's signature; they fall back to the
-                        pasted value only for Preview.
+                        Steps 2–3 need your wallet signature. Step 4 (preview)
+                        can use a pasted pubkey only.
                     </p>
                 </div>
-
-                <!-- Step 1 · Preview -->
-                <article class="ladder-step" id="ladder-preview">
-                    <header class="ladder-head">
-                        <span class="ladder-num">1</span>
-                        <div class="ladder-title">
-                            <h3>Preview</h3>
-                            <span class="ladder-sub"
-                                >read-only · no wallet · no state change</span
-                            >
-                        </div>
-                        <span class="ladder-status" data-status="pending"
-                            >pending</span
-                        >
-                    </header>
-                    <div class="ladder-body">
-                        <p>
-                            Resolve your canonical vault PDAs for every rail
-                            this deployment supports. This is pure math: nothing
-                            is written to disk, chain, or database.
-                        </p>
-                        <div class="action-row">
-                            <button class="btn primary" id="btn-preview-run">
-                                resolve
-                            </button>
-                        </div>
-                        <div class="hint">
-                            GET /api/v1/facilitator/sellers/{wallet}/preview
-                        </div>
-                        <div
-                            class="probe-output"
-                            id="out-preview"
-                            aria-live="polite"
-                        ></div>
-                    </div>
-                </article>
 
                 <!-- Step 2 · Activate -->
                 <article class="ladder-step" id="ladder-activate">
@@ -1564,18 +1744,15 @@
                     </div>
                 </article>
 
-                <!-- Step 3 · Verify -->
+                <!-- Step 3 · Register shop -->
                 <article class="ladder-step" id="ladder-verify">
                     <header class="ladder-head">
                         <span class="ladder-num">3</span>
                         <div class="ladder-title">
-                            <h3>
-                                Verify identity
-                                <span class="ladder-optional">optional</span>
-                            </h3>
+                            <h3>Register your shop</h3>
                             <span class="ladder-sub"
-                                >off-chain registry · wallet signs a message ·
-                                listed in discovery</span
+                                >required for directory · wallet signs · step 3
+                                of 6</span
                             >
                         </div>
                         <span class="ladder-status" data-status="pending"
@@ -1584,40 +1761,36 @@
                     </header>
                     <div class="ladder-body">
                         <p>
-                            Proves key control over the wallet and records a
-                            verified row in the facilitator's
-                            <code>resource_providers</code> index. Not required
-                            to accept payments, but buyers can filter by
-                            verified sellers. The facilitator refuses this step
-                            until Activate has put the vault on-chain.
+                            Proves you control this wallet and registers your
+                            shop so you can list APIs in the
+                            <a href="#directory">public directory</a>. Complete
+                            <strong>Activate</strong> (step 2) first.
+                        </p>
+
+                        <div class="input-row">
+                            <span style="color: var(--accent)"
+                                >API website &gt;</span
+                            >
+                            <input
+                                type="text"
+                                id="verify-service-url"
+                                placeholder="https://your-api.example.com"
+                                autocomplete="off"
+                                spellcheck="false"
+                                required
+                            />
+                        </div>
+                        <p class="hint">
+                            Your API’s public origin (scheme + host). Step 5
+                            resource URLs must use the same host.
                         </p>
 
                         <details class="ladder-details">
-                            <summary>
-                                Publish listing details (optional)
-                            </summary>
+                            <summary>More shop details (optional)</summary>
                             <p class="muted ladder-help">
-                                Fill these in to appear on the public
-                                <a href="/api/v1/facilitator/providers"
-                                    >/providers</a
-                                >
-                                directory. The facilitator only verifies wallet
-                                control; it does not vet the advertised service.
-                                All fields are optional; leave empty to register
-                                without a public listing.
+                                Optional extras for the merchant directory.
+                                The facilitator only verifies wallet control.
                             </p>
-                            <div class="input-row">
-                                <span style="color: var(--accent)"
-                                    >service URL &gt;</span
-                                >
-                                <input
-                                    type="text"
-                                    id="verify-service-url"
-                                    placeholder="https://your-api.example.com/premium"
-                                    autocomplete="off"
-                                    spellcheck="false"
-                                />
-                            </div>
                             <div class="input-row">
                                 <span style="color: var(--accent)"
                                     >display name &gt;</span
@@ -1681,13 +1854,15 @@
                                 id="btn-verify-identity"
                                 disabled
                             >
-                                sign &amp; register
+                                sign &amp; register shop
                             </button>
+                            <a class="btn" href="/resources" id="btn-after-verify"
+                                >next: add your API (step 5)</a
+                            >
                         </div>
                         <div class="hint">
-                            GET /api/v1/facilitator/sellers/{wallet}/challenge →
-                            wallet signs message → POST
-                            /api/v1/facilitator/sellers/{wallet}/register
+                            After this step, continue to
+                            <a href="/resources">Add your API</a> (steps 5–6).
                         </div>
                         <div
                             class="probe-output"
@@ -1721,6 +1896,45 @@
                         </div>
                     </div>
                 </article>
+
+                <!-- Step 4 · Preview (optional) -->
+                <article class="ladder-step" id="ladder-preview">
+                    <header class="ladder-head">
+                        <span class="ladder-num">4</span>
+                        <div class="ladder-title">
+                            <h3>
+                                Preview vault addresses
+                                <span class="ladder-optional">optional</span>
+                            </h3>
+                            <span class="ladder-sub"
+                                >read-only · no wallet · no state change</span
+                            >
+                        </div>
+                        <span class="ladder-status" data-status="pending"
+                            >pending</span
+                        >
+                    </header>
+                    <div class="ladder-body">
+                        <p>
+                            Resolve your canonical vault PDAs for every rail
+                            this deployment supports. This is pure math: nothing
+                            is written to disk, chain, or database.
+                        </p>
+                        <div class="action-row">
+                            <button class="btn primary" id="btn-preview-run">
+                                resolve
+                            </button>
+                        </div>
+                        <div class="hint">
+                            GET /api/v1/facilitator/sellers/{wallet}/preview
+                        </div>
+                        <div
+                            class="probe-output"
+                            id="out-preview"
+                            aria-live="polite"
+                        ></div>
+                    </div>
+                </article>
             </section>
 
             <!-- Audiences -->
@@ -1729,13 +1943,12 @@
                 <div class="cards">
                     <article class="card">
                         <span class="label">sellers · resource providers</span>
-                        <h3>Monetize an API in ~30 min</h3>
+                        <h3>Go live in 6 steps</h3>
                         <p>
-                            UniversalSettle split-vault onboarding, sovereign
-                            discount path, optional signed registry.
-                            <code>sla-escrow</code> for buyer escrow protection
-                            (pr402-only). Your 402 <code>payTo</code> must be a
-                            program PDA — not a bare wallet.
+                            Follow the checklist above: integrate 402 on your
+                            server, activate vault, register shop, add your API.
+                            Listed APIs appear in
+                            <a href="#directory">browse payable APIs</a>.
                         </p>
                         <ul>
                             <li>
@@ -2453,6 +2666,103 @@
                     );
                 }
 
+                function initGoLiveChecklist() {
+                    var steps = {
+                        2: document.getElementById("gl-step-2"),
+                        3: document.getElementById("gl-step-3"),
+                        4: document.getElementById("gl-step-4"),
+                        5: document.getElementById("gl-step-5"),
+                        6: document.getElementById("gl-step-6"),
+                    };
+
+                    function setGl(stepEl, state, pill) {
+                        if (!stepEl) return;
+                        stepEl.setAttribute("data-state", state);
+                        var pillEl = stepEl.querySelector(".go-live-pill");
+                        if (pillEl && pill) pillEl.textContent = pill;
+                    }
+
+                    function readGoLiveCache(wallet) {
+                        if (!wallet) return null;
+                        try {
+                            var raw = localStorage.getItem(
+                                "pr402-go-live-" + wallet,
+                            );
+                            if (raw) return JSON.parse(raw);
+                        } catch (_) {}
+                        return null;
+                    }
+
+                    window.__PR402_UPDATE_GO_LIVE__ = function (
+                        lc,
+                        resourceStatus,
+                        wallet,
+                    ) {
+                        lc = lc || {};
+                        var rs = resourceStatus || null;
+                        if (!rs && wallet) {
+                            var cached = readGoLiveCache(wallet);
+                            if (cached) {
+                                rs = {
+                                    hasResources: !!cached.step5,
+                                    hasProbeOk: !!cached.step6,
+                                };
+                            }
+                        }
+                        if (lc.activated) {
+                            setGl(steps[2], "done", "done");
+                        } else if (lc.nextStep === "activate" || lc.previewed) {
+                            setGl(steps[2], "current", "next");
+                        } else {
+                            setGl(steps[2], "pending", "not started");
+                        }
+                        if (lc.verified) {
+                            setGl(steps[3], "done", "done");
+                        } else if (lc.activated) {
+                            setGl(steps[3], "current", "next");
+                        } else {
+                            setGl(steps[3], "pending", "not started");
+                        }
+                        if (lc.previewed) {
+                            setGl(steps[4], "done", "done");
+                        } else {
+                            setGl(steps[4], "info", "optional");
+                        }
+                        if (rs && rs.hasResources) {
+                            setGl(steps[5], "done", "done");
+                        } else if (lc.verified) {
+                            setGl(steps[5], "current", "next");
+                        } else {
+                            setGl(steps[5], "pending", "not started");
+                        }
+                        if (rs && rs.hasProbeOk) {
+                            setGl(steps[6], "done", "done");
+                        } else if (rs && rs.hasResources) {
+                            setGl(steps[6], "current", "next");
+                        } else if (lc.verified) {
+                            setGl(steps[6], "pending", "after step 5");
+                        } else {
+                            setGl(steps[6], "pending", "automatic");
+                        }
+                    };
+
+                    window.__PR402_UPDATE_GO_LIVE__(null);
+
+                    var walletInputForGl =
+                        document.getElementById("wallet-input");
+                    if (walletInputForGl) {
+                        walletInputForGl.addEventListener("input", function () {
+                            var w = (walletInputForGl.value || "").trim();
+                            if (!w) return;
+                            window.__PR402_UPDATE_GO_LIVE__(
+                                window.__PR402_LAST_LIFECYCLE__ || {},
+                                null,
+                                w,
+                            );
+                        });
+                    }
+                }
+
                 function initLifecycleLadder() {
                     var input = document.getElementById("wallet-input");
                     var btnPreview = document.getElementById("btn-preview-run");
@@ -2484,6 +2794,7 @@
                     function applyLifecycle(lifecycle) {
                         // Default to "pending"; lifecycle may be absent on older servers.
                         var lc = lifecycle || {};
+                        window.__PR402_LAST_LIFECYCLE__ = lc;
                         var nextStep = lc.nextStep || null;
                         setStep(
                             stepPreview,
@@ -2510,19 +2821,27 @@
                             statusVerify,
                             lc.verified
                                 ? "done"
-                                : nextStep === "verify"
+                                : nextStep === "verify" || lc.activated
                                   ? "current"
-                                  : lc.activated
-                                    ? "pending"
-                                    : "pending",
+                                  : "pending",
                             lc.verified
                                 ? "done"
-                                : nextStep === "verify"
+                                : nextStep === "verify" || lc.activated
                                   ? "current"
-                                  : lc.activated
-                                    ? "optional"
-                                    : "pending",
+                                  : "pending",
                         );
+                        if (
+                            typeof window.__PR402_UPDATE_GO_LIVE__ ===
+                            "function"
+                        ) {
+                            var walletPk =
+                                input && (input.value || "").trim();
+                            window.__PR402_UPDATE_GO_LIVE__(
+                                lc,
+                                null,
+                                walletPk || null,
+                            );
+                        }
                     }
 
                     function renderPreview(data) {
@@ -2943,7 +3262,7 @@
                         showWalletModal();
                     }
 
-                    function onConnectClick() {
+                    async function onConnectClick() {
                         if (connectedB58) {
                             if (window.MiracleWalletDisconnecter) {
                                 try {
@@ -2952,12 +3271,21 @@
                             }
                             return;
                         }
+                        await ensureWalletBundle();
                         showWalletModal();
                     }
                     if (btnConnect)
-                        btnConnect.addEventListener("click", onConnectClick);
+                        btnConnect.addEventListener("click", function () {
+                            onConnectClick().catch(function (e) {
+                                console.error("connect wallet", e);
+                            });
+                        });
                     if (btnConnectV)
-                        btnConnectV.addEventListener("click", onConnectClick);
+                        btnConnectV.addEventListener("click", function () {
+                            onConnectClick().catch(function (e) {
+                                console.error("connect wallet", e);
+                            });
+                        });
 
                     paint(btnConnect);
                     paint(btnConnectV);
@@ -3107,6 +3435,26 @@
                     );
                     if (!btnVerify) return;
 
+                    if (fServiceUrl) {
+                        try {
+                            var saved = localStorage.getItem(
+                                "pr402-service-url",
+                            );
+                            if (saved && !fServiceUrl.value)
+                                fServiceUrl.value = saved;
+                        } catch (_) {}
+                        fServiceUrl.addEventListener("change", function () {
+                            try {
+                                var v = (fServiceUrl.value || "").trim();
+                                if (v)
+                                    localStorage.setItem(
+                                        "pr402-service-url",
+                                        v,
+                                    );
+                            } catch (_) {}
+                        });
+                    }
+
                     function setStatus(txt, isError) {
                         out.classList.toggle("is-error", !!isError);
                         out.textContent = txt || "";
@@ -3164,6 +3512,16 @@
                                 "Wallet bundle not ready (MiracleMessageSigner).",
                                 true,
                             );
+                            return;
+                        }
+                        var serviceUrl =
+                            fServiceUrl && (fServiceUrl.value || "").trim();
+                        if (!serviceUrl) {
+                            setStatus(
+                                "Enter your API website (step 3) — required for the public directory.",
+                                true,
+                            );
+                            if (fServiceUrl) fServiceUrl.focus();
                             return;
                         }
                         var asset =
@@ -3233,8 +3591,14 @@
                                 );
                             }
                             setStatus(
-                                "Verified. Your wallet is registered as a resource provider.",
+                                "Shop registered. Continue to Add your API (step 5): /resources",
                             );
+                            try {
+                                localStorage.setItem(
+                                    "pr402-service-url",
+                                    serviceUrl,
+                                );
+                            } catch (_) {}
                             if (
                                 typeof window.__PR402_REFRESH_LADDER__ ===
                                 "function"
@@ -3776,9 +4140,12 @@
                     initTabs();
                     initCapabilitiesProbe();
                     initResourceDirectory();
+                    initGoLiveChecklist();
                     initLifecycleLadder();
                     initOracleEmail();
                     var walletState = initWalletState();
+                    window.__PR402_CONNECTED_WALLET__ =
+                        walletState.currentPubkey;
                     initActivateStep(walletState);
                     initVerifyStep(walletState);
                     initRetireStep(walletState);
