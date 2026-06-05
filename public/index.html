@@ -2682,8 +2682,33 @@
                         if (pillEl && pill) pillEl.textContent = pill;
                     }
 
-                    window.__PR402_UPDATE_GO_LIVE__ = function (lc) {
+                    function readGoLiveCache(wallet) {
+                        if (!wallet) return null;
+                        try {
+                            var raw = localStorage.getItem(
+                                "pr402-go-live-" + wallet,
+                            );
+                            if (raw) return JSON.parse(raw);
+                        } catch (_) {}
+                        return null;
+                    }
+
+                    window.__PR402_UPDATE_GO_LIVE__ = function (
+                        lc,
+                        resourceStatus,
+                        wallet,
+                    ) {
                         lc = lc || {};
+                        var rs = resourceStatus || null;
+                        if (!rs && wallet) {
+                            var cached = readGoLiveCache(wallet);
+                            if (cached) {
+                                rs = {
+                                    hasResources: !!cached.step5,
+                                    hasProbeOk: !!cached.step6,
+                                };
+                            }
+                        }
                         if (lc.activated) {
                             setGl(steps[2], "done", "done");
                         } else if (lc.nextStep === "activate" || lc.previewed) {
@@ -2693,27 +2718,125 @@
                         }
                         if (lc.verified) {
                             setGl(steps[3], "done", "done");
-                            setGl(steps[5], "current", "next");
                         } else if (lc.activated) {
                             setGl(steps[3], "current", "next");
-                            setGl(steps[5], "pending", "not started");
                         } else {
                             setGl(steps[3], "pending", "not started");
-                            setGl(steps[5], "pending", "not started");
                         }
                         if (lc.previewed) {
                             setGl(steps[4], "done", "done");
                         } else {
                             setGl(steps[4], "info", "optional");
                         }
-                        if (lc.verified) {
+                        if (rs && rs.hasResources) {
+                            setGl(steps[5], "done", "done");
+                        } else if (lc.verified) {
+                            setGl(steps[5], "current", "next");
+                        } else {
+                            setGl(steps[5], "pending", "not started");
+                        }
+                        if (rs && rs.hasProbeOk) {
+                            setGl(steps[6], "done", "done");
+                        } else if (rs && rs.hasResources) {
+                            setGl(steps[6], "current", "next");
+                        } else if (lc.verified) {
                             setGl(steps[6], "pending", "after step 5");
                         } else {
                             setGl(steps[6], "pending", "automatic");
                         }
                     };
 
+                    window.__PR402_FETCH_GO_LIVE_RESOURCES__ = async function (
+                        wallet,
+                    ) {
+                        if (
+                            !wallet ||
+                            typeof window.MiracleMessageSigner !== "function"
+                        ) {
+                            return null;
+                        }
+                        try {
+                            var chRes = await fetch(
+                                "/api/v1/facilitator/resources/register/challenge?wallet=" +
+                                    encodeURIComponent(wallet),
+                            );
+                            var ch = await chRes.json();
+                            if (!chRes.ok) return null;
+                            var sigB64 =
+                                await window.MiracleMessageSigner(ch.message);
+                            var sigB58 = base58Encode(
+                                base64ToBytes(sigB64),
+                            );
+                            var res = await fetch(
+                                "/api/v1/facilitator/sellers/" +
+                                    encodeURIComponent(wallet) +
+                                    "/resources",
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                        message: ch.message,
+                                        signature: sigB58,
+                                    }),
+                                },
+                            );
+                            if (!res.ok) return null;
+                            var data = await res.json();
+                            var entries = data.entries || [];
+                            var status = {
+                                hasResources: entries.length > 0,
+                                hasProbeOk: entries.some(function (e) {
+                                    return e.lastProbeOk === true;
+                                }),
+                            };
+                            try {
+                                localStorage.setItem(
+                                    "pr402-go-live-" + wallet,
+                                    JSON.stringify({
+                                        step5: status.hasResources,
+                                        step6: status.hasProbeOk,
+                                        at: Date.now(),
+                                    }),
+                                );
+                            } catch (_) {}
+                            var input =
+                                document.getElementById("wallet-input");
+                            var lcWallet =
+                                input && (input.value || "").trim();
+                            if (
+                                typeof window.__PR402_UPDATE_GO_LIVE__ ===
+                                    "function" &&
+                                lcWallet === wallet
+                            ) {
+                                window.__PR402_UPDATE_GO_LIVE__(
+                                    window.__PR402_LAST_LIFECYCLE__ || {},
+                                    status,
+                                    wallet,
+                                );
+                            }
+                            return status;
+                        } catch (_) {
+                            return null;
+                        }
+                    };
+
                     window.__PR402_UPDATE_GO_LIVE__(null);
+
+                    var walletInputForGl =
+                        document.getElementById("wallet-input");
+                    if (walletInputForGl) {
+                        walletInputForGl.addEventListener("input", function () {
+                            var w = (walletInputForGl.value || "").trim();
+                            if (!w) return;
+                            window.__PR402_UPDATE_GO_LIVE__(
+                                window.__PR402_LAST_LIFECYCLE__ || {},
+                                null,
+                                w,
+                            );
+                        });
+                    }
                 }
 
                 function initLifecycleLadder() {
@@ -2747,6 +2870,7 @@
                     function applyLifecycle(lifecycle) {
                         // Default to "pending"; lifecycle may be absent on older servers.
                         var lc = lifecycle || {};
+                        window.__PR402_LAST_LIFECYCLE__ = lc;
                         var nextStep = lc.nextStep || null;
                         setStep(
                             stepPreview,
@@ -2786,7 +2910,26 @@
                             typeof window.__PR402_UPDATE_GO_LIVE__ ===
                             "function"
                         ) {
-                            window.__PR402_UPDATE_GO_LIVE__(lc);
+                            window.__PR402_UPDATE_GO_LIVE__(
+                                lc,
+                                null,
+                                wallet,
+                            );
+                        }
+                        var connected =
+                            typeof window.__PR402_CONNECTED_WALLET__ ===
+                            "function"
+                                ? window.__PR402_CONNECTED_WALLET__()
+                                : null;
+                        if (
+                            connected &&
+                            connected === wallet &&
+                            typeof window.__PR402_FETCH_GO_LIVE_RESOURCES__ ===
+                                "function"
+                        ) {
+                            window.__PR402_FETCH_GO_LIVE_RESOURCES__(
+                                connected,
+                            );
                         }
                     }
 
@@ -4081,6 +4224,8 @@
                     initLifecycleLadder();
                     initOracleEmail();
                     var walletState = initWalletState();
+                    window.__PR402_CONNECTED_WALLET__ =
+                        walletState.currentPubkey;
                     initActivateStep(walletState);
                     initVerifyStep(walletState);
                     initRetireStep(walletState);
