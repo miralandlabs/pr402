@@ -271,11 +271,30 @@
                     authCache = null;
                 }
 
+                /** Must match the wallet adapter's signing key (same as home page). */
+                function connectedWallet() {
+                    return window.__PR402_CONNECTED_PUBKEY__ || wallet || "";
+                }
+
+                function syncWalletFromAdapter() {
+                    var connected = connectedWallet();
+                    if (!connected) return "";
+                    if (wallet !== connected) {
+                        wallet = connected;
+                        clearAuthCache();
+                        paintConnect();
+                    }
+                    return connected;
+                }
+
                 async function getAuth(forceNew) {
+                    var who = syncWalletFromAdapter();
+                    if (!who) throw new Error("Connect wallet first.");
                     var now = Math.floor(Date.now() / 1000);
                     if (
                         !forceNew &&
                         authCache &&
+                        authCache.wallet === who &&
                         authCache.expiresUnix > now + 15
                     ) {
                         return {
@@ -284,16 +303,21 @@
                         };
                     }
                     var chRes = await fetch(
-                        "/api/v1/facilitator/resources/register/challenge?wallet=" +
-                            encodeURIComponent(wallet),
+                        "/api/v1/facilitator/sellers/" +
+                            encodeURIComponent(who) +
+                            "/challenge",
                     );
                     var ch = await chRes.json();
                     if (!chRes.ok) throw new Error(ch.error || chRes.status);
+                    if (!ch.message) throw new Error("Challenge missing message.");
                     var sigB64 = await window.MiracleMessageSigner(ch.message);
-                    var sigB58 = base58Encode(base64ToBytes(sigB64));
+                    if (!sigB64) {
+                        throw new Error("Wallet returned an empty signature.");
+                    }
                     authCache = {
+                        wallet: who,
                         message: ch.message,
-                        signature: sigB58,
+                        signature: sigB64,
                         expiresUnix:
                             ch.expiresUnix ||
                             now + (ch.ttlSeconds || 300),
@@ -477,11 +501,12 @@
                 }
 
                 async function refreshList(auth) {
-                    if (!wallet) return;
+                    var who = syncWalletFromAdapter();
+                    if (!who) return;
                     if (!auth) auth = await getAuth(false);
                     var res = await fetch(
                         "/api/v1/facilitator/sellers/" +
-                            encodeURIComponent(wallet) +
+                            encodeURIComponent(who) +
                             "/resources",
                         {
                             method: "POST",
@@ -490,6 +515,17 @@
                         },
                     );
                     var txt = await res.text();
+                    if (res.status === 401) {
+                        clearAuthCache();
+                        listOut.textContent =
+                            "Signature rejected — click Show my APIs again and sign with the same wallet shown above (" +
+                            who.slice(0, 4) +
+                            "…" +
+                            who.slice(-4) +
+                            ").\n" +
+                            txt;
+                        return;
+                    }
                     listOut.textContent = txt;
                     if (res.ok) {
                         try {
@@ -567,9 +603,12 @@
                     btnLoadApis.addEventListener("click", async function () {
                         if (!requireWalletForSign()) return;
                         try {
+                            listOut.textContent = "Sign the challenge in your wallet…";
+                            var auth = await getAuth(true);
                             listOut.textContent = "Loading…";
-                            await refreshList();
+                            await refreshList(auth);
                         } catch (e) {
+                            clearAuthCache();
                             listOut.textContent = String(e.message || e);
                         }
                     });
