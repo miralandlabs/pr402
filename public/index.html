@@ -1654,11 +1654,11 @@
                             </select>
                         </div>
                         <div class="input-row">
-                            <span style="color: var(--fg-dim)">mint &gt;</span>
+                            <span style="color: var(--fg-dim)">or custom mint &gt;</span>
                             <input
                                 type="text"
                                 id="provision-mint-override"
-                                placeholder="(optional) base58 mint overrides the list"
+                                placeholder="(optional) base58 address — overrides the asset selection above"
                                 autocomplete="off"
                                 spellcheck="false"
                             />
@@ -3249,6 +3249,18 @@
                         "provision-mint-override",
                     );
                     if (!btnProvision) return;
+
+                    if (mintOverride && assetSel) {
+                        var updateAssetOpacity = function () {
+                            var hasMint = !!mintOverride.value.trim();
+                            var assetRow = assetSel.closest ? assetSel.closest(".input-row") : assetSel.parentElement;
+                            if (assetRow) {
+                                assetRow.style.opacity = hasMint ? "0.5" : "1";
+                            }
+                        };
+                        mintOverride.addEventListener("input", updateAssetOpacity);
+                        updateAssetOpacity();
+                    }
 
                     function setStatus(txt, isError) {
                         out.classList.toggle("is-error", !!isError);
