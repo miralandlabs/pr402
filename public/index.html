@@ -1309,43 +1309,13 @@
                     Solana.
                 </p>
                 <p class="sub">
-                    pr402 is the REST bridge between off-chain agents speaking
-                    JSON and on-chain programs speaking Solana instructions. Two
-                    rails: <code>exact</code> (UniversalSettle) for instant
-                    payments, <code>sla-escrow</code> (SLA-Escrow) for
+                    pr402 bridges off-chain JSON agents and on-chain Solana
+                    programs. Two rails: <code>exact</code> (UniversalSettle)
+                    for instant payments, <code>sla-escrow</code> for
                     oracle-backed delivery with
                     <strong>buyer escrow protection</strong> — a capability
-                    standard x402 facilitators do not offer today.
+                    standard x402 facilitators do not offer.
                 </p>
-                <nav class="top">
-                    <a
-                        class="pr402-docs-link"
-                        href="https://docs.ipay.sh/start-here.html"
-                        >start here · sellers</a
-                    >
-                    <a
-                        class="pr402-docs-link"
-                        href="https://docs.ipay.sh/seller-quick-start.html"
-                        >integrate your api</a
-                    >
-                    <a
-                        class="pr402-docs-link"
-                        href="https://docs.ipay.sh/pr402-vs-alternatives.html"
-                        >why pr402?</a
-                    >
-                    <a href="/openapi.json">openapi.json</a>
-                    <a href="/api/v1/facilitator/capabilities">capabilities</a>
-                    <a href="#directory">browse payable APIs</a>
-                    <a href="/resources">add your API · step 5</a>
-                    <a href="/api/v1/facilitator/health">health</a>
-                    <a href="/agent-integration.md">agent-integration.md</a>
-                    <a href="/agent-payTo-semantics.json">payTo semantics</a>
-                    <a
-                        href="https://github.com/miraland-labs/x402"
-                        rel="noopener"
-                        >github</a
-                    >
-                </nav>
             </header>
 
             <!-- Probe: agent-facing capabilities check -->
@@ -1393,9 +1363,8 @@
                 <p class="muted">
                     List your API in the
                     <a href="#directory">public directory</a> by following the
-                    six steps below — same path on this page and on
-                    <a href="/resources">Add your API</a>. No extra setup beyond
-                    what each step asks for.
+                    six steps below. Steps 2–4 are here; steps 5–6 continue
+                    on <a href="/resources">Add your API</a>.
                 </p>
 
                 <div
@@ -1405,8 +1374,6 @@
                 >
                     <p class="go-live-lead">
                         <strong>Go live in 6 steps.</strong> Do them in order.
-                        Steps 2–4 are on this page; steps 5–6 continue on
-                        <a href="/resources">Add your API</a>.
                     </p>
                     <ol class="go-live-steps">
                         <li
@@ -1596,59 +1563,48 @@
                         Seller receives
                         <code>amount − protocol_fee − oracle_tip</code>. On
                         <code>exact</code> there is no oracle tip. On
-                        <code>sla-escrow</code> the oracle tip is paid only when
-                        the oracle rendered a verdict (<code
-                            >resolution_state ≠ 0</code
-                        >) and is a per-escrow field capped by the program at
-                        500 bps; this deployment opens escrows with the default
-                        shown above. The <code>exact · min fee</code> floor on
-                        the SPL rail is
-                        <code>$0.01 USDC (10 000 raw units)</code>; SOL-rail
-                        floor is <code>200 000 lamports</code>. See
+                        <code>sla-escrow</code> the tip is paid only on
+                        verdict (<code>resolution_state ≠ 0</code>); capped
+                        at 500 bps per escrow. SPL floor:
+                        <code>$0.01 USDC</code>; SOL floor:
+                        <code>200 000 lamports</code>. See
                         <a href="/api/v1/facilitator/capabilities"
                             >/capabilities</a
                         >
-                        for the authoritative live values.
+                        for authoritative live values.
                     </p>
                     <p class="fee-schedule-footnote">
                         <strong>Seller pricing (draft guide).</strong>
                         Protocol fee = max(bps × amount, floor). On
                         <code>exact</code>, a <code>$0.01</code> floor means a
-                        <code>$0.02</code> call pays 50% in fees and a
-                        <code>$0.05</code> call pays 20% — aim for
-                        <strong>≥ ~$0.05 USDC</strong> per call. pr402 does not
-                        subsidize sub-cent micro-payments the way some large
-                        facilitators do; the floor covers operating cost. On
-                        <code>sla-escrow</code>, protocol floor is
+                        <code>$0.02</code> call pays 50% in fees — aim for
+                        <strong>≥ ~$0.05 USDC</strong> per call. On
+                        <code>sla-escrow</code>, floor is
                         <code>$0.10</code> plus oracle tip — aim for
                         <strong>≥ ~$10 USDC</strong> per payment; use
                         <code>exact</code> for smaller tickets.
-                        <strong>Activate</strong> (self-provision on this page)
-                        lowers <code>exact</code> protocol fee from 100 bps to
-                        90 bps; ~0.1 SOL in your wallet covers the one-time
-                        on-chain setup.
+                        <strong>Activate</strong> lowers <code>exact</code>
+                        from 100 bps to 90 bps; ~0.1 SOL is more than enough
+                        for the one-time on-chain setup.
                     </p>
                     <p class="fee-schedule-footnote">
                         <strong>Buyer value · sla-escrow.</strong> Funds stay in
                         on-chain escrow until delivery terms are met or an
-                        oracle rules — refund and release paths are
-                        program-enforced. Standard x402 facilitators today
-                        settle instantly on <code>exact</code>-style rails only;
-                        pr402’s <code>sla-escrow</code> rail is the escrow
-                        option for buyers who need protection on high-value or
-                        slow fulfillment work.
+                        oracle rules — refund and release are
+                        program-enforced. Use for high-value or
+                        slow-fulfillment payments where buyer protection
+                        matters.
                     </p>
                     <p class="fee-schedule-footnote">
-                        <strong>Preview rehearsal. </strong
-                        ><code>preview.ipay.sh</code> mirrors
-                        <code>ipay.sh</code> (both rails, seller lifecycle UI,
-                        same API): flip <code>$BASE</code> when you go live.
+                        <strong>Preview rehearsal.</strong>
+                        <code>preview.ipay.sh</code> mirrors
+                        <code>ipay.sh</code> — flip <code>$BASE</code> when
+                        you go live.
                         <a
                             class="pr402-docs-link"
                             href="https://docs.ipay.sh/pr402-vs-alternatives.html"
                             >Full comparison</a
-                        >
-                        · facilitators vs buyer tools.
+                        >.
                     </p>
                 </section>
 
@@ -1687,13 +1643,12 @@
                     </header>
                     <div class="ladder-body">
                         <p>
-                            Creates your <strong>SplitVault</strong> (and the
-                            vault ATA for SPL rails). Idempotent per
+                            Creates your <strong>SplitVault</strong> (and vault
+                            ATA for SPL rails). Idempotent per
                             <code>(wallet, asset)</code> — re-running is safe.
-                            Signing with the seller wallet itself is what
-                            unlocks the
+                            Signing with the seller wallet unlocks the
                             <span class="pill accent">10 bps</span> sovereign
-                            discount (90 bps vs the standard 100 bps).
+                            discount (90 vs 100 bps).
                         </p>
                         <div class="input-row">
                             <span style="color: var(--accent)">asset &gt;</span>
@@ -1733,8 +1688,7 @@
                         </div>
                         <div class="hint">
                             POST /api/v1/facilitator/sellers/provision-tx · one
-                            asset per merchant wallet — use separate wallets for
-                            additional tokens.
+                            asset per wallet.
                         </div>
                         <div
                             class="probe-output"
@@ -1761,8 +1715,8 @@
                     </header>
                     <div class="ladder-body">
                         <p>
-                            Proves you control this wallet and registers your
-                            shop so you can list APIs in the
+                            Registers your shop (proves wallet control) so you
+                            can list APIs in the
                             <a href="#directory">public directory</a>. Complete
                             <strong>Activate</strong> (step 2) first.
                         </p>
@@ -1861,7 +1815,7 @@
                             >
                         </div>
                         <div class="hint">
-                            After this step, continue to
+                            Continue →
                             <a href="/resources">Add your API</a> (steps 5–6).
                         </div>
                         <div
@@ -1883,10 +1837,8 @@
                                 Removes the wallet from
                                 <a href="/api/v1/facilitator/providers"
                                     >/providers</a
-                                >
-                                and flags the registry row as retired. No
-                                on-chain change; existing payments still settle.
-                                Use this before rotating to a new seller wallet.
+                                >. No on-chain change; existing payments still
+                                settle. Use before rotating to a new wallet.
                             </p>
                             <div
                                 class="probe-output"
@@ -1916,9 +1868,8 @@
                     </header>
                     <div class="ladder-body">
                         <p>
-                            Resolve your canonical vault PDAs for every rail
-                            this deployment supports. This is pure math: nothing
-                            is written to disk, chain, or database.
+                            Resolve your canonical vault PDAs for every
+                            supported rail. Read-only — nothing is written.
                         </p>
                         <div class="action-row">
                             <button class="btn primary" id="btn-preview-run">
@@ -1945,8 +1896,8 @@
                         <span class="label">sellers · resource providers</span>
                         <h3>Go live in 6 steps</h3>
                         <p>
-                            Follow the checklist above: integrate 402 on your
-                            server, activate vault, register shop, add your API.
+                            Follow the
+                            <a href="#seller-lifecycle">checklist above</a>.
                             Listed APIs appear in
                             <a href="#directory">browse payable APIs</a>.
                         </p>
@@ -1992,13 +1943,13 @@
                         <span class="label">buyers · payer agents</span>
                         <h3>Pay a 402 from your agent</h3>
                         <p>
-                            Match the <code>accepts[]</code> line, call the
-                            unsigned-tx builder, sign locally, then
+                            Match <code>accepts[]</code>, call the unsigned-tx
+                            builder, sign locally, then
                             <code>POST /verify</code> and
-                            <code>POST /settle</code> with the same JSON body.
-                            On <code>sla-escrow</code>, funds stay in on-chain
-                            escrow until delivery or an oracle verdict — buyer
-                            protection other x402 facilitators do not offer.
+                            <code>POST /settle</code>. On
+                            <code>sla-escrow</code>, funds stay in escrow until
+                            delivery or oracle verdict — buyer protection
+                            unique to pr402.
                         </p>
                         <ul>
                             <li>
@@ -2034,9 +1985,9 @@
                         <span class="label">operators · integrators</span>
                         <h3>Pin to the live contract</h3>
                         <p>
-                            Fetch machine-readable <code>capabilities</code> and
-                            <code>openapi.json</code> on the host you actually
-                            call. Feature flags, mint allowlists, and oracle
+                            Fetch <code>capabilities</code> and
+                            <code>openapi.json</code> on the host you call.
+                            Feature flags, mint allowlists, and oracle
                             authorities are deployment-specific.
                         </p>
                         <ul>
@@ -2110,14 +2061,14 @@
                     <span class="pill accent">exact</span> GA on Mainnet.
                     <span class="pill amber">sla-escrow</span> available to
                     integrators who operate or trust a production
-                    <code>oracle_authority</code>; reference oracles ship in the
+                    <code>oracle_authority</code>. Reference oracles ship in
+                    the
                     <a
                         href="https://github.com/miraland-labs/oracles"
                         rel="noopener"
                         >oracles</a
                     >
-                    workspace (three sibling profiles: api-quality,
-                    onchain-transfer, file-delivery).
+                    workspace.
                 </p>
             </section>
 
@@ -2125,17 +2076,14 @@
             <section id="directory">
                 <h2><span class="hash">§</span>ecosystem · payable APIs</h2>
                 <p class="muted">
-                    Advisory directory of probe-approved payable resources on this
-                    facilitator. Pricing and <code>accepts[]</code> are
-                    authoritative from live
+                    Advisory directory of probe-approved payable resources.
+                    Pricing and <code>accepts[]</code> come from the live
                     <strong>HTTP 402</strong> on each
                     <code>resourceUrl</code>. Resolve
                     <code>payTo</code> via
                     <a href="/agent-payTo-semantics.json">payTo semantics</a>
-                    (<code>GET /sellers/{wallet}/rails/{scheme}</code>), not from
-                    this table. Listed <code>resourceUrl</code> values are
-                    probe examples — substitute your own path/query parameters
-                    before calling.
+                    (<code>GET /sellers/{wallet}/rails/{scheme}</code>), not
+                    from this table.
                 </p>
                 <p class="hint" style="color: var(--fg-faint); font-size: 12px">
                     Agent flow:
@@ -2145,8 +2093,7 @@
                     (or
                     <a href="/dist/resource-index.json">resource-index.json</a>)
                     → rails → live 402.
-                    <a href="/resources">Register your API</a>
-                    for wallet-signed listing.
+                    <a href="/resources">Register your API</a>.
                 </p>
                 <div class="directory-controls">
                     <label for="dir-q">search</label>
@@ -2220,10 +2167,8 @@
                         <h3>Run an oracle. Shape the trust layer.</h3>
                         <p>
                             SLA-Escrow needs oracles with domain expertise to
-                            adjudicate delivery — API quality, ML model quality,
-                            uptime, content moderation, financial data
-                            integrity. The first three references are open
-                            source.
+                            adjudicate delivery — API quality, uptime, content
+                            integrity, etc. Reference oracles are open source.
                         </p>
                         <ul>
                             <li>
