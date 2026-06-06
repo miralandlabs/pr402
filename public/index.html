@@ -1361,8 +1361,8 @@
                 <p class="muted">
                     List your API in the
                     <a href="#directory">public directory</a> by following the
-                    six steps below. Steps 2–4 are here; steps 5–6 continue
-                    on <a href="/resources">Add your API</a>.
+                    six steps below. Steps 2–4 are here; steps 5–6 continue on
+                    <a href="/resources">Add your API</a>.
                 </p>
 
                 <div
@@ -1423,9 +1423,7 @@
                         >
                             <span class="go-live-num">3</span>
                             <div>
-                                <p class="go-live-title">
-                                    Register your shop
-                                </p>
+                                <p class="go-live-title">Register your shop</p>
                                 <p class="go-live-desc">
                                     API website + sign with wallet.
                                 </p>
@@ -1444,7 +1442,9 @@
                             <div>
                                 <p class="go-live-title">
                                     Preview vault addresses
-                                    <span class="ladder-optional">optional</span>
+                                    <span class="ladder-optional"
+                                        >optional</span
+                                    >
                                 </p>
                                 <p class="go-live-desc">
                                     Read-only — skip if you like.
@@ -1479,9 +1479,7 @@
                         >
                             <span class="go-live-num">6</span>
                             <div>
-                                <p class="go-live-title">
-                                    We verify your 402
-                                </p>
+                                <p class="go-live-title">We verify your 402</p>
                                 <p class="go-live-desc">
                                     Automatic after step 5 when listing
                                     publicly.
@@ -1561,11 +1559,10 @@
                         Seller receives
                         <code>amount − protocol_fee − oracle_tip</code>. On
                         <code>exact</code> there is no oracle tip. On
-                        <code>sla-escrow</code> the tip is paid only on
-                        verdict (<code>resolution_state ≠ 0</code>); capped
-                        at 500 bps per escrow. SPL floor:
-                        <code>$0.01 USDC</code>; SOL floor:
-                        <code>200 000 lamports</code>. See
+                        <code>sla-escrow</code> the tip is paid only on verdict
+                        (<code>resolution_state ≠ 0</code>); capped at 500 bps
+                        per escrow. SPL floor: <code>$0.01 USDC</code>; SOL
+                        floor: <code>200 000 lamports</code>. See
                         <a href="/api/v1/facilitator/capabilities"
                             >/capabilities</a
                         >
@@ -1582,27 +1579,21 @@
                         <strong>≥ ~$10 USDC</strong> per payment; use
                         <code>exact</code> for smaller tickets.
                         <strong>Activate</strong> lowers <code>exact</code>
-                        from 100 bps to 90 bps; ~0.1 SOL is more than enough
-                        for the one-time on-chain setup.
+                        from 100 bps to 90 bps; ~0.1 SOL is more than enough for
+                        the one-time on-chain setup.
                     </p>
                     <p class="fee-schedule-footnote">
                         <strong>Buyer value · sla-escrow.</strong> Funds stay in
                         on-chain escrow until delivery terms are met or an
-                        oracle rules — refund and release are
-                        program-enforced. Use for high-value or
-                        slow-fulfillment payments where buyer protection
-                        matters.
+                        oracle rules — refund and release are program-enforced.
+                        Use for high-value or slow-fulfillment payments where
+                        buyer protection matters.
                     </p>
                     <p class="fee-schedule-footnote">
                         <strong>Preview rehearsal.</strong>
                         <code>preview.ipay.sh</code> mirrors
-                        <code>ipay.sh</code> — flip <code>$BASE</code> when
-                        you go live.
-                        <a
-                            class="pr402-docs-link"
-                            href="https://docs.ipay.sh/pr402-vs-alternatives.html"
-                            >Full comparison</a
-                        >.
+                        <code>ipay.sh</code> — flip <code>$BASE</code> when you
+                        go live.
                     </p>
                 </section>
 
@@ -1663,11 +1654,11 @@
                             </select>
                         </div>
                         <div class="input-row">
-                            <span style="color: var(--fg-dim)">mint &gt;</span>
+                            <span style="color: var(--fg-dim)">or custom mint &gt;</span>
                             <input
                                 type="text"
                                 id="provision-mint-override"
-                                placeholder="(optional) base58 mint overrides the list"
+                                placeholder="(optional) base58 address — overrides the asset selection above"
                                 autocomplete="off"
                                 spellcheck="false"
                             />
@@ -1740,8 +1731,8 @@
                         <details class="ladder-details">
                             <summary>More shop details (optional)</summary>
                             <p class="muted ladder-help">
-                                Optional extras for the merchant directory.
-                                The facilitator only verifies wallet control.
+                                Optional extras for the merchant directory. The
+                                facilitator only verifies wallet control.
                             </p>
                             <div class="input-row">
                                 <span style="color: var(--accent)"
@@ -1750,7 +1741,7 @@
                                 <input
                                     type="text"
                                     id="verify-display-name"
-                                    placeholder="Example Oracle (≤ 64 chars)"
+                                    placeholder="Merchant's Shop/Service Name (≤ 64 chars)"
                                     autocomplete="off"
                                     maxlength="64"
                                 />
@@ -1808,7 +1799,10 @@
                             >
                                 sign &amp; register shop
                             </button>
-                            <a class="btn" href="/resources" id="btn-after-verify"
+                            <a
+                                class="btn"
+                                href="/resources"
+                                id="btn-after-verify"
                                 >next: add your API (step 5)</a
                             >
                         </div>
@@ -1946,8 +1940,8 @@
                             <code>POST /verify</code> and
                             <code>POST /settle</code>. On
                             <code>sla-escrow</code>, funds stay in escrow until
-                            delivery or oracle verdict — buyer protection
-                            unique to pr402.
+                            delivery or oracle verdict — buyer protection unique
+                            to pr402.
                         </p>
                         <ul>
                             <li>
@@ -2059,8 +2053,7 @@
                     <span class="pill accent">exact</span> GA on Mainnet.
                     <span class="pill amber">sla-escrow</span> available to
                     integrators who operate or trust a production
-                    <code>oracle_authority</code>. Reference oracles ship in
-                    the
+                    <code>oracle_authority</code>. Reference oracles ship in the
                     <a
                         href="https://github.com/miraland-labs/oracles"
                         rel="noopener"
@@ -2076,9 +2069,8 @@
                 <p class="muted">
                     Advisory directory of probe-approved payable resources.
                     Pricing and <code>accepts[]</code> come from the live
-                    <strong>HTTP 402</strong> on each
-                    <code>resourceUrl</code>. Resolve
-                    <code>payTo</code> via
+                    <strong>HTTP 402</strong> on each <code>resourceUrl</code>.
+                    Resolve <code>payTo</code> via
                     <a href="/agent-payTo-semantics.json">payTo semantics</a>
                     (<code>GET /sellers/{wallet}/rails/{scheme}</code>), not
                     from this table.
@@ -2115,7 +2107,12 @@
                         size="12"
                     />
                     <label for="dir-tag">tag</label>
-                    <input type="text" id="dir-tag" placeholder="tag" size="10" />
+                    <input
+                        type="text"
+                        id="dir-tag"
+                        placeholder="tag"
+                        size="10"
+                    />
                     <button class="btn" type="button" id="btn-dir-search">
                         search
                     </button>
@@ -2143,8 +2140,8 @@
                                 <th class="col-resource">
                                     resource
                                     <span class="th-hint"
-                                        >Example URLs — replace path/query with your
-                                        values</span
+                                        >Example URLs — replace path/query with
+                                        your values</span
                                     >
                                 </th>
                                 <th class="col-wallet">seller</th>
@@ -2777,8 +2774,7 @@
                             typeof window.__PR402_UPDATE_GO_LIVE__ ===
                             "function"
                         ) {
-                            var walletPk =
-                                input && (input.value || "").trim();
+                            var walletPk = input && (input.value || "").trim();
                             window.__PR402_UPDATE_GO_LIVE__(
                                 lc,
                                 null,
@@ -3254,6 +3250,18 @@
                     );
                     if (!btnProvision) return;
 
+                    if (mintOverride && assetSel) {
+                        var updateAssetOpacity = function () {
+                            var hasMint = !!mintOverride.value.trim();
+                            var assetRow = assetSel.closest ? assetSel.closest(".input-row") : assetSel.parentElement;
+                            if (assetRow) {
+                                assetRow.style.opacity = hasMint ? "0.5" : "1";
+                            }
+                        };
+                        mintOverride.addEventListener("input", updateAssetOpacity);
+                        updateAssetOpacity();
+                    }
+
                     function setStatus(txt, isError) {
                         out.classList.toggle("is-error", !!isError);
                         out.textContent = txt || "";
@@ -3380,9 +3388,8 @@
 
                     if (fServiceUrl) {
                         try {
-                            var saved = localStorage.getItem(
-                                "pr402-service-url",
-                            );
+                            var saved =
+                                localStorage.getItem("pr402-service-url");
                             if (saved && !fServiceUrl.value)
                                 fServiceUrl.value = saved;
                         } catch (_) {}
@@ -3435,8 +3442,7 @@
                             document.getElementById("wallet-input");
                         var connected = walletState.currentPubkey();
                         var inputPk =
-                            walletInput &&
-                            (walletInput.value || "").trim();
+                            walletInput && (walletInput.value || "").trim();
                         if (!connected) {
                             setStatus("Connect a wallet first.", true);
                             walletState.openWalletPicker();
@@ -3755,7 +3761,9 @@
                             return (
                                 base +
                                 "?asset=" +
-                                encodeURIComponent(canonicalUsdcMintForNetwork())
+                                encodeURIComponent(
+                                    canonicalUsdcMintForNetwork(),
+                                )
                             );
                         }
                         return base;
@@ -3795,7 +3803,9 @@
                                 slugMeta +
                                 "</td>" +
                                 '<td class="col-scheme"><span class="pill ' +
-                                (e.scheme === "sla-escrow" ? "amber" : "accent") +
+                                (e.scheme === "sla-escrow"
+                                    ? "amber"
+                                    : "accent") +
                                 '">' +
                                 esc(e.scheme) +
                                 "</span></td>" +
@@ -3842,8 +3852,7 @@
                     async function loadStaticIndex() {
                         setStatus("Loading static resource-index.json …");
                         var res = await fetch("/dist/resource-index.json");
-                        if (!res.ok)
-                            throw new Error("HTTP " + res.status);
+                        if (!res.ok) throw new Error("HTTP " + res.status);
                         var data = await res.json();
                         tbody.innerHTML = "";
                         rowCount = 0;
@@ -3970,7 +3979,9 @@
 
                     (async function () {
                         try {
-                            var hres = await fetch("/api/v1/facilitator/health");
+                            var hres = await fetch(
+                                "/api/v1/facilitator/health",
+                            );
                             if (hres.ok)
                                 applyHealthToGlobals(await hres.json());
                         } catch (e) {
