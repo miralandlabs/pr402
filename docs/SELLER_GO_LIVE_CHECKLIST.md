@@ -13,9 +13,9 @@ Internal mirror of the **seller-facing 6-step path** on ipay.sh. Use the same st
 | Step | Seller sees | Done when |
 |------|-------------|-----------|
 | 1 | API returns **402** when unpaid | Seller’s endpoint returns 402 + valid PaymentRequired JSON on unpaid request |
-| 2 | **Activate** payment vault | Wallet signed provision-tx; vault on-chain |
-| 3 | **Register shop** — API website + sign | `registration_verified_at` set; `discovery.serviceUrl` host recorded |
-| 4 | Preview vault *(optional)* | Seller skipped or ran preview — not required for directory |
+| 2 | Preview vault *(optional)* | Seller skipped or ran preview — not required for directory |
+| 3 | **Activate** payment vault | Wallet signed provision-tx; vault on-chain |
+| 4 | **Register shop** — API website + sign | `registration_verified_at` set; `discovery.serviceUrl` host recorded |
 | 5 | **Add your API** | `POST /resources/register` succeeded for `resourceUrl` |
 | 6 | **We verify 402** | `last_probe_ok: true` on resource row |
 
@@ -31,7 +31,11 @@ Internal mirror of the **seller-facing 6-step path** on ipay.sh. Use the same st
 - Unpaid `curl` to payable path must return **HTTP 402** (not 400/200).
 - If 400: add query params / fix path so request reaches payment gate.
 
-### Step 2 — Activate (home page)
+### Step 2 — Preview (optional, home page)
+
+Skip unless seller wants vault PDAs before activate. Paste pubkey and press Enter to resolve.
+
+### Step 3 — Activate (home page)
 
 1. Connect wallet on [go live · seller](https://ipay.sh/#seller-lifecycle).
 2. Click **activate** (USDC default).
@@ -39,27 +43,23 @@ Internal mirror of the **seller-facing 6-step path** on ipay.sh. Use the same st
 
 **Blockers:** insufficient SOL for fees; wrong cluster (preview vs mainnet).
 
-### Step 3 — Register shop (home page)
+### Step 4 — Register shop (home page)
 
 1. Enter **API website** (origin URL — required for directory).
 2. Connect wallet → **sign & register shop**.
-3. Must complete step 2 first (409 if vault missing).
+3. Must complete step 3 first (409 if vault missing).
 
 **Blockers:** empty API website; pubkey field ≠ connected wallet.
-
-### Step 4 — Preview (optional)
-
-Skip unless seller wants vault PDAs before activate.
 
 ### Step 5 — Add your API ([/resources](https://ipay.sh/resources))
 
 1. Connect same wallet.
-2. Pre-flight banner should be hidden if steps 2–3 done.
-3. Enter payable **resource URL** (same host as step 3 API website).
+2. Pre-flight banner should be hidden if steps 3–4 done.
+3. Enter payable **resource URL** (same host as step 4 API website).
 4. **Show in public directory** checked (default).
 5. **Sign & add API**.
 
-**Blockers:** 403 — step 3 not done; host mismatch between API website and resource URL.
+**Blockers:** 403 — step 4 not done; host mismatch between API website and resource URL.
 
 ### Step 6 — Auto 402 verify
 
@@ -114,8 +114,8 @@ See [DISCOVERY.md](./DISCOVERY.md) for agent integrators.
 **Post-deploy UI checks (seller-only path):**
 
 1. Home shows **Go live in 6 steps** checklist with no Layer 2/3 jargon.
-2. Step 3 shows **API website** field (not hidden in details).
-3. `/resources` shows **Step 5 of 6** + pre-flight when steps 2–3 incomplete.
+2. Step 4 shows **API website** field (not hidden in details).
+3. `/resources` shows **Step 5 of 6** + pre-flight when steps 3–4 incomplete.
 4. Register with “Show in public directory” runs step 6 automatically.
 5. Pass → row on `GET /resources` and `#directory`.
 
