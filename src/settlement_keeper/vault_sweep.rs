@@ -259,17 +259,40 @@ pub async fn run_vault_sweep(
                 onchain_us.use_fee_shard,
                 onchain_us.shard_count,
             );
-        let ix = crate::chain::solana_universalsettle::build_sweep_instruction(
-            us_config.program_id,
-            cfg.chain.solana.pubkey(),
-            snap.split_vault_pda,
-            seller,
-            fee_sol_recv,
-            fee_token_owner,
-            token_mint,
-            0,
-            is_sol,
-            token_program_opt,
+        let mut sweep_instructions = Vec::new();
+        if let Some(token_program) = token_program_opt {
+            maybe_add_create_ata(
+                &mut sweep_instructions,
+                cfg.chain,
+                &seller,
+                &token_mint,
+                &token_program,
+            )
+            .await;
+            if fee_token_owner != seller {
+                maybe_add_create_ata(
+                    &mut sweep_instructions,
+                    cfg.chain,
+                    &fee_token_owner,
+                    &token_mint,
+                    &token_program,
+                )
+                .await;
+            }
+        }
+        sweep_instructions.push(
+            crate::chain::solana_universalsettle::build_sweep_instruction(
+                us_config.program_id,
+                cfg.chain.solana.pubkey(),
+                snap.split_vault_pda,
+                seller,
+                fee_sol_recv,
+                fee_token_owner,
+                token_mint,
+                0,
+                is_sol,
+                token_program_opt,
+            ),
         );
 
         let send_result = async {
@@ -282,14 +305,18 @@ pub async fn run_vault_sweep(
                 .map_err(|e| e.to_string())?;
             let budget = if is_sol {
                 TxBudget::SweepSol
+            } else if sweep_instructions.len() > 1 {
+                TxBudget::SweepSplWithAta
             } else {
                 TxBudget::SweepSpl
             };
             let cu_limit = crate::util::tx_builder::compute_budget_ix_set_limit(budget.cu_limit());
             let cu_price = crate::util::tx_builder::compute_budget_ix_set_price(budget.cu_price());
+            let mut final_ixs = vec![cu_limit, cu_price];
+            final_ixs.extend(sweep_instructions);
             let sweep_tx = solana_transaction::versioned::VersionedTransaction::from(
                 solana_transaction::Transaction::new_signed_with_payer(
-                    &[cu_limit, cu_price, ix],
+                    &final_ixs,
                     Some(&cfg.chain.solana.pubkey()),
                     &[cfg.chain.solana.keypair()],
                     recent_blockhash,
@@ -400,4 +427,45 @@ pub async fn run_vault_sweep(
         failed,
         items,
     })
+}
+
+async fn maybe_add_create_ata(
+    instructions: &mut Vec<solana_transaction::Instruction>,
+    chain: &ChainProvider,
+    owner: &solana_pubkey::Pubkey,
+    mint: &solana_pubkey::Pubkey,
+    token_program: &solana_pubkey::Pubkey,
+) {
+    let ata = crate::util::tx_builder::associated_token_address(owner, mint, token_program);
+    match chain.solana.account_exists(&ata).await {
+        Ok(true) => {}
+        Ok(false) => {
+            instructions.push(
+                crate::util::tx_builder::create_associated_token_account_idempotent_ix(
+                    &chain.solana.pubkey(),
+                    owner,
+                    mint,
+                    token_program,
+                ),
+            );
+        }
+        Err(e) => {
+            warn!(
+                target: LOG_SERVER_LOG,
+                error = %e,
+                ata = %ata,
+                owner = %owner,
+                mint = %mint,
+                "ATA existence check failed before sweep; adding idempotent create instruction"
+            );
+            instructions.push(
+                crate::util::tx_builder::create_associated_token_account_idempotent_ix(
+                    &chain.solana.pubkey(),
+                    owner,
+                    mint,
+                    token_program,
+                ),
+            );
+        }
+    }
 }

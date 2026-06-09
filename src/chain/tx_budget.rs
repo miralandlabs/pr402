@@ -60,6 +60,10 @@ pub enum TxBudget {
     /// Estimated: ~15 000 CUs (slightly heavier than SOL path).
     SweepSpl,
 
+    /// `Sweep SPL` plus idempotent ATA creation for payout and/or fee accounts.
+    /// Used when a merchant or fee-owner canonical ATA is absent.
+    SweepSplWithAta,
+
     // ── sla-escrow scheme ────────────────────────────────────────────
     /// `FundPayment` — escrow ATA creation (idempotent) + FundPayment instruction.
     /// Buyer pays now; facilitator may sponsor in future (`facilitatorPaysTransactionFees`).
@@ -94,6 +98,7 @@ impl TxBudget {
             Self::VaultShadowProvision => 150_000,
             Self::SweepSol => 20_000,
             Self::SweepSpl => 22_000,
+            Self::SweepSplWithAta => 100_000,
             Self::FundPayment => 80_000,
             Self::OracleConfirm => 20_000,
             Self::EscrowSettle => 80_000,
@@ -121,6 +126,7 @@ impl TxBudget {
             Self::VaultShadowProvision => 10_000,
             Self::SweepSol => 10_000,
             Self::SweepSpl => 10_000,
+            Self::SweepSplWithAta => 10_000,
             Self::EscrowSettle => 10_000,
             // Fallback — conservative
             Self::Default => 100_000,
