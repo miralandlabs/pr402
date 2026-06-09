@@ -2,6 +2,7 @@
 
 use std::mem::size_of;
 use std::str::FromStr;
+use std::time::Duration;
 
 use solana_commitment_config::CommitmentConfig;
 use tracing::{info, warn};
@@ -40,13 +41,37 @@ pub async fn run_vault_sweep(
 
     let (cfg_pda, _) = cfg.chain.solana.get_config_pda(&us_config.program_id);
     let onchain_us: crate::chain::solana_universalsettle::Config = {
-        let acc = cfg
-            .chain
-            .solana
-            .rpc_client()
-            .get_account(&cfg_pda)
-            .await
-            .map_err(|e| format!("failed to load UniversalSettle config: {}", e))?;
+        let mut last_err = None;
+        let mut loaded = None;
+        for attempt in 1..=3 {
+            match cfg.chain.solana.rpc_client().get_account(&cfg_pda).await {
+                Ok(acc) => {
+                    loaded = Some(acc);
+                    break;
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    last_err = Some(msg.clone());
+                    warn!(
+                        target: LOG_SERVER_LOG,
+                        task = "vault_sweep",
+                        attempt,
+                        config_pda = %cfg_pda,
+                        error = %msg,
+                        "UniversalSettle config load failed; retrying"
+                    );
+                    if attempt < 3 {
+                        tokio::time::sleep(Duration::from_millis(500 * attempt)).await;
+                    }
+                }
+            }
+        }
+        let acc = loaded.ok_or_else(|| {
+            format!(
+                "failed to load UniversalSettle config after retries: {}",
+                last_err.unwrap_or_else(|| "unknown error".into())
+            )
+        })?;
         let need = 8 + size_of::<crate::chain::solana_universalsettle::Config>();
         if acc.data.len() < need {
             return Err("UniversalSettle config account data too small".into());
