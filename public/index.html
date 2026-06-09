@@ -1461,16 +1461,19 @@
                             <span class="go-live-num">2</span>
                             <div>
                                 <p class="go-live-title">
-                                    Activate your payment vault
+                                    Preview vault addresses
+                                    <span class="ladder-optional"
+                                        >optional</span
+                                    >
                                 </p>
                                 <p class="go-live-desc">
-                                    Connect wallet → activate below.
+                                    Read-only — skip if you like.
                                 </p>
                                 <p class="go-live-cta">
-                                    <a href="#ladder-activate">go to step 2</a>
+                                    <a href="#ladder-preview">go to step 2</a>
                                 </p>
                             </div>
-                            <span class="go-live-pill">not started</span>
+                            <span class="go-live-pill">optional</span>
                         </li>
                         <li
                             class="go-live-step"
@@ -1479,12 +1482,14 @@
                         >
                             <span class="go-live-num">3</span>
                             <div>
-                                <p class="go-live-title">Register your shop</p>
+                                <p class="go-live-title">
+                                    Activate your payment vault
+                                </p>
                                 <p class="go-live-desc">
-                                    API website + sign with wallet.
+                                    Connect wallet → activate below.
                                 </p>
                                 <p class="go-live-cta">
-                                    <a href="#ladder-verify">go to step 3</a>
+                                    <a href="#ladder-activate">go to step 3</a>
                                 </p>
                             </div>
                             <span class="go-live-pill">not started</span>
@@ -1496,20 +1501,15 @@
                         >
                             <span class="go-live-num">4</span>
                             <div>
-                                <p class="go-live-title">
-                                    Preview vault addresses
-                                    <span class="ladder-optional"
-                                        >optional</span
-                                    >
-                                </p>
+                                <p class="go-live-title">Register your shop</p>
                                 <p class="go-live-desc">
-                                    Read-only — skip if you like.
+                                    API website + sign with wallet.
                                 </p>
                                 <p class="go-live-cta">
-                                    <a href="#ladder-preview">go to step 4</a>
+                                    <a href="#ladder-verify">go to step 4</a>
                                 </p>
                             </div>
-                            <span class="go-live-pill">optional</span>
+                            <span class="go-live-pill">not started</span>
                         </li>
                         <li
                             class="go-live-step"
@@ -1666,15 +1666,53 @@
                         />
                     </div>
                     <p class="hint">
-                        Steps 2–3 need your wallet signature. Step 4 (preview)
-                        can use a pasted pubkey only.
+                        Step 2 (preview) can use a pasted pubkey only. Steps 3–4
+                        need your wallet signature.
                     </p>
                 </div>
 
-                <!-- Step 2 · Activate -->
-                <article class="ladder-step" id="ladder-activate">
+                <!-- Step 2 · Preview (optional) -->
+                <article class="ladder-step" id="ladder-preview">
                     <header class="ladder-head">
                         <span class="ladder-num">2</span>
+                        <div class="ladder-title">
+                            <h3>
+                                Preview vault addresses
+                                <span class="ladder-optional">optional</span>
+                            </h3>
+                            <span class="ladder-sub"
+                                >read-only · no wallet · no state change</span
+                            >
+                        </div>
+                        <span class="ladder-status" data-status="pending"
+                            >pending</span
+                        >
+                    </header>
+                    <div class="ladder-body">
+                        <p>
+                            Resolve your canonical vault PDAs for every
+                            supported rail. Read-only — nothing is written.
+                        </p>
+                        <div class="action-row">
+                            <button class="btn primary" id="btn-preview-run">
+                                resolve
+                            </button>
+                        </div>
+                        <div class="hint">
+                            GET /api/v1/facilitator/sellers/{wallet}/preview
+                        </div>
+                        <div
+                            class="probe-output"
+                            id="out-preview"
+                            aria-live="polite"
+                        ></div>
+                    </div>
+                </article>
+
+                <!-- Step 3 · Activate -->
+                <article class="ladder-step" id="ladder-activate">
+                    <header class="ladder-head">
+                        <span class="ladder-num">3</span>
                         <div class="ladder-title">
                             <h3>Activate</h3>
                             <span class="ladder-sub"
@@ -1743,14 +1781,14 @@
                     </div>
                 </article>
 
-                <!-- Step 3 · Register shop -->
+                <!-- Step 4 · Register shop -->
                 <article class="ladder-step" id="ladder-verify">
                     <header class="ladder-head">
-                        <span class="ladder-num">3</span>
+                        <span class="ladder-num">4</span>
                         <div class="ladder-title">
                             <h3>Register your shop</h3>
                             <span class="ladder-sub"
-                                >required for directory · wallet signs · step 3
+                                >required for directory · wallet signs · step 4
                                 of 6</span
                             >
                         </div>
@@ -1763,7 +1801,7 @@
                             Registers your shop (proves wallet control) so you
                             can list APIs in the
                             <a href="#directory">public directory</a>. Complete
-                            <strong>Activate</strong> (step 2) first.
+                            <strong>Activate</strong> (step 3) first.
                         </p>
 
                         <div class="input-row">
@@ -1894,44 +1932,6 @@
                                 aria-live="polite"
                             ></div>
                         </div>
-                    </div>
-                </article>
-
-                <!-- Step 4 · Preview (optional) -->
-                <article class="ladder-step" id="ladder-preview">
-                    <header class="ladder-head">
-                        <span class="ladder-num">4</span>
-                        <div class="ladder-title">
-                            <h3>
-                                Preview vault addresses
-                                <span class="ladder-optional">optional</span>
-                            </h3>
-                            <span class="ladder-sub"
-                                >read-only · no wallet · no state change</span
-                            >
-                        </div>
-                        <span class="ladder-status" data-status="pending"
-                            >pending</span
-                        >
-                    </header>
-                    <div class="ladder-body">
-                        <p>
-                            Resolve your canonical vault PDAs for every
-                            supported rail. Read-only — nothing is written.
-                        </p>
-                        <div class="action-row">
-                            <button class="btn primary" id="btn-preview-run">
-                                resolve
-                            </button>
-                        </div>
-                        <div class="hint">
-                            GET /api/v1/facilitator/sellers/{wallet}/preview
-                        </div>
-                        <div
-                            class="probe-output"
-                            id="out-preview"
-                            aria-live="polite"
-                        ></div>
                     </div>
                 </article>
             </section>
@@ -2705,24 +2705,24 @@
                                 };
                             }
                         }
-                        if (lc.activated) {
+                        if (lc.previewed) {
                             setGl(steps[2], "done", "done");
-                        } else if (lc.nextStep === "activate" || lc.previewed) {
-                            setGl(steps[2], "current", "next");
                         } else {
-                            setGl(steps[2], "pending", "not started");
+                            setGl(steps[2], "info", "optional");
                         }
-                        if (lc.verified) {
+                        if (lc.activated) {
                             setGl(steps[3], "done", "done");
-                        } else if (lc.activated) {
+                        } else if (lc.nextStep === "activate" || lc.previewed) {
                             setGl(steps[3], "current", "next");
                         } else {
                             setGl(steps[3], "pending", "not started");
                         }
-                        if (lc.previewed) {
+                        if (lc.verified) {
                             setGl(steps[4], "done", "done");
+                        } else if (lc.activated) {
+                            setGl(steps[4], "current", "next");
                         } else {
-                            setGl(steps[4], "info", "optional");
+                            setGl(steps[4], "pending", "not started");
                         }
                         if (rs && rs.hasResources) {
                             setGl(steps[5], "done", "done");

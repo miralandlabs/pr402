@@ -151,10 +151,10 @@
             </p>
 
             <div class="preflight hidden" id="preflight">
-                <strong>Complete steps 2–3 on the home page first.</strong>
+                <strong>Complete steps 3–4 on the home page first.</strong>
                 <span id="preflight-msg"></span>
                 <div class="row" style="margin: 0.5rem 0 0">
-                    <a href="/#seller-lifecycle">← back to steps 2–3</a>
+                    <a href="/#seller-lifecycle">← back to steps 3–4</a>
                 </div>
             </div>
 
@@ -184,7 +184,7 @@
                 placeholder="https://your-api.example/api/premium"
             />
             <p style="font-size: 12px; margin-top: 0.25rem">
-                Must use the same host as your API website from step 3.
+                Must use the same host as your API website from step 4.
             </p>
             <label for="title">Title</label>
             <input id="title" placeholder="Premium API" />
@@ -406,9 +406,9 @@
                                 preflightEl.classList.remove("hidden");
                                 var parts = [];
                                 if (!lc.activated)
-                                    parts.push("Activate (step 2)");
+                                    parts.push("Activate (step 3)");
                                 if (!lc.verified)
-                                    parts.push("Register shop (step 3)");
+                                    parts.push("Register shop (step 4)");
                                 preflightMsg.textContent =
                                     " Still needed: " + parts.join(" and ") + ".";
                             }
@@ -417,7 +417,7 @@
                         if (preflightEl) {
                             preflightEl.classList.remove("hidden");
                             preflightMsg.textContent =
-                                " Could not check your progress — complete steps 2–3 on the home page.";
+                                " Could not check your progress — complete steps 3–4 on the home page.";
                         }
                     }
                     paintConnect();
@@ -657,7 +657,7 @@
                             var errMsg = reg.error || txt;
                             if (res.status === 403) {
                                 errMsg =
-                                    "Complete Register shop (step 3) on the home page first. " +
+                                    "Complete Register shop (step 4) on the home page first. " +
                                     (reg.error || "");
                             }
                             setFormResult(errMsg, true);

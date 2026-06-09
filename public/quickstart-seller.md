@@ -130,13 +130,13 @@ Payment integration (steps 1–5 above) is enough to **charge** for API calls. T
 | Step | What you do | Where |
 |------|-------------|-------|
 | 1 | API returns **402** when unpaid | Your server (this doc) |
-| 2 | **Activate** payment vault | [ipay.sh → go live](https://ipay.sh/#seller-lifecycle) |
-| 3 | **Register shop** (API website + sign) | Same page, step 3 |
-| 4 | Preview vault *(optional)* | Same page, step 4 |
+| 2 | Preview vault *(optional)* | [ipay.sh → go live](https://ipay.sh/#seller-lifecycle) |
+| 3 | **Activate** payment vault | Same page, step 3 |
+| 4 | **Register shop** (API website + sign) | Same page, step 4 |
 | 5 | **Add your API** | [/resources](https://ipay.sh/resources) |
 | 6 | **We verify 402** | Automatic after step 5 |
 
-Steps 2–3 require a one-time on-chain **Activate** (wallet signs). Use [preview.ipay.sh](https://preview.ipay.sh) on Devnet first.
+Steps 3–4 require a one-time on-chain **Activate** (wallet signs). Use [preview.ipay.sh](https://preview.ipay.sh) on Devnet first.
 
 ---
 

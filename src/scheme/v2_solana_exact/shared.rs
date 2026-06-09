@@ -915,6 +915,70 @@ pub async fn settle_transaction(
                                 }
                             };
 
+                            if let Some(token_program) = details.token_program {
+                                let beneficiary_ata =
+                                    crate::util::tx_builder::associated_token_address(
+                                        &final_beneficiary,
+                                        &token_mint,
+                                        &token_program,
+                                    );
+                                match provider.account_exists(&beneficiary_ata).await {
+                                    Ok(true) => {}
+                                    Ok(false) => {
+                                        instructions.push(crate::util::tx_builder::create_associated_token_account_idempotent_ix(
+                                            &provider.pubkey(),
+                                            &final_beneficiary,
+                                            &token_mint,
+                                            &token_program,
+                                        ));
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            error = %e,
+                                            ata = %beneficiary_ata,
+                                            "beneficiary ATA existence check failed before inline sweep; adding idempotent create instruction"
+                                        );
+                                        instructions.push(crate::util::tx_builder::create_associated_token_account_idempotent_ix(
+                                            &provider.pubkey(),
+                                            &final_beneficiary,
+                                            &token_mint,
+                                            &token_program,
+                                        ));
+                                    }
+                                }
+                                if fee_token_owner != final_beneficiary {
+                                    let fee_ata = crate::util::tx_builder::associated_token_address(
+                                        &fee_token_owner,
+                                        &token_mint,
+                                        &token_program,
+                                    );
+                                    match provider.account_exists(&fee_ata).await {
+                                        Ok(true) => {}
+                                        Ok(false) => {
+                                            instructions.push(crate::util::tx_builder::create_associated_token_account_idempotent_ix(
+                                                &provider.pubkey(),
+                                                &fee_token_owner,
+                                                &token_mint,
+                                                &token_program,
+                                            ));
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                error = %e,
+                                                ata = %fee_ata,
+                                                "fee ATA existence check failed before inline sweep; adding idempotent create instruction"
+                                            );
+                                            instructions.push(crate::util::tx_builder::create_associated_token_account_idempotent_ix(
+                                                &provider.pubkey(),
+                                                &fee_token_owner,
+                                                &token_mint,
+                                                &token_program,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+
                             instructions.push(
                                 crate::chain::solana_universalsettle::build_sweep_instruction(
                                     us_config.program_id,
@@ -939,7 +1003,7 @@ pub async fn settle_transaction(
                                 crate::chain::TxBudget::VaultShadowProvision
                             } else if instructions.len() > 1 {
                                 // Has ATA + Sweep
-                                crate::chain::TxBudget::VaultCreateWithAta // Close enough for ATA+Sweep
+                                crate::chain::TxBudget::SweepSplWithAta
                             } else if is_sol_sweep {
                                 crate::chain::TxBudget::SweepSol
                             } else {
