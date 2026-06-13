@@ -129,7 +129,7 @@ Payment integration (steps 1–5 above) is enough to **charge** for API calls. T
 
 | Step | What you do | Where |
 |------|-------------|-------|
-| 1 | API returns **402** when unpaid | Your server (this doc) |
+| 1 | API returns **402** when unpaid | Your server — **[Hands-on lab (Express · weather API)](https://docs.ipay.sh/seller-lab.html)** or this doc |
 | 2 | Preview vault *(optional)* | [ipay.sh → go live](https://ipay.sh/#seller-lifecycle) |
 | 3 | **Activate** payment vault | Same page, step 3 |
 | 4 | **Register shop** (API website + sign) | Same page, step 4 |

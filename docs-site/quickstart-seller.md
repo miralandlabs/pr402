@@ -121,7 +121,7 @@ Content-Type: application/json
 
 The `/payment-required/enrich` endpoint handles all institutional routing for you. For sovereign status (lower fees), see the full [onboarding guide](/onboarding_guide).
 
-**Human-readable docs:** [Integrate your API](/seller-quick-start.html) · [Start here · Sellers](/start-here.html) · [API overview](/api-reference).
+**Human-readable docs:** [Hands-on seller lab](/seller-lab.html) · [Integrate your API](/seller-quick-start.html) · [Start here · Sellers](/start-here.html) · [API overview](/api-reference).
 
 **Machine-readable:** `{FACILITATOR}/openapi.json` — substitute your facilitator `$BASE` (for example `https://ipay.sh` or `https://preview.ipay.sh`).
 

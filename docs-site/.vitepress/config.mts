@@ -32,6 +32,7 @@ export default defineConfig({
         text: 'For sellers',
         items: [
           { text: 'Start here', link: '/start-here' },
+          { text: 'Hands-on seller lab', link: '/seller-lab' },
           { text: 'Integrate your API', link: '/seller-quick-start' },
           { text: 'Quick reference · 5 steps', link: '/quickstart-seller' },
         ],
