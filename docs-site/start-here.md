@@ -10,7 +10,7 @@ title: "Start here · Sellers"
 
 > You keep your API. You add HTTP 402 + forward payment proof to pr402. You never run any blockchain inside your server.
 
-**Ready to code?** → [Integrate your API](/seller-quick-start.html) (~30 minutes, language examples included). Already know x402? → [Quick reference · 5 steps](/quickstart-seller.html).
+**Ready to code?** → [Hands-on seller lab](/seller-lab.html) (Express weather API, steps 1–6) · [Integrate your API](/seller-quick-start.html) (~30 minutes, language examples). Already know x402? → [Quick reference · 5 steps](/quickstart-seller.html).
 
 ---
 
@@ -19,6 +19,7 @@ title: "Start here · Sellers"
 | When you want… | Read |
 |---|---|
 | **Prerequisites + pick rail** (this page) | **Start here** |
+| New web2 seller (hands-on) | [Hands-on seller lab](/seller-lab.html) |
 | Full walkthrough + Rust / Python / JS / Go samples | [Integrate your API](/seller-quick-start.html) |
 | Minimal cheat-sheet (`exact` rail only) | [Quick reference · 5 steps](/quickstart-seller.html) |
 | Sovereign fees, JIT provisioning, oracle profiles | [Onboarding guide](/onboarding_guide.html) |
@@ -42,12 +43,12 @@ Check these off:
 
 You do **not** need a blockchain SDK in your API server.
 
-**Optional — rehearse on Devnet first:** Point `$BASE` at `https://preview.ipay.sh` and use **[preview.ipay.sh](https://preview.ipay.sh)** (not Mainnet ipay.sh) for Preview / Activate. Devnet SOL is free test money:
+**Optional — rehearse on Devnet first:** Point `$BASE` at `https://preview.ipay.sh` and use **[preview.ipay.sh](https://preview.ipay.sh)** (not Mainnet ipay.sh) for Preview / Activate. Devnet test funds:
 
-- **Browser wallet:** switch the wallet to **Devnet**, then use [faucet.solana.com](https://faucet.solana.com/) (GitHub sign-in) or your wallet’s built-in Devnet airdrop if offered.
-- **Solana CLI:** `solana config set --url devnet`, then `solana airdrop 2 YOUR_PUBKEY`.
+- **SOL:** switch your wallet to **Devnet**, then open **[faucet.solana.com](https://faucet.solana.com/)** — paste your wallet address, select an amount, and airdrop. CLI: `solana config set --url devnet`, then `solana airdrop 2 YOUR_PUBKEY`.
+- **USDC (optional, recommended):** **[faucet.circle.com](https://faucet.circle.com/)** — select **USDC** and **Solana Devnet**, paste your wallet address. Creates/funds your Devnet USDC token account before your first sale.
 
-Only Devnet Activate needs this SOL; your API server never spends it.
+Only Devnet Activate needs SOL; your API server never spends it.
 
 ---
 
@@ -114,6 +115,21 @@ pr402 deducts a **protocol fee** from each payment at settlement. Treat **`GET $
 These are recommendations, not hard limits. You choose price and rail; just understand the fee math before you launch.
 
 **Sovereign discount:** Self-provision via **Activate** (~**0.1 SOL** one-time) drops `exact` protocol fee from 100 bps → 90 bps. Skip Activate and pr402 **JIT-provisions** on first settle at 100 bps — your choice.
+
+The **$0.01 floor** exists because the Facilitator must cover operational costs during initial go-live. It may decrease as the ecosystem matures; treat **`GET …/capabilities`** as authoritative for current values.
+
+### Appendix A2 · Payout sweeps (when USDC reaches your wallet)
+
+Each `exact` payment settles into your on-chain **SplitVault**. The Facilitator transfers accumulated USDC to your **merchant wallet** only when a **sweep threshold** is met — each on-chain sweep costs the Facilitator **SOL**.
+
+| Environment | Sweep threshold | Notes |
+|-------------|-----------------|-------|
+| **Mainnet** ([ipay.sh](https://ipay.sh)) | **$3.00 USDC** accumulated | Production default; batches payouts |
+| **Preview / Devnet** ([preview.ipay.sh](https://preview.ipay.sh)) | **$0.10 USDC** accumulated | **Demo only** — experience a real sweep without waiting for $3 |
+
+**Devnet fee policy:** preview uses the **same $0.01 protocol fee floor** as Mainnet. Only the **sweep threshold** is lowered on Devnet — not the per-payment fee — so pricing math matches production.
+
+Hands-on lab: [seller-lab · Protocol fees and payouts](/seller-lab.html#protocol-fees-and-payouts-read-before-mainnet).
 
 ---
 
