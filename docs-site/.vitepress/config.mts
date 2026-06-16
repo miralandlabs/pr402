@@ -55,6 +55,7 @@ export default defineConfig({
         text: 'Reference',
         items: [
           { text: 'API overview (humans + agents)', link: '/api-reference' },
+          { text: 'Resource discovery', link: '/discovery' },
         ],
       },
       {
