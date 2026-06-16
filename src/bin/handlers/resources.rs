@@ -220,19 +220,23 @@ pub async fn handle_resource_register(body: Body) -> Response<Body> {
         )
         .await
     {
-        Ok(id) => facilitator_response!()
-            .status(StatusCode::OK)
-            .header("Content-Type", "application/json")
-            .body(Body::Text(
-                serde_json::json!({
-                    "id": id,
-                    "resourceUrl": r.resource_url,
-                    "listingOptIn": listing,
-                    "note": "Run a 402 probe before the resource appears in public search."
-                })
-                .to_string(),
-            ))
-            .unwrap(),
+        Ok(id) => {
+            pr402::registration_notify::spawn_resource_notify(&parsed.wallet, &r.resource_url)
+                .await;
+            facilitator_response!()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .body(Body::Text(
+                    serde_json::json!({
+                        "id": id,
+                        "resourceUrl": r.resource_url,
+                        "listingOptIn": listing,
+                        "note": "Run a 402 probe before the resource appears in public search."
+                    })
+                    .to_string(),
+                ))
+                .unwrap()
+        }
         Err(DbError::Query(m)) => error_response(StatusCode::BAD_REQUEST, &m),
         Err(e) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
