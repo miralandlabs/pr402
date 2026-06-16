@@ -268,6 +268,18 @@ pub const PR402_SLA_ESCROW_DELIVERY_CUTOFF_SECONDS: &str =
 pub const PR402_SLA_ESCROW_DELIVERY_BUDGET_SECONDS: &str =
     "PR402_SLA_ESCROW_DELIVERY_BUDGET_SECONDS";
 
+/// Webhook URL for registration notifications (Slack incoming webhook, Discord webhook, etc.).
+/// When set (non-empty), seller onboard notifications always fire.
+/// Resource endpoint notifications also fire unless PR402_RESOURCE_REGISTRATION_NOTIFICATION is disabled.
+pub const PR402_REGISTRATION_NOTIFICATION_WEBHOOK_URL: &str =
+    "PR402_REGISTRATION_NOTIFICATION_WEBHOOK_URL";
+
+/// Enable/disable resource-endpoint registration notifications specifically.
+/// Truthy values: `true`/`1`/`yes`/`on` (case-insensitive). Default **true**.
+/// Seller onboard notifications are not affected by this switch.
+pub const PR402_RESOURCE_REGISTRATION_NOTIFICATION: &str =
+    "PR402_RESOURCE_REGISTRATION_NOTIFICATION";
+
 /// Fallback when `PR402_SWEEP_MIN_SPENDABLE_LAMPORTS` is unset (0.03 SOL).
 pub const DEFAULT_SWEEP_MIN_SPENDABLE_LAMPORTS: u64 = 30_000_000;
 

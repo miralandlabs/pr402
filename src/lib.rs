@@ -52,6 +52,14 @@ pub mod oracle_health {
         None
     }
 }
+#[cfg(feature = "facilitator-http")]
+pub mod registration_notify;
+#[cfg(not(feature = "facilitator-http"))]
+pub mod registration_notify {
+    //! Stub when built without `facilitator-http` (no `reqwest`).
+    pub async fn spawn_seller_notify(_wallet: &str, _service_url: Option<&str>) {}
+    pub async fn spawn_resource_notify(_wallet: &str, _resource_url: &str) {}
+}
 pub mod parameters;
 pub mod payment_attempt;
 pub mod proto;

@@ -35,6 +35,21 @@ Gate for public listing:
 3. `listingOptIn: true`
 4. `lastProbeOk: true` (automated 402 probe)
 
+Single-resource lookup: `GET /api/v1/facilitator/resources/{id}` (same visibility filters; 404 when not public).
+
+## Directory stats (`GET /directory/stats`)
+
+Aggregate counts for registry dashboards (same visibility as list endpoints — no client-side pagination):
+
+```json
+{
+  "network": "mainnet",
+  "providers": { "total": 42 },
+  "resources": { "total": 128, "byScheme": { "exact": 100, "sla-escrow": 28 } },
+  "asOf": "2026-06-15T14:00:00Z"
+}
+```
+
 ## Resource registration (Layer 3)
 
 Separate from merchant `POST /sellers/{wallet}/register`:

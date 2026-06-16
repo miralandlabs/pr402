@@ -316,6 +316,7 @@ pub async fn handle_onboard_submit(
 
     match facilitator.onboard(&submit.wallet).await {
         Ok(response) => {
+            let mut seller_registry_persisted = false;
             if let Some(db) = pr402_db() {
                 if let Some(info) = response.schemes.get("exact") {
                     // Gate: refuse to persist a `resource_providers` row that points at a vault
@@ -380,7 +381,9 @@ pub async fn handle_onboard_submit(
                         )
                         .await
                     {
-                        Ok(_) => {}
+                        Ok(_) => {
+                            seller_registry_persisted = true;
+                        }
                         Err(DbError::FacilitatorPolicy(msg)) => {
                             return error_response(StatusCode::BAD_REQUEST, &msg);
                         }
@@ -446,6 +449,16 @@ pub async fn handle_onboard_submit(
                     target: LOG_SERVER_LOG,
                     "DATABASE_URL unset; onboard signature accepted but resource_providers not persisted"
                 );
+            }
+            if seller_registry_persisted {
+                pr402::registration_notify::spawn_seller_notify(
+                    &submit.wallet,
+                    submit
+                        .discovery
+                        .as_ref()
+                        .and_then(|d| d.service_url.as_deref()),
+                )
+                .await;
             }
             facilitator_response!()
                 .status(StatusCode::OK)

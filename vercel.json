@@ -256,6 +256,15 @@
       ]
     },
     {
+      "src": "/api/v1/facilitator/directory/stats",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ]
+    },
+    {
       "src": "/api/v1/facilitator/seller/payments",
       "dest": "/src/bin/facilitator",
       "methods": [
@@ -390,6 +399,11 @@
       "src": "/api/v1/facilitator/resources/probe",
       "dest": "/src/bin/facilitator",
       "methods": ["POST", "OPTIONS"]
+    },
+    {
+      "src": "/api/v1/facilitator/resources/(?<id>[0-9]+)",
+      "dest": "/src/bin/facilitator",
+      "methods": ["GET", "HEAD", "OPTIONS"]
     },
     {
       "src": "/api/v1/facilitator/resources",

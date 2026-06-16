@@ -18,6 +18,8 @@ pub mod sla_escrow_close;
 pub use sla_escrow_close::*;
 pub mod build_sla_escrow_settle_tx;
 pub use build_sla_escrow_settle_tx::*;
+pub mod directory;
 pub mod resources;
 pub mod seller_api;
+pub use directory::*;
 pub use resources::*;

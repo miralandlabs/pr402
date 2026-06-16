@@ -16,7 +16,7 @@ use std::time::Duration;
 use tokio::time::timeout;
 use tokio_postgres::types::Json;
 use tokio_postgres::Transaction;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 /// Deadpool/tokio-postgres often surface a useless Display ("db error"); walk `source()` for the real message.
 fn format_err_chain(err: &dyn Error) -> String {
@@ -186,6 +186,14 @@ impl PublicResourceEntry {
     }
 }
 
+/// Aggregate public-directory counts for `GET /directory/stats`.
+#[derive(Debug, Clone)]
+pub struct PublicDirectoryStats {
+    pub provider_total: i64,
+    pub resource_total: i64,
+    pub resources_by_scheme: HashMap<String, i64>,
+}
+
 /// Owner dashboard row — includes probe diagnostics omitted from public search.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -304,6 +312,10 @@ impl SellerPaymentEntry {
 /// delegate to `humantime_serde`-compatible formatting via manual splitting of UTC components
 /// using the `time` crate's primitives... but we don't have `time` either, so we do it from
 /// scratch with a verified algorithm. Keeps the database module dep-light.
+pub fn format_system_time_rfc3339(t: std::time::SystemTime) -> String {
+    system_time_to_rfc3339(t)
+}
+
 fn system_time_to_rfc3339(t: std::time::SystemTime) -> String {
     use std::time::{Duration, UNIX_EPOCH};
     let dur = t.duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO);
@@ -2802,5 +2814,174 @@ impl Pr402Db {
     ) -> Result<Vec<PublicResourceEntry>, DbError> {
         self.list_public_resources(10_000, None, None, None, None, None)
             .await
+    }
+
+    /// Aggregate counts for the public directory stats endpoint. Visibility filters must stay
+    /// in sync with [`Self::list_public_providers`] and [`Self::list_public_resources`].
+    pub async fn fetch_public_directory_stats(&self) -> Result<PublicDirectoryStats, DbError> {
+        const SQL_PROVIDER_COUNT: &str = r#"
+            SELECT COUNT(*)::bigint AS total
+              FROM resource_providers
+             WHERE listing_opt_in = TRUE
+               AND registration_verified_at IS NOT NULL
+               AND inactive = FALSE
+               AND retired_at IS NULL
+        "#;
+
+        const SQL_RESOURCE_COUNT: &str = r#"
+            SELECT COUNT(*)::bigint AS total
+              FROM payable_resources pr
+             WHERE pr.listing_opt_in = TRUE
+               AND pr.registration_verified_at IS NOT NULL
+               AND pr.inactive = FALSE
+               AND pr.retired_at IS NULL
+               AND pr.last_probe_ok = TRUE
+        "#;
+
+        const SQL_RESOURCE_BY_SCHEME: &str = r#"
+            SELECT scheme, COUNT(*)::bigint AS total
+              FROM payable_resources pr
+             WHERE pr.listing_opt_in = TRUE
+               AND pr.registration_verified_at IS NOT NULL
+               AND pr.inactive = FALSE
+               AND pr.retired_at IS NULL
+               AND pr.last_probe_ok = TRUE
+             GROUP BY scheme
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let provider_total =
+            match timeout(Self::QUERY_TIMEOUT, tx.query_one(SQL_PROVIDER_COUNT, &[])).await {
+                Ok(Ok(row)) => row.get::<_, i64>("total"),
+                Ok(Err(e)) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Query(format_err_chain(&e)));
+                }
+                Err(_) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Timeout);
+                }
+            };
+
+        let resource_total =
+            match timeout(Self::QUERY_TIMEOUT, tx.query_one(SQL_RESOURCE_COUNT, &[])).await {
+                Ok(Ok(row)) => row.get::<_, i64>("total"),
+                Ok(Err(e)) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Query(format_err_chain(&e)));
+                }
+                Err(_) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Timeout);
+                }
+            };
+
+        let scheme_rows =
+            match timeout(Self::QUERY_TIMEOUT, tx.query(SQL_RESOURCE_BY_SCHEME, &[])).await {
+                Ok(Ok(rows)) => rows,
+                Ok(Err(e)) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Query(format_err_chain(&e)));
+                }
+                Err(_) => {
+                    tx.rollback().await.ok();
+                    return Err(DbError::Timeout);
+                }
+            };
+
+        tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+
+        Ok(PublicDirectoryStats {
+            provider_total,
+            resource_total,
+            resources_by_scheme: normalize_public_resources_by_scheme(&scheme_rows),
+        })
+    }
+
+    /// Single public resource lookup by primary key. Same visibility filters as
+    /// [`Self::list_public_resources`].
+    pub async fn get_public_resource_by_id(
+        &self,
+        id: i64,
+    ) -> Result<Option<PublicResourceEntry>, DbError> {
+        const SQL: &str = r#"
+            SELECT pr.*, rp.service_url AS merchant_service_url
+              FROM payable_resources pr
+              LEFT JOIN resource_providers rp ON rp.id = pr.resource_provider_id
+             WHERE pr.id = $1
+               AND pr.listing_opt_in = TRUE
+               AND pr.registration_verified_at IS NOT NULL
+               AND pr.inactive = FALSE
+               AND pr.retired_at IS NULL
+               AND pr.last_probe_ok = TRUE
+             LIMIT 1
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let res = timeout(Self::QUERY_TIMEOUT, tx.query_opt(SQL, &[&id])).await;
+        let row = match res {
+            Ok(Ok(Some(row))) => Some(row),
+            Ok(Ok(None)) => None,
+            Ok(Err(e)) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Query(format_err_chain(&e)));
+            }
+            Err(_) => {
+                tx.rollback().await.ok();
+                return Err(DbError::Timeout);
+            }
+        };
+
+        tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+        Ok(row.as_ref().map(|row| {
+            let origin: Option<String> = row.try_get("merchant_service_url").ok();
+            PublicResourceEntry::from_row(row, origin)
+        }))
+    }
+}
+
+fn normalize_public_resources_by_scheme(rows: &[tokio_postgres::Row]) -> HashMap<String, i64> {
+    let mut resources_by_scheme = HashMap::from([
+        ("exact".to_string(), 0_i64),
+        ("sla-escrow".to_string(), 0_i64),
+    ]);
+    for row in rows {
+        let scheme: String = row.get("scheme");
+        let count: i64 = row.get("total");
+        if scheme == "exact" || scheme == "sla-escrow" {
+            resources_by_scheme.insert(scheme, count);
+        } else {
+            warn!(
+                target: "server_log",
+                scheme = %scheme,
+                count = count,
+                "unexpected scheme in public resource stats"
+            );
+        }
+    }
+    resources_by_scheme
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_public_resources_by_scheme_defaults_to_zero() {
+        let map = normalize_public_resources_by_scheme(&[]);
+        assert_eq!(map.get("exact"), Some(&0));
+        assert_eq!(map.get("sla-escrow"), Some(&0));
     }
 }
