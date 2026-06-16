@@ -694,6 +694,157 @@
         }
       }
     },
+    "/api/v1/facilitator/directory/stats": {
+      "get": {
+        "tags": [
+          "pr402 Extension: Discovery"
+        ],
+        "summary": "Public directory aggregate stats",
+        "description": "Returns provider and resource totals using the same visibility filters as `GET /providers` and `GET /resources`. Intended for registry dashboards — avoids client-side pagination for counts.",
+        "operationId": "facilitatorDirectoryStats",
+        "responses": {
+          "200": {
+            "description": "Aggregate directory stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryStats"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Registry disabled (DATABASE_URL unset)"
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/resources": {
+      "get": {
+        "tags": [
+          "pr402 Extension: Discovery"
+        ],
+        "summary": "Public payable-resource search (paged)",
+        "description": "Lists probe-approved, opted-in payable resources. Authoritative payment terms always come from live HTTP 402 on each `resourceUrl`.",
+        "operationId": "facilitatorResourcesList",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "RFC3339 timestamp; server returns rows with updatedAt < cursor"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Search title, description, useCase, tags"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scheme",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "exact",
+                "sla-escrow"
+              ]
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public resource directory page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicResourcesPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor"
+          },
+          "503": {
+            "description": "Registry disabled (DATABASE_URL unset)"
+          }
+        }
+      }
+    },
+    "/api/v1/facilitator/resources/{id}": {
+      "get": {
+        "tags": [
+          "pr402 Extension: Discovery"
+        ],
+        "summary": "Public payable-resource detail by id",
+        "description": "Returns a single public resource row for shareable deep links. Same visibility filters as the list endpoint. 404 when no public listing exists.",
+        "operationId": "facilitatorResourceGet",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public resource entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicResourceSingle"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No public listing for this resource"
+          },
+          "503": {
+            "description": "Registry disabled (DATABASE_URL unset)"
+          }
+        }
+      }
+    },
     "/api/v1/facilitator/seller/payments": {
       "post": {
         "tags": [
@@ -1730,6 +1881,176 @@
         "properties": {
           "entry": {
             "$ref": "#/components/schemas/PublicProviderEntry"
+          },
+          "notice": {
+            "type": "string"
+          }
+        }
+      },
+      "DirectoryStats": {
+        "type": "object",
+        "required": [
+          "network",
+          "providers",
+          "resources",
+          "asOf"
+        ],
+        "properties": {
+          "network": {
+            "type": "string",
+            "enum": [
+              "mainnet",
+              "devnet"
+            ]
+          },
+          "providers": {
+            "type": "object",
+            "required": [
+              "total"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          "resources": {
+            "type": "object",
+            "required": [
+              "total",
+              "byScheme"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "byScheme": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "description": "Counts keyed by scheme (`exact`, `sla-escrow`). Missing keys should be treated as zero."
+              }
+            }
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PublicResourceEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "walletPubkey",
+          "resourceUrl",
+          "httpMethod",
+          "title",
+          "tags",
+          "scheme",
+          "registrationVerifiedAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "walletPubkey": {
+            "type": "string"
+          },
+          "resourceUrl": {
+            "type": "string"
+          },
+          "httpMethod": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "useCase": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scheme": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "sla-escrow"
+            ]
+          },
+          "network": {
+            "type": "string"
+          },
+          "intentContractUrl": {
+            "type": "string"
+          },
+          "merchantOrigin": {
+            "type": "string"
+          },
+          "sellerResourceId": {
+            "type": "string"
+          },
+          "lastProbeAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "registrationVerifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PublicResourcesPage": {
+        "type": "object",
+        "required": [
+          "entries",
+          "notice"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicResourceEntry"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notice": {
+            "type": "string"
+          }
+        }
+      },
+      "PublicResourceSingle": {
+        "type": "object",
+        "required": [
+          "entry",
+          "notice"
+        ],
+        "properties": {
+          "entry": {
+            "$ref": "#/components/schemas/PublicResourceEntry"
           },
           "notice": {
             "type": "string"

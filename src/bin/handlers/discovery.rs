@@ -163,6 +163,11 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/providers/{wallet}",
                 auth: None,
             },
+            directory_stats: HttpEndpointInfo {
+                method: "GET",
+                path: DIRECTORY_STATS,
+                auth: None,
+            },
             seller_payments: HttpEndpointInfo {
                 method: "POST",
                 path: "/api/v1/facilitator/seller/payments",
@@ -196,6 +201,11 @@ pub async fn handle_capabilities(
             resources: HttpEndpointInfo {
                 method: "GET",
                 path: "/api/v1/facilitator/resources",
+                auth: None,
+            },
+            resource_by_id: HttpEndpointInfo {
+                method: "GET",
+                path: "/api/v1/facilitator/resources/{id}",
                 auth: None,
             },
             resource_register_challenge: HttpEndpointInfo {
@@ -281,6 +291,24 @@ fn solana_wallet_rpc_url_for_browser(network: &str) -> String {
     }
 }
 
+/// Solana cluster label shared by health and directory stats (`mainnet` or `devnet`).
+pub fn solana_network_from_chain() -> &'static str {
+    if let Some(cp) = CHAIN_PROVIDER.get() {
+        if cp.solana.rpc_url().contains("devnet") {
+            return "devnet";
+        }
+    }
+    "mainnet"
+}
+
+fn deployment_environment_from_chain() -> String {
+    if solana_network_from_chain() == "devnet" {
+        "Preview".to_string()
+    } else {
+        "Production".to_string()
+    }
+}
+
 pub async fn handle_health() -> Response<Body> {
     let mut db_status = "disabled";
     if let Some(db) = pr402_db() {
@@ -292,17 +320,10 @@ pub async fn handle_health() -> Response<Body> {
 
     let mut rpc_status = "error";
     let mut slot = None;
-    let mut environment = "Production".to_string();
-    let mut network = "mainnet".to_string();
+    let environment = deployment_environment_from_chain();
+    let network = solana_network_from_chain().to_string();
 
     if let Some(cp) = CHAIN_PROVIDER.get() {
-        // DETECT ENVIRONMENT: Match 'devnet' for Preview.
-        let rpc_url = cp.solana.rpc_url();
-        if rpc_url.contains("devnet") {
-            environment = "Preview".to_string();
-            network = "devnet".to_string();
-        }
-
         match cp.solana.get_health().await {
             Ok(s) => {
                 rpc_status = "connected";

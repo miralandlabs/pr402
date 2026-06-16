@@ -304,6 +304,10 @@ struct CapabilitiesHttpEndpoints {
     payment_required_enrich: HttpEndpointInfo,
     /// `GET` — public payable-resource search.
     resources: HttpEndpointInfo,
+    /// `GET` — public payable-resource single-id lookup. `{id}` is a path segment.
+    resource_by_id: HttpEndpointInfo,
+    /// `GET` — aggregate public directory counts (providers + resources).
+    directory_stats: HttpEndpointInfo,
     /// `GET` — HMAC challenge before resource register.
     resource_register_challenge: HttpEndpointInfo,
     /// `POST` — wallet-signed resource register.
@@ -785,6 +789,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("GET", "/api/v1/facilitator/providers") => {
                     handle_public_providers_list(&query).await
                 }
+                ("GET", DIRECTORY_STATS) => handle_directory_stats().await,
                 ("GET", REGISTER_CHALLENGE) => {
                     handle_resource_register_challenge(&query).await
                 }
@@ -794,11 +799,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 ("POST", RETIRE) => {
                     handle_resource_retire(body).await
                 }
-                ("GET", RESOURCES_PREFIX) => {
-                    handle_public_resources_list(&query).await
-                }
                 ("POST", PROBE) => {
                     handle_resource_probe(body).await
+                }
+                ("GET", p)
+                    if p.starts_with(RESOURCES_PREFIX)
+                        && p.len() > RESOURCES_PREFIX.len() + 1 =>
+                {
+                    if let Some(id) = parse_public_resource_id(p) {
+                        handle_public_resource_by_id(id).await
+                    } else {
+                        facilitator_response!()
+                            .status(StatusCode::NOT_FOUND)
+                            .header("Content-Type", "application/json")
+                            .body(Body::Text(r#"{"error":"Not found"}"#.to_string()))
+                            .unwrap()
+                    }
+                }
+                ("GET", RESOURCES_PREFIX) => {
+                    handle_public_resources_list(&query).await
                 }
                 ("GET" | "POST", p)
                     if p.starts_with(seller_api::SELLERS_PREFIX)

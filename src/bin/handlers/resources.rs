@@ -462,6 +462,47 @@ pub async fn handle_public_resources_list(query: &str) -> Response<Body> {
     }
 }
 
+/// Parse a numeric public resource id from `GET /resources/{id}`.
+pub fn parse_public_resource_id(path: &str) -> Option<i64> {
+    let suffix = path.strip_prefix(RESOURCES_PREFIX)?.strip_prefix('/')?;
+    if suffix.is_empty() || !suffix.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    suffix.parse().ok()
+}
+
+/// Public single-resource lookup for shareable deep links. Same visibility as list.
+pub async fn handle_public_resource_by_id(id: i64) -> Response<Body> {
+    let Some(db) = pr402_db() else {
+        return error_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Public resource directory requires DATABASE_URL.",
+        );
+    };
+
+    match db.get_public_resource_by_id(id).await {
+        Ok(Some(entry)) => facilitator_response!()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/json")
+            .body(Body::Text(
+                serde_json::json!({
+                    "entry": entry,
+                    "notice": RESOURCE_DIRECTORY_DISCLAIMER,
+                })
+                .to_string(),
+            ))
+            .unwrap(),
+        Ok(None) => error_response(
+            StatusCode::NOT_FOUND,
+            "No public listing for this resource.",
+        ),
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("get_public_resource_by_id failed: {}", e),
+        ),
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ResourceProbeBody {
@@ -565,4 +606,30 @@ pub async fn handle_resource_probe(body: Body) -> Response<Body> {
             .to_string(),
         ))
         .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_public_resource_id_accepts_numeric_suffix() {
+        assert_eq!(
+            parse_public_resource_id("/api/v1/facilitator/resources/42"),
+            Some(42)
+        );
+    }
+
+    #[test]
+    fn parse_public_resource_id_rejects_non_numeric_paths() {
+        assert_eq!(parse_public_resource_id(RESOURCES_PREFIX), None);
+        assert_eq!(
+            parse_public_resource_id("/api/v1/facilitator/resources/register"),
+            None
+        );
+        assert_eq!(
+            parse_public_resource_id("/api/v1/facilitator/resources/foo"),
+            None
+        );
+    }
 }
