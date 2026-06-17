@@ -6,7 +6,6 @@ This doc is for:
 
 - **Infographic / blog authors** zooming into “Step 2 — Request with Payment”
 - **Sellers** moving from Stripe / bare-wallet x402 examples to pr402
-- **ChatGPT / diagram tools** — use [§ ChatGPT script](#chatgpt-script-generate-the-zoom-in-diagram) at the bottom
 
 **Canonical machine-readable spec:** `GET {BASE}/api/v1/facilitator/agent-payTo-semantics.json`
 
@@ -160,68 +159,3 @@ curl -sS "$BASE/api/v1/facilitator/sellers/YOUR_PUBKEY/rails/exact" | jq .
 ## One-line takeaway for sellers
 
 > **`payTo` on pr402 is where the buyer’s money enters the protocol** (vault or escrow PDA). **Your wallet is how you get paid** (`extra.merchantWallet`), not where buyers send funds. That diversion — from “merchant account / bare wallet” to **program-enforced routing** — is what makes pr402 sustainable, escrow-capable, and subscription-ready on Solana.
-
----
-
-## ChatGPT script: generate the zoom-in diagram
-
-Paste the block below into ChatGPT (or another diagram tool) to produce an accurate **Step 2 zoom-in**. Do not use generic x402 `payTo = wallet` examples.
-
-```text
-Create an infographic UPDATE: zoom into "Step 2 — Request with Payment / HTTP 402 PaymentRequired"
-for pr402 on Solana (NOT generic x402). Audience: API sellers moving from Web2/Stripe to x402.
-
-CONTEXT (must be accurate):
-- pr402 facilitator: ipay.sh (mainnet), preview.ipay.sh (devnet)
-- Two rails: "exact" (UniversalSettle / SplitVault) and "sla-escrow" (on-chain escrow + oracle)
-- Standard x402 diagrams wrongly show payTo = seller wallet and subsidized gas forever — mark that as UNSUSTAINABLE
-- pr402 default: buyer pays Solana network fees (BYOG); facilitator does NOT permanently subsidize all gas
-
-ZOOM-IN PANEL TITLE:
-"Inside HTTP 402: pr402 payTo semantics (not a wallet address)"
-
-LEFT COLUMN — "What naive x402 shows":
-- payTo = seller's Solana wallet
-- Big facilitator subsidizes tx gas
-- Caption: "Works in demos; unsustainable at global scale"
-
-RIGHT COLUMN — "What pr402 requires":
-Box 1 — scheme: exact
-- payTo = SplitVault PDA (on-chain program account)
-- extra.merchantWallet = seller's real wallet (attribution / payout identity)
-- On settle: program splits payment → seller + protocol fee (90–100 bps)
-- Use for: pay-per-call APIs, x402 subscriptions (pay once → JWT window)
-
-Box 2 — scheme: sla-escrow
-- payTo = Escrow PDA (per mint, e.g. USDC)
-- extra.merchantWallet or beneficiary = seller payout wallet (NOT payTo)
-- Funds locked until delivery + oracle verdict (release or refund)
-- Use for: token delivery, high-value jobs, SLA-backed fulfillment
-
-CENTER FLOW (vertical):
-1. Buyer/Agent → GET /api/...
-2. Server → HTTP 402 + JSON accepts[]
-3. Highlight accepts[].payTo with callout: "PROGRAM VAULT — not Stripe, not bare wallet"
-4. Buyer signs tx to payTo PDA
-5. pr402 facilitator POST /verify + /settle
-6. Server returns resource (+ PAYMENT-RESPONSE header)
-
-SELLER CALLOUT BOX:
-"Seller integration trick"
-- Seller drafts 402 with wallet in payTo (input only)
-- POST /payment-required/enrich → canonical vault PDA + extra injected
-- Never publish bare wallet as final payTo on pr402 exact rail
-
-FOOTER CONTRAST (one line):
-Traditional: Pay merchant account → API key → access
-pr402: Pay program vault (payTo) → on-chain enforce split/escrow → access
-
-STYLE:
-- Match emerald/teal fintech palette (pr402 brand)
-- Use lock/shield icons on PDA boxes, wallet icon only on extra.merchantWallet
-- Do NOT label payTo as "seller wallet"
-- Add small Solana + HTTP 402 badges
-
-OUTPUT:
-One wide diagram (16:9) suitable for docs/blog; include a legend for PDA vs wallet vs facilitator.
-```
