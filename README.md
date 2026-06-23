@@ -1,165 +1,52 @@
-# pr402: x402 Facilitator for Solana
+# 🌉 pr402: x402 Facilitator for Solana
 
-**A minimal, x402-compliant facilitator for Solana, optimized for Vercel Serverless Functions. It bridges agent/human requests with on-chain settlement engines like `UniversalSettle` and `SLA-Escrow`.**
-
-> **Status.** pr402 and the `exact` (UniversalSettle) rail are **live on Solana Mainnet and Devnet**. The `sla-escrow` program is also deployed on both clusters; general availability of the `sla-escrow` scheme depends on the seller or buyer choosing an `oracle_authority` they trust — reference implementations ship in the [`oracles/`](https://github.com/miraland-labs/oracles) workspace (three sibling profiles: api-quality, onchain-transfer, file-delivery). Behavior, fees, and feature flags can evolve; treat **`GET /capabilities`** and **`GET /openapi.json`** as the live contract.
-
-## Official deployments
-
-**Recommended** facilitator origins (concise hostnames): **Production** `https://ipay.sh` (Mainnet) · **Preview** `https://preview.ipay.sh` (Devnet).
-
-**Also available** — **same** API surface; **not** deprecated: **`https://agent.pay402.me`** (Production) · **`https://preview.agent.pay402.me`** (Preview).
-
-| Environment | Recommended base URL | Also available (same service) |
-|-------------|----------------------|------------------------------|
-| **Production** | `https://ipay.sh` | `https://agent.pay402.me` |
-| **Preview** | `https://preview.ipay.sh` | `https://preview.agent.pay402.me` |
-
-Call **`GET /api/v1/facilitator/health`** or **`GET /api/v1/facilitator/capabilities`** on the **same host** you use for `verify` / `settle` to confirm **`solanaNetwork`**, **`chainId`**, and feature flags. Integrations must use the origin the **seller documents** for that resource (do not silently swap preview vs production).
-
-**Wallet RPC:** If your client needs the deployment’s wallet-facing HTTP RPC, read **`solanaWalletRpcUrl`** from **`GET /health`** at runtime. Do not copy RPC URLs from static markdown into apps — they are environment-specific and may rotate or carry credentials.
-
-| Served doc | Production (recommended) | Preview (recommended) |
-|------------|--------------------------|-------------------------|
-| OpenAPI 3.1 | [`/openapi.json`](https://ipay.sh/openapi.json) | [`/openapi.json`](https://preview.ipay.sh/openapi.json) |
-| Buyer runbook | [`/agent-integration.md`](https://ipay.sh/agent-integration.md) | [`/agent-integration.md`](https://preview.ipay.sh/agent-integration.md) |
-| Seller onboarding | [`/onboarding_guide.md`](https://ipay.sh/onboarding_guide.md) | [`/onboarding_guide.md`](https://preview.ipay.sh/onboarding_guide.md) |
-
-The same paths work on **`https://agent.pay402.me`** and **`https://preview.agent.pay402.me`**.
-
-In-repo copies: [`public/openapi.json`](public/openapi.json), [`public/agent-integration.md`](public/agent-integration.md), [`public/onboarding_guide.md`](public/onboarding_guide.md).
-
-## Start here
-
-| Persona | Fastest path | Success signal |
-|---------|--------------|----------------|
-| **Seller / resource provider** | [`GET /quickstart-seller.md`](public/quickstart-seller.md) or [`x402-seller-starter`](https://github.com/miraland-labs/x402-seller-starter) | Your API returns a valid `402` and accepts a settled `PAYMENT-SIGNATURE`. |
-| **Buyer / agent developer** | **MCP:** `npx -y @pr402/mcp-server` · **CLI:** `npm i @pr402/client` · **Rust:** `cargo install pr402-client` · Reference: [`x402-buyer-starter`](https://github.com/miraland-labs/x402-buyer-starter) | Your agent builds, signs, verifies, settles, and retries with payment proof. |
-| **API / SDK integrator** | `GET /openapi.json` on the exact facilitator host you call | Generated clients match the deployed schema and feature flags. |
-
-For production integrations, pick one facilitator origin per environment and keep it consistent across seller docs, buyer build requests, `/verify`, and `/settle`. Use `https://ipay.sh` for Mainnet and `https://preview.ipay.sh` for Devnet unless a seller explicitly documents another origin.
-
-## Product readiness signals
-
-- **Machine-readable contract:** `GET /openapi.json` is the canonical schema; `GET /api/v1/facilitator/capabilities` returns feature flags and endpoint paths.
-- **Installable helpers:** TypeScript users can vendor or pin [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts); Rust users can enable the `facilitator-http` feature for [`src/sdk/http.rs`](src/sdk/http.rs). A published npm package should mirror this file without adding framework dependencies.
-- **Trust and operations:** production deployments should gate releases on `cargo fmt`, `cargo clippy`, and `cargo test`, publish health/status information, and document payment mint allowlists before sellers advertise paid resources.
-- **Escrow readiness:** `sla-escrow` sellers should only advertise an oracle authority that is production-operated and discoverable through facilitator capabilities.
-
-## For resource provider agents (sellers)
-
-Sellers can onboard either **Proactively** (Protocol Onboarding) to receive a fee discount, or **Just-In-Time** (Facilitated) with a small setup recovery fee.
-
-**Agentic Onboarding Flow:**
-1. **Discover**: Find your `payTo` (vault PDA) address via `GET /api/v1/facilitator/sellers/{PUBKEY}/rails/exact`.
-2. **On-Chain Provisioning**: **`POST /api/v1/facilitator/sellers/provision-tx`** with a **JSON body** (`Content-Type: application/json`). Put `wallet` and `asset` **in the request body**, not in the query string — e.g. `{"wallet":"<PUBKEY>","asset":"SOL"}` (`USDC`, `USDT`, or a base58 mint). Example: `curl -X POST .../sellers/provision-tx -H "Content-Type: application/json" -d '{"wallet":"<PUBKEY>","asset":"SOL"}'`. Idempotent when already on-chain; sign & broadcast when `transaction` is present. (Facilitator policy: **one asset per merchant wallet**; use **separate wallets** for additional tokens — see [`public/onboarding_guide.md`](public/onboarding_guide.md).)
-3. **Registry (Off-Chain)**: Use `/sellers/{wallet}/challenge` to persist verified metadata for high-fidelity discovery.
-
-## For buyer agents (payers)
-
-This section is for **buyer-side** code: wallets, automation, and agents that **pay** after a resource returns **HTTP 402** with `accepts[]`. Resource providers only return the challenge; they do not normally call the build endpoints below.
-
-### End-to-end flow
-
-1. **Receive** the `402` body from the resource: keep `paymentRequirements` and pick one matching `accepts[]` line.
-2. **Discover** your facilitator (same host the RP referenced, if any): `GET /api/v1/facilitator/capabilities` or `GET /api/v1/facilitator/supported`. Use `httpEndpoints` + `GET /openapi.json` for the machine-readable contract.
-3. **Build** (optional): if the RP relies on this facilitator for tx assembly, call **`POST .../build-exact-payment-tx`** when `scheme` is `exact` or `v2:solana:exact`, or **`POST .../build-sla-escrow-payment-tx`** when `scheme` is `sla-escrow` or `v2:solana:sla-escrow` — not both. You send `payer`, `accepted`, `resource`, and (escrow only) `slaHash` + `oracleAuthority`. The returned **`verifyBodyTemplate`** normalizes **`scheme`** to wire **`exact`** / **`sla-escrow`** in both `paymentPayload.accepted` and `paymentRequirements`.
-4. **Sign** the unsigned `transaction` (base64 bincode) with the payer’s Solana signer, then put the signed bytes back into `paymentPayload.payload.transaction` inside the `verifyBodyTemplate` from the build response (see OpenAPI / runbook).
-5. **Verify** then **settle**: `POST .../verify` and `POST .../settle` with the **same** JSON body; reuse `correlationId` / `X-Correlation-ID` if the facilitator returned one on verify. Both endpoints accept **`v2:solana:*`** scheme aliases on v2 bodies and normalize them before verification.
-
-Rebuild unsigned tx (`retry build` error) if signing or retry is delayed and blockhash expires. If the RP already gave a fully built fund tx (some escrow CLI flows), skip step 3 and still use steps 4–5.
-
-### SDKs and docs
-
-| Integration | What to use |
-|-------------|-------------|
-| **MCP hosts** (Cursor, Claude Desktop) | `npm i @pr402/mcp-server` or `npx -y @pr402/mcp-server`. Tool catalog: **`GET /agent-tools.json`**. Source: [`sdk/mcp/`](sdk/mcp/). |
-| **Installable SDK (CLI / embed)** | `npm i @pr402/client` (Node ≥ 18) or `cargo install pr402-client` (Rust). Both ship library types (`X402AgentClient`) and a `pr402-buy` CLI. One command: `pr402-buy --resource <url> --payer <keypair.json> --mint <mint>`. |
-| **Python LangChain** | [`langchain-pr402`](https://pypi.org/project/langchain-pr402/) on PyPI — `X402GetTool` / `X402PostTool`. |
-| **Step-by-step protocol** | **[`public/agent-integration.md`](public/agent-integration.md)** (same static pattern as `openapi.json`; **`GET /agent-integration.md`**). In-repo stub: [`docs/AGENT_INTEGRATION.md`](docs/AGENT_INTEGRATION.md). |
-| **Seller onboarding** | **[`public/onboarding_guide.md`](public/onboarding_guide.md)** (`GET /onboarding_guide.md`). In-repo stub: [`docs/SELLER_INTEGRATION.md`](docs/SELLER_INTEGRATION.md). |
-| **Ops / recovery** | [`docs/CRON_OPERATIONS.md`](docs/CRON_OPERATIONS.md), [`docs/OPS_RECOVERY_PLAYBOOK.md`](docs/OPS_RECOVERY_PLAYBOOK.md) |
-| **Schema / codegen** | **`GET /openapi.json`** on the facilitator base URL (see `capabilities.httpEndpoints.openApi`). |
-| **Other stacks** | Call the same HTTPS paths; bodies match OpenAPI (`BuildExactPaymentTxRequest`, `X402V2VerifySettleBody`, …). The zero-dependency file [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts) and Rust `facilitator-http` feature on [`src/sdk/http.rs`](src/sdk/http.rs) remain as alternatives for environments that cannot install packages. |
-
-## 🧩 Protocol Overview
-This facilitator implements a tailored version of the [x402-rs](https://github.com/x402-rs/x402-rs) protocol, supporting:
-- ✅ **Solana-Only**: High-performance, lightweight implementation with no dependencies on multi-chain libraries.
-- ✅ **Protocol v2**: Latest protocol version for agentic economies.
-- ✅ **Multi-Scheme Settlement**: Native support for "Exact" and "Escrow" payment schemes.
-- ✅ **Agent-Native Onboarding**: Proactive, machine-readable onboarding for sovereign status.
-- ✅ **Vercel Serverless Functions**: Optimized for low-latency, stateless API endpoints.
-
-## 🛠️ Supported Schemes
-Two settlement patterns (x402 v2):
-
-1.  **`exact` (UniversalSettle)**: Used for high-velocity, immediate settlement. 
-    - **Enriched Metadata**: Discloses `programId`, `configAddress`, and `feeBps`.
-2.  **`sla-escrow` (SLA-Escrow)**: Used for high-stakes or conditional settlement.
-    - **Enriched Metadata**: Discloses `escrowProgramId`, `bankAddress`, `configAddress`, `feeBps`, and `oracleAuthorities`.
+**pr402** is the REST-to-Solana gateway for the x402 agentic economy, optimized for serverless environments (Vercel). It translates simple REST API requests from off-chain agents into on-chain instructions for `UniversalSettle` and `SLA-Escrow`.
 
 ---
 
-## 📁 Project Structure
-- **Maintainer / operator docs:** [`docs/`](docs/) — cron ops, recovery playbook, sla-escrow technical notes ([`docs/README.md`](docs/README.md)).
-- **Buyer SDKs:** installable as [`@pr402/client`](https://www.npmjs.com/package/@pr402/client) (npm), [`@pr402/mcp-server`](https://www.npmjs.com/package/@pr402/mcp-server) (MCP / Cursor), [`langchain-pr402`](https://pypi.org/project/langchain-pr402/) (Python LangChain), and [`pr402-client`](https://crates.io/crates/pr402-client) (crates.io); npm/rust packages ship `pr402-buy`. Source: [`sdk/ts/`](sdk/ts/), [`sdk/mcp/`](sdk/mcp/), [`sdk/rust/`](sdk/rust/). Zero-dependency alternative for other stacks: [`sdk/facilitator-build-tx.ts`](sdk/facilitator-build-tx.ts).
-- [`src/bin/facilitator.rs`](src/bin/facilitator.rs) — Vercel serverless entrypoint handling HTTP requests.
-- [`src/chain/`](src/chain/) — Solana-specific chain provider and instruction builders for UniversalSettle and SLA-Escrow.
-- [`src/scheme/`](src/scheme/) — Protocol verification logic for Exact and Escrow schemes.
-- [`src/exact_payment_build.rs`](src/exact_payment_build.rs) — Optional **shared** SPL `TransferChecked` tx shell for `v2:solana:exact` (unsigned legacy `VersionedTransaction` + verify-body template).
-- [`src/config.rs`](src/config.rs) — Environment-based configuration.
+## 📌 Official Deployments
 
-## ⚙️ Environment Variables
-Required:
-- `SOLANA_RPC_URL`: Solana RPC endpoint.
-- `SOLANA_CHAIN_ID`: Chain ID in CAIP-2 format.
-- `FEE_PAYER_PRIVATE_KEY`: Base58 private key for the facilitator.
+Integrations must use the origin configured for that environment. Confirm the cluster and capability parameters via **`GET /api/v1/facilitator/health`** on your host.
 
-Scheme Configuration:
-- `UNIVERSALSETTLE_PROGRAM_ID`: Program ID for UniversalSettle.
-- `ESCROW_PROGRAM_ID`: Program ID for SLAEscrow.
-- `ORACLE_AUTHORITIES`: Comma-separated list of trusted Oracle pubkeys advertised as candidates during discovery.
+| Environment | Primary Origin (Concise) | Alternate Host (Same Service) | OpenAPI Schema |
+| :--- | :--- | :--- | :--- |
+| **Production** | `https://ipay.sh` | `https://agent.pay402.me` | [`/openapi.json`](https://ipay.sh/openapi.json) |
+| **Preview** | `https://preview.ipay.sh` | `https://preview.agent.pay402.me` | [`/openapi.json`](https://preview.ipay.sh/openapi.json) |
 
 ---
 
-## 🛡️ Institutional Identity Standard
-In the UniversalSettle and SLA-Escrow ecosystems, the concept of a "beneficiary" is split to ensure buyer agents can be stateless:
+## 🛠️ API Surface Overview
 
-1.  **`payTo` (The Destination)**: This is MUST be the direct on-chain destination for the transaction. For institutional payments, this is the **SplitVault PDA** or **Escrow Bank PDA**.
-2.  **`extra.merchantWallet` (The Identity)**: This is the original merchant wallet. The Facilitator uses this to re-derive PDAs for fee-sweeping and provisioning. 
+All endpoints are detailed in the `openapi.json` schema. The primary endpoints are:
 
-**Standard Compliance Rule**: Buyers SHOULD always pay the address in `payTo`. Facilitators MUST look for the merchant's identity in `extra.merchantWallet` if `payTo` is a PDA.
-
----
-
-## 🛡️ Reliability & Security Standard
-To ensure the highest level of transparency for the Agentic Economy, the facilitator implements the following standards:
-
-- **Bit-Perfect Discovery**: On-chain state is extracted using **8-byte discriminators** (Anchor-compatible) and the authoritative protocol API structs. This ensures that the metadata advertised to agents matches the on-chain reality with 100% bit-level precision.
-- **Pluralistic Trust**: By advertising multiple `oracleAuthorities`, the facilitator allows buyer agents to autonomously select the most trusted candidate for their specific task.
-- **Fail-Fast Registration**: The facilitator strictly validates both scheme configurations at startup, returning explicit errors if on-chain properties cannot be loaded.
+* **`/capabilities` (GET):** Returns the facilitator's supported rails, networks, default oracles, and fee rates.
+* **`/payment-required/enrich` (POST):** Enriches a draft payment required body into an institutional-grade, client-ready 402 template.
+* **`/build-exact-payment-tx` (POST):** Builds an unsigned `VersionedTransaction` for the `exact` rail.
+* **`/build-sla-escrow-payment-tx` (POST):** Builds an unsigned `VersionedTransaction` for the `sla-escrow` rail.
+* **`/verify` (POST):** Dry-runs payment signature validation.
+* **`/settle` (POST):** Validates and broadcasts the transaction on-chain, completing settlement.
 
 ---
 
-## API surface (v1)
+## 🚀 Developer Integration Paths
 
-The **authoritative** list of paths, request bodies, and schemas is **[`public/openapi.json`](public/openapi.json)** (`GET /openapi.json` on each deployment). **`GET /api/v1/facilitator/capabilities`** returns relative paths and `httpEndpoints.openApi`.
+Detailed guides are served directly by the deployments or can be found in the workspace:
 
-**Core x402 path:** `supported` → optional **`build-exact-payment-tx`** or **`build-sla-escrow-payment-tx`** → **`verify`** → **`settle`** (same JSON body for verify/settle; see [`public/agent-integration.md`](public/agent-integration.md)).
-
-**Discovery & ops:** `health`, `capabilities`, seller **`/sellers/{wallet}/preview`**, **`/sellers/{wallet}/rails/{scheme}`**, **`/sellers/provision-tx`**, **`/payment-required/enrich`**, operator sweep/snapshot (OpenAPI tag **Operations**).
-
-### Vercel deployment
-- **`vercel.json`** uses `vercel-rust@4.0.8` and maps each `/api/v1/facilitator/...` path to the `facilitator` binary.
-- CI deploy: **[`.github/workflows/build-and-deploy.yml`](.github/workflows/build-and-deploy.yml)** (repository root = this project).
-- In the Vercel project settings, **Root Directory** should be the repo root (or leave blank), not a parent monorepo path — otherwise you can get a platform **404** for `/api/v1/facilitator/health`.
-
-### Correlation id (optional DB merge key)
-x402 does not require a correlation id. For integrators who **do** enable Postgres (`DATABASE_URL`), pr402 merges `/verify` and `/settle` into one `payment_attempts` row when the **same** id is used.
-
-**Easiest path (no id in the request):** On **successful** `/verify`, if the body includes `paymentRequirements.payTo` and the request omits `correlationId` / `X-Correlation-ID`, the facilitator **mints** a ULID, persists the verify outcome, and returns it as **`correlationId`** in the JSON body and **`X-Correlation-ID`** on the response. Re-send that value on **`/settle`** (same header or `correlationId` in JSON) so settlement updates the same row.
-
-**Bring your own id:** Set `correlationId` or `X-Correlation-ID` on both calls as before; server minting is skipped.
+* **Sellers (API Gating):** Read the [Start here · Sellers](/start-here.html) guide or checkout [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter).
+* **Buyers (Agents):** Install the client SDK (`npm i @pr402/client` or `cargo install pr402-client`) and refer to the [Buyer Quickstart](docs-site/quickstart-buyer.md).
+* **AI/MCP Integration:** Run `npx -y @pr402/mcp-server` to connect tools directly to LLMs or Cursor.
 
 ---
-Part of the **x402 Agentic Protocol** ecosystem.
+
+## ⚙️ Environment Configuration
+
+Deployments require the following environment variables:
+
+| Variable | Description |
+| :--- | :--- |
+| `SOLANA_RPC_URL` | Solana RPC node provider URL. |
+| `SOLANA_CHAIN_ID` | CAIP-2 chain identifier. |
+| `FEE_PAYER_PRIVATE_KEY` | Base58 private key of the facilitator (pays gas for JIT vaults and sweeps). |
+| `UNIVERSALSETTLE_PROGRAM_ID` | Program ID of the UniversalSettle program. |
+| `ESCROW_PROGRAM_ID` | Program ID of the SLA-Escrow program. |
+| `ORACLE_AUTHORITIES` | Comma-separated list of trusted oracle public keys. |
