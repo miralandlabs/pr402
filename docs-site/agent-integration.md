@@ -1,7 +1,7 @@
 # Agent integration (pr402 facilitator)
 
 > **New here?** Start with the concise quick starts:
-> - **Buyers:** [`/quickstart-buyer`](/quickstart-buyer) — 6 steps, copy-paste curl commands
+> - **Buyers:** [`/quickstart-buyer`](/quickstart-buyer) — SDK default + manual curl
 > - **Sellers:** [`/start-here`](/start-here) → [`/seller-quick-start`](/seller-quick-start) — orient, then integrate; [`/quickstart-seller`](/quickstart-seller) — 5-step cheat-sheet
 
 Runbook for two kinds of autonomous clients:
@@ -33,16 +33,19 @@ Confirm **`solanaNetwork`**, **`chainId`**, and feature flags with **`GET /api/v
 
 **Wallet RPC:** Read **`solanaWalletRpcUrl`** from **`GET /health`** when you need the deployment’s wallet-facing RPC. Do not hardcode RPC URLs from documentation.
 
-### Golden path (`exact` scheme) — standard integration checklist
+### Golden path (`exact` scheme) — HTTP 402 buyer checklist
 
 Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
-1. **Facilitator URL** — Same origin your seller documents (or embedded in discovery). **Recommended** hosts: **Production** `https://ipay.sh`, **Preview** `https://preview.ipay.sh`. **Also served** (not deprecated): `https://agent.pay402.me`, `https://preview.agent.pay402.me`. Confirm **`solanaNetwork`** with **`GET /health`** on that host.
+1. **Facilitator URL** — Same origin your seller documents. **Production:** `https://ipay.sh` · **Preview:** `https://preview.ipay.sh` (also `agent.pay402.me` / `preview.agent.pay402.me`). Confirm **`solanaNetwork`** with **`GET /health`**.
 2. **`GET /api/v1/facilitator/supported`** (or **`/capabilities`**) — Confirm `exact` / `v2:solana:exact` is listed.
 3. **Receive HTTP 402** from the seller — Save **`paymentRequirements`** and the chosen **`accepts[]`** line.
-4. **`POST /api/v1/facilitator/build-exact-payment-tx`** — Body: `{ "payer": "<buyer pubkey>", "accepted": <same object as the accepts[] line>, "resource": <from 402> }`. Response is **camelCase** JSON (`transaction`, `verifyBodyTemplate`, `payerSignatureIndex`, …).
-5. **Sign** — Deserialize `transaction` (base64 → bincode → `VersionedTransaction`), sign at **`payerSignatureIndex`**, re-encode base64, put into **`verifyBodyTemplate.paymentPayload.payload.transaction`** (replace the unsigned value).
-6. **`POST /verify`** then **`POST /settle`** — Send the **filled `verifyBodyTemplate`** JSON as the body (same object for both). Optional: reuse **`correlationId`** / **`X-Correlation-ID`** from a successful verify when calling settle.
+4. **`POST /api/v1/facilitator/build-exact-payment-tx`** — Body: `{ "payer": "<buyer pubkey>", "accepted": <accepts[] line>, "resource": <from 402> }`. Response: **`transaction`**, **`verifyBodyTemplate`**, **`payerSignatureIndex`**, …
+5. **Sign** — Sign `transaction` at **`payerSignatureIndex`**. Put signed base64 into **`verifyBodyTemplate.paymentPayload.payload.transaction`**.
+6. **Retry seller** — Send the filled **`verifyBodyTemplate`** in header **`PAYMENT-SIGNATURE`** (raw JSON or base64). **Do not** call facilitator **`/verify`** or **`/settle`** first when using SDK, MCP, or x402-buyer-starter.
+7. **Seller settles** — Seller gate calls facilitator **`/settle`** (verify runs internally). Success: **HTTP 200** + optional **`PAYMENT-RESPONSE`**.
+
+**Advanced:** buyer-side **`POST /verify`** then **`POST /settle`** before step 6 — debugging only; see [Buyer agents](#buyer-agents-payers).
 
 **Scheme strings (402 vs verify/settle):** Sellers often publish **`v2:solana:exact`** or **`v2:solana:sla-escrow`** in HTTP 402 **`accepts[]`**, matching **`GET /supported`** / discovery. **`POST .../build-*-payment-tx`** accepts those aliases (or wire **`exact`** / **`sla-escrow`**) on the request’s **`accepted`** object, but the returned **`verifyBodyTemplate`** **normalizes** **`scheme`** to the x402 wire values **`exact`** or **`sla-escrow`** in both **`paymentPayload.accepted`** and **`paymentRequirements`**. **`POST /verify`** and **`POST /settle`** also accept either wire or **`v2:solana:*`** on v2 bodies and normalize before verification, so older cached proofs stay valid.
 
@@ -154,9 +157,7 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 
 ## Buyer agents (payers)
 
-> **Fastest path.** Install the SDK and call one command:
-> `npm i -g @pr402/client && pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>`
-> or `cargo install pr402-client` for the Rust binary. Both ship `pr402-buy`, and both also expose a library (`X402AgentClient`) for embedding. The sections below document the protocol underneath — read them when implementing from scratch, debugging the CLI, or integrating in a language without a published SDK.
+> **Fastest path.** `npm i -g @pr402/client && pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>` (or `cargo install pr402-client`). Uses **`X402AgentClient.fetchWithAutoPay`**: 402 → build → sign → **`PAYMENT-SIGNATURE`** retry. The seller settles; the buyer does not call **`/verify`** or **`/settle`** first. MCP: `@pr402/mcp-server` · starter: [x402-buyer-starter](https://github.com/miraland-labs/x402-buyer-starter).
 
 > **Discover sellers.** `GET /api/v1/facilitator/providers` returns the public directory of verified, opted-in sellers (paginated via `?limit=&cursor=`). Each entry carries `serviceUrl`, `tags[]`, `displayName`, and the settlement rail pubkeys — enough to build an `accepts[]` line without a prior 402. Single-wallet lookup: `GET /api/v1/facilitator/providers/{wallet}`. The facilitator verifies wallet control only; it does not vet the advertised service.
 
@@ -184,21 +185,20 @@ If verification fails with **recipient / asset / amount** errors, the usual caus
 
 ### Payment pipeline: from `accepts[]` to settlement
 
-Walk this in order when a seller returns **402** JSON:
+Default path when calling an HTTP 402 seller (matches `@pr402/client`, MCP, x402-buyer-starter):
 
-1. **Read** `accepts[]` and choose one line matching your payer wallet, chain, and asset.
-2. **Confirm facilitator** — Use the seller-documented base URL, or the host that issued discovery for that merchant (must match **`extra.escrowProgramId` / network** for escrow).
-3. **`GET /capabilities`** on that host — Confirm `features` (e.g. `unsignedExactPaymentTxBuild`, `unsignedSlaEscrowPaymentTxBuild`, `slaEscrow`).
-4. **Build (recommended)** — `POST` the matching **build** endpoint with `payer`, `accepted` (the line you chose), and scheme-specific fields (`resource`, `slaHash`, `oracleAuthority`, etc. per OpenAPI).
-5. **Deserialize** the returned `transaction` (base64 → bincode → `VersionedTransaction`). **Do not** add address lookup tables.
-6. **Sign** all required signer slots (see response **`notes`**; partial sign first when facilitator is fee payer, then facilitator signs at settle if applicable).
-7. **Fill template** — Paste the **signed** tx base64 into **`verifyBodyTemplate`**. Keep **`paymentPayload.accepted`** and **`paymentRequirements`** **byte-for-byte identical** (same JSON object).
-8. **`POST /verify`** then **`POST /settle`** with the **same** body; reuse **`X-Correlation-ID`** / body `correlationId` if the seller or your agent needs audit linkage (facilitator may mint an id on successful verify when DB is enabled).
-9. **Authorized Access (Resource Provider)**: Submit the finalized JSON proof to the resource provider in the **`PAYMENT-SIGNATURE`** header (x402 v2).
-     - **Optimization**: You can send the raw JSON string directly (preferred) or Base64-encode it. All X402 v2-compliant servers now support both.
-     - **`PAYMENT-RESPONSE`**: After settlement, x402 v2 compliant sellers return a `PAYMENT-RESPONSE` header (base64-encoded JSON) containing the settlement result (`success`, `transaction`, `network`, `payer`). Buyer agents can inspect this header to confirm on-chain finality without polling.
+1. **Read** `accepts[]` — pick one line for your wallet, chain, and asset.
+2. **Confirm facilitator** — seller-documented base URL (must match escrow **`extra`** for `sla-escrow`).
+3. **`GET /capabilities`** — confirm build features for your scheme.
+4. **Build** — `POST /build-exact-payment-tx` or `/build-sla-escrow-payment-tx` with `payer`, `accepted`, and scheme fields per OpenAPI.
+5. **Sign** — sign `transaction` at **`payerSignatureIndex`**. **Do not** add address lookup tables.
+6. **Fill template** — put signed tx into **`verifyBodyTemplate.paymentPayload.payload.transaction`**. Keep **`paymentPayload.accepted`** and **`paymentRequirements`** identical.
+7. **Retry seller** — header **`PAYMENT-SIGNATURE`** (raw JSON preferred; base64 accepted).
+8. **Seller settles** — seller calls facilitator **`/settle`**. Read **`PAYMENT-RESPONSE`** on **200** for on-chain proof.
 
-**Expiry:** Solana blockhashes expire—if verify/simulate fails with blockhash errors, **rebuild** the unsigned tx and re-sign.
+**Blockhash expiry:** rebuild from step 4 and re-sign.
+
+**Advanced — buyer-side verify/settle:** `POST /verify` then `POST /settle` with the same body before step 7. Use for debugging only; not the SDK/starter default. Reuse **`correlationId`** / **`X-Correlation-ID`** when auditing.
 
 ---
 
@@ -231,13 +231,19 @@ Request bodies are in **`openapi.json`** (`BuildExactPaymentTxRequest`, `BuildSl
 
 ### 3. Sign locally
 
-Use your stack’s Solana signer. Replace **`paymentPayload.payload.transaction`** in `verifyBodyTemplate` with the **signed** tx base64. Keep **`accepted`** identical to **`paymentRequirements`**.
+Sign at **`payerSignatureIndex`**. Replace **`paymentPayload.payload.transaction`** in `verifyBodyTemplate` with the signed base64. Keep **`accepted`** identical to **`paymentRequirements`**.
 
 ---
 
-### 4. Verify and settle
+### 4. Retry with `PAYMENT-SIGNATURE`
 
-Use the **same** JSON body for both calls.
+Retry the seller request with the filled **`verifyBodyTemplate`** in header **`PAYMENT-SIGNATURE`**. The seller gate calls facilitator **`/settle`**.
+
+---
+
+### Advanced: buyer-side verify and settle
+
+Not the default for `pr402-buy`, MCP, or x402-buyer-starter. Same JSON body for both:
 
 ```bash
 curl -sS -X POST "$BASE/api/v1/facilitator/verify" \
@@ -248,6 +254,8 @@ curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
   -H "Content-Type: application/json" \
   -d @verify-body.json | jq .
 ```
+
+If the seller still requires proof, retry with **`PAYMENT-SIGNATURE`** as in step 4.
 
 ---
 
