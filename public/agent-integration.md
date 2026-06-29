@@ -2,7 +2,7 @@
 
 > **New here?** Start with the concise quick starts:
 > - **Buyers:** [`/quickstart-buyer.md`](/quickstart-buyer.md) — SDK default + manual curl
-> - **Sellers:** [`/quickstart-seller.md`](/quickstart-seller.md) — 5 steps, no PDA math needed
+> - **Sellers:** [`/seller-quick-start.md`](/seller-quick-start.md) · [`/quickstart-seller.md`](/quickstart-seller.md)
 
 Runbook for two kinds of autonomous clients:
 
@@ -51,63 +51,13 @@ Use this order so you do not mismatch facilitator hosts or JSON shapes:
 
 **Shape reminder (after build):** The object you POST to `/verify` and `/settle` matches **`verifyBodyTemplate`** from the build response (with signed tx). It has top-level **`x402Version`**, **`paymentPayload`** (includes nested **`accepted`**, **`payload.transaction`**, **`resource`**), and **`paymentRequirements`** — see **OpenAPI** schema **`X402V2VerifySettleBody`** and its **example** on `GET /openapi.json`.
 
-**SLA-Escrow** — Use **`POST /build-sla-escrow-payment-tx`** instead of step 4; include **`slaHash`** and **`oracleAuthority`** per OpenAPI. Do not use the exact builder for escrow lines. For the cross-actor flow (who authors the SLA bytes, when the seller uploads them, what the oracle compares against), see the **[SLA-Escrow protocol reference](https://github.com/miraland-labs/oracles/blob/main/docs/SLA_ESCROW_PROTOCOL.md)** in the oracles workspace — it's the single source of truth for the four-party interaction.
-
-### Built-in oracle: `x402/oracles/onchain-transfer/v1`
-
-This pr402 deployment ships and operates **one** oracle itself: an
-[`oracle-onchain-transfer`](https://github.com/miraland-labs/oracles)
-instance that adjudicates SPL token transfers and swaps by re-deriving
-pre/post token deltas directly from `getTransaction(jsonParsed)` on the
-configured cluster. When the deployment's
-`PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY` is set, this oracle
-appears in **`GET /capabilities → slaEscrowOracleProfiles[]`** as the
-default for token-transfer scenarios. Buyers MAY use it directly without
-finding their own oracle operator.
-
-The built-in oracle is **operationally distinct** from the facilitator:
-
-- It runs on its own host (or hosts) with its own keypair, Postgres
-  database, and registry storage. A regression in the oracle does NOT
-  regress facilitator endpoints (`/verify`, `/settle`, `/build-*-payment-tx`,
-  onboard flows). Conversely a facilitator restart does not affect the
-  oracle's chain monitor or settlement queue.
-- The pr402 operator MAY disable the built-in oracle at any time by
-  clearing the `PR402_SLA_ESCROW_ONCHAIN_TRANSFER_DEFAULT_PUBKEY`
-  parameter (DB row or env var, whichever the deployment uses). The
-  profile then disappears from `slaEscrowOracleProfiles[]` per the
-  existing pr402 advertise-only-when-pubkey-is-set semantics. Buyers and
-  sellers fall back to ecosystem oracles with no facilitator-side change.
-- When the optional health gate (`PR402_SLA_ESCROW_REQUIRE_ORACLE_HEALTHY`)
-  is `true`, pr402 probes the oracle's `/health` endpoint and refuses to
-  bind escrow to it during transient outages (HTTP 503
-  `oracle_unhealthy` from `/build-sla-escrow-payment-tx`). The gate is
-  off by default; flip on after the oracle has demonstrated reliable
-  uptime in your deployment.
-
-**For other delivery shapes** (`api-quality/v1`,
-`file-delivery/attestation/v1`, future profiles), this pr402 deployment
-does NOT operate the oracle itself. Sellers naming a non-built-in oracle
-in `accepts[].extra.oracleProfiles[]` are responsible for choosing an
-operator they (and their buyers) trust. pr402 reviews and lists ecosystem
-oracles via the editorial registration template
-([`register-oracle.md`](https://github.com/miralandlabs/pr402/issues/new?template=register-oracle.md));
-listing is endorsement only of *configuration consistency* (the operator
-pubkey is reachable and the profile id is canonical), not endorsement of
-the operator's reliability or honesty.
-
-**Trust extended to the built-in oracle is the trust extended to the
-pr402 operator.** Trust extended to ecosystem oracles is the trust
-extended to that oracle's listed operator. Buyers concerned about the
-adjudication path SHOULD verify `Payment.resolution_hash` independently
-after settlement; the recipe is in
-[`SLA_ESCROW_PROTOCOL.md` §5](https://github.com/miraland-labs/oracles/blob/main/docs/SLA_ESCROW_PROTOCOL.md#5-trust-boundaries).
+**SLA-Escrow** — Use **`POST /build-sla-escrow-payment-tx`** instead of step 4; include **`slaHash`** and **`oracleAuthority`** per OpenAPI. Do not use the exact builder for escrow lines.
 
 ---
 
 **Important (pr402 ≠ simple wallet `payTo`):** This facilitator settles through **UniversalSettle** (`v2:solana:exact`) and/or **SLA-Escrow** (`v2:solana:sla-escrow`). Your 402 **`payTo`** (and matching proof destinations) must be the **on-chain PDA** your buyers pay into—not a bare seller wallet for settlement proofs:
 
-- **`exact`**: use the UniversalSettle **split-vault / rail PDAs** from seller discovery (`GET /api/v1/facilitator/sellers/…/rails/exact`) or your integrator’s docs.
+- **`exact`**: use the UniversalSettle **split-vault / rail PDAs** from seller discovery (`GET /api/v1/facilitator/sellers/{wallet}/rails/exact`) or your integrator’s docs.
 - **`sla-escrow`**: **`payTo` must be the Escrow PDA** for the asset mint and facilitator bank (the facilitator verifies this). The **`POST /build-sla-escrow-payment-tx`** response **`verifyBodyTemplate`** sets the canonical `payTo` for you.
 
 ---
@@ -135,7 +85,7 @@ The facilitator exposes a three-stage seller lifecycle. Each stage has a distinc
 
 | Stage | HTTP | Side effect | Required? |
 |-------|------|-------------|-----------|
-| **Preview** | `GET /api/v1/facilitator/sellers/{wallet}/preview` | None. Derives vault PDAs and returns on-chain state. `schemes` is keyed by wire names only (`exact`, `sla-escrow`) — at most two entries; not `v2:solana:*` aliases. | No wallet needed. |
+| **Preview** | `GET /api/v1/facilitator/sellers/{wallet}/preview` | None. Derives vault PDAs and returns on-chain state. | No wallet needed. |
 | **Activate** | `POST /api/v1/facilitator/sellers/provision-tx` | Returns an unsigned `CreateVault` (+ optional ATA) tx. After the **seller** signs and broadcasts, the on-chain `SplitVault` exists and unlocks the sovereign 90 bps fee tier. | Required before accepting payments. |
 | **Verify** (optional) | `GET /api/v1/facilitator/sellers/{wallet}/challenge` then `POST /api/v1/facilitator/sellers/{wallet}/register` | Writes a verified row in the off-chain `resource_providers` registry so the seller appears in discovery. The facilitator **refuses** this step with `409 Conflict` until Activate has landed. | Optional. Only required for verified-seller discovery listings. |
 
@@ -148,7 +98,7 @@ The `POST /sellers/provision-tx` response carries a `statusCode` enum so agents 
 
 If you receive payment for resources and want **Sovereign** status (90 bps fee tier — a 10 bps discount off the standard 100 bps rate) and correct **402 `accepts[]`** lines:
 
-1. **Discover rules**: [Onboarding guide](/onboarding_guide.md) — Sovereign vs facilitated (JIT) paths.
+1. **Discover rules**: [Onboarding guide](/onboarding_guide) — Sovereign vs facilitated (JIT) paths.
 2. **Preview (no wallet):** `GET /api/v1/facilitator/sellers/{YOUR_PUBKEY}/preview`. The `lifecycle` block tells you what stage to act on next.
 3. **Activate (on-chain):**
    - **Build**: `POST /api/v1/facilitator/sellers/provision-tx` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `USDT`, or a base58 SPL mint). Idempotent per `(wallet, asset)` (`statusCode: "ALREADY_PROVISIONED"` + no `transaction` when done).
@@ -159,7 +109,7 @@ If you receive payment for resources and want **Sovereign** status (90 bps fee t
    curl -sS "https://<facilitator-url>/api/v1/facilitator/sellers/{YOUR_PUBKEY}/rails/exact" | jq .
    ```
    Try the **Vault Explorer** on the facilitator `/` landing page for the same resolution.
-5. **Verify identity (optional):** `GET /api/v1/facilitator/sellers/{wallet}/challenge`, sign the returned `message` with the wallet, then `POST /api/v1/facilitator/sellers/{wallet}/register` with `{ wallet, message, signature, asset }`. The signature must be base58-encoded Ed25519. The facilitator returns **`409 Conflict`** if the on-chain vault does not yet exist — run Activate first. Requires `DATABASE_URL` + HMAC secret on the server; persists verified vault metadata for discovery.
+5. **Verify identity (optional):** `GET /api/v1/facilitator/sellers/{wallet}/challenge`, sign the returned `message` with the wallet, then `POST /api/v1/facilitator/sellers/{wallet}/register` with `{ wallet, message, signature, asset }`.
 6. **Publishing x402**: See [Publishing a Payment Required line](#publishing-a-payment-required-line-sellers) so your `accepts[]` matches what this facilitator verifies.
 
 <a id="publishing-a-payment-required-line-sellers"></a>
@@ -174,7 +124,7 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 2. **Bootstrap shape from discovery**  
    Call **`GET /api/v1/facilitator/supported`** (or read **`supported`** inside **`GET /capabilities`**). Copy the structure of a `kinds[]` entry for your rail (`v2:solana:exact` or `v2:solana:sla-escrow`): `network`, `scheme`, and especially **`extra`** (fee payer, program IDs, oracle lists, bank/config PDAs). Your **`accepts[]`** lines should be consistent with that shape so buyers can call builders without guessing.
 
-   **Several options in one 402:** x402 **`accepts[]`** is an **array**—each entry is a full payment requirement with its own **`payTo`**, **`asset`**, and metadata; the buyer returns **one** chosen line as **`accepted`**. This is how you advertise more than one token or rail on the same resource. With this facilitator’s **one asset per merchant wallet** rule, use **distinct seller pubkeys** per rail and give each `accepts[]` row the **`payTo`** / **`extra.merchantWallet`** from discovery for **that** key (see [`onboarding_guide.md`](./onboarding_guide.md) — *Policy: one payment asset per merchant wallet*).
+   **Several options in one 402:** x402 **`accepts[]`** is an **array**—each entry is a full payment requirement with its own **`payTo`**, **`asset`**, and metadata; the buyer returns **one** chosen line as **`accepted`**. This is how you advertise more than one token or rail on the same resource. With this facilitator’s **one asset per merchant wallet** rule, use **distinct seller pubkeys** per rail and give each `accepts[]` row the **`payTo`** / **`extra.merchantWallet`** from discovery for **that** key (see [Onboarding guide](/onboarding_guide) — *Policy: one payment asset per merchant wallet*).
 
 3. **`v2:solana:exact` (UniversalSettle)**  
    - **`payTo`**: Must identify the **vault rail** the facilitator checks on-chain (split-vault / SOL storage / vault ATA semantics per deployment). Use PDAs from **`GET /api/v1/facilitator/sellers/{your_seller_pubkey}/rails/exact`** (`vaultPda`, `solStoragePda`, etc.). Do **not** publish only your personal wallet as `payTo` unless that is explicitly the derived rail for your deployment.  
@@ -196,7 +146,7 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 
 ### Seller agent checklist (automation)
 
-1. **Capabilities**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Seller lifecycle endpoints are under `httpEndpoints.sellerPreview` / `sellerChallenge` / `sellerRegister` / `sellerProvisionTx` / `sellerRailInfo` / `paymentRequiredEnrich`.
+1. **Capabilities**: `GET /api/v1/facilitator/capabilities` — confirm `features.universalSettleExact`, `features.unsignedExactPaymentTxBuild`, and (if you sell via escrow) `features.slaEscrow` / `features.unsignedSlaEscrowPaymentTxBuild`. Seller lifecycle endpoints are under `httpEndpoints.sellerPreview` / `sellerChallenge` / `sellerRegister` / `sellerProvisionTx`.
 2. **Preview**: `GET /api/v1/facilitator/sellers/{PUBKEY}/preview`. Inspect the `lifecycle` block — if `nextStep === "activate"`, skip to step 4. If `isSovereign: true` on `schemes.exact`, you already have the discount path.
 3. **Scheme discovery**: `GET /api/v1/facilitator/sellers/{PUBKEY}/rails/exact` (or `/sellers/{PUBKEY}/rails/sla-escrow?asset=<MINT>`) for a single canonical `payTo`.
 4. **Activate**: `POST /api/v1/facilitator/sellers/provision-tx` with `wallet` + **`asset`** for that seller key's single rail. Inspect `statusCode`: `ALREADY_PROVISIONED` means no tx to sign; otherwise sign the base64 bincode tx and broadcast.
@@ -207,44 +157,7 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 
 ## Buyer agents (payers)
 
-> **Pick your stack**
-
-| You use… | Install | Best for |
-|----------|---------|----------|
-| **Cursor / Claude Desktop / MCP host** | `npx -y @pr402/mcp-server` | Tool `pr402_pay_http_resource` + seller MCP tools. Config: [`/agent-tools.json`](/agent-tools.json). |
-| **Node script or embed** | `npm i @pr402/client` | `pr402-buy` CLI or `X402AgentClient.fetchWithAutoPay`. |
-| **Python LangChain** | `pip install langchain-pr402` | `X402GetTool` / `X402PostTool` — [PyPI](https://pypi.org/project/langchain-pr402/). |
-| **Rust** | `cargo install pr402-client` | `pr402-buy` binary + library. |
-
-> **Fastest CLI path:** `npm i -g @pr402/client && pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>`. Flow: 402 → build → sign → **`PAYMENT-SIGNATURE`** retry; the **seller** settles. Manual curl steps below are for scratch implementations or debugging.
-
-### MCP hosts (Cursor, Claude Desktop)
-
-**Package:** [`@pr402/mcp-server`](https://www.npmjs.com/package/@pr402/mcp-server) (stdio MCP adapter over `@pr402/client`).
-
-1. **Install:** `npm install -g @pr402/mcp-server` or `npx -y @pr402/mcp-server`.
-2. **Configure** (project `.cursor/mcp.json` or Claude Desktop `mcpServers`):
-
-```json
-{
-  "mcpServers": {
-    "pr402": {
-      "command": "npx",
-      "args": ["-y", "@pr402/mcp-server"],
-      "env": {
-        "PR402_FACILITATOR_URL": "https://preview.ipay.sh",
-        "PR402_PAYER_KEYPAIR_JSON": "/absolute/path/to/buyer-keypair.json"
-      }
-    }
-  }
-}
-```
-
-3. **Devnet:** use `https://preview.ipay.sh` and a funded Devnet keypair. **Mainnet:** `https://ipay.sh`.
-4. **Tools:** buyer — `pr402_get_capabilities`, `pr402_build_exact_payment`, `pr402_pay_http_resource`; seller — `pr402_seller_preview`, `pr402_seller_rail_info`, `pr402_seller_provision_tx`, `pr402_enrich_payment_required`.
-5. **Machine-readable catalog:** `GET /agent-tools.json` on your facilitator host.
-
-Example Cursor config: [x402-buyer-starter `examples/mcp/cursor-mcp.json`](https://github.com/miraland-labs/x402-buyer-starter/blob/main/examples/mcp/cursor-mcp.json). Source: `pr402/sdk/mcp/README.md`.
+> **Fastest path.** `npm i -g @pr402/client && pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>` (or `cargo install pr402-client`). Uses **`X402AgentClient.fetchWithAutoPay`**: 402 → build → sign → **`PAYMENT-SIGNATURE`** retry. The seller settles; the buyer does not call **`/verify`** or **`/settle`** first. MCP: `@pr402/mcp-server` · starter: [x402-buyer-starter](https://github.com/miraland-labs/x402-buyer-starter).
 
 > **Discover sellers.** `GET /api/v1/facilitator/providers` returns the public directory of verified, opted-in sellers (paginated via `?limit=&cursor=`). Each entry carries `serviceUrl`, `tags[]`, `displayName`, and the settlement rail pubkeys — enough to build an `accepts[]` line without a prior 402. Single-wallet lookup: `GET /api/v1/facilitator/providers/{wallet}`. The facilitator verifies wallet control only; it does not vet the advertised service.
 
@@ -355,7 +268,7 @@ pr402 uses **short canonical names** on the wire:
 | `exact` | `v2:solana:exact` | UniversalSettle instant settlement |
 | `sla-escrow` | `v2:solana:sla-escrow` | SLA-Escrow time-bound settlement |
 
-In `accepts[]`, `paymentRequirements.scheme`, and builder request `accepted.scheme`, use the **canonical** name. The qualified forms are accepted for backward compatibility. **`GET /sellers/{wallet}/preview`** (preview) and **`POST /sellers/{wallet}/register`** (registration) return the same wire keys under `schemes` — never duplicate alias entries.
+In `accepts[]`, `paymentRequirements.scheme`, and builder request `accepted.scheme`, use the **canonical** name. The qualified forms are accepted for backward compatibility.
 
 ---
 
@@ -372,15 +285,17 @@ These are deliberate design choices that differentiate pr402 from a generic x402
 | **`/sellers/{wallet}/rails/{scheme}` (lightweight)** | Single-scheme, read-only lookup of `payTo` PDA. No auth, no DB. Sellers can call this from any language with a simple HTTP GET. |
 | **CORS `Access-Control-Expose-Headers`** | `PAYMENT-RESPONSE`, `X-Correlation-ID`, and `X-API-Version` are exposed so browser-based agents can read settlement results. |
 | **Toxic asset protection** | Configurable mint allowlist (`PR402_ALLOWED_PAYMENT_MINTS`) prevents settlement with worthless spam tokens. |
-| **Seller quick start** | Language-agnostic guide at [`/seller-quick-start.md`](/seller-quick-start.md) with pseudocode and examples in Rust, Python, JS/TS, and Go. |
+| **Seller quick start** | Language-agnostic guide at [`/seller-quick-start`](/seller-quick-start) with pseudocode and examples in Rust, Python, JS/TS, and Go. |
 
 ---
 
 ## Technical specs
 
-- x402 v2: [x402-specification-v2.md](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md)
-- Facilitator HTTP: **`/openapi.json`** and Markdown runbook **`/agent-integration.md`** on the deployment
-- Seller integration: **`/seller-quick-start.md`** on the deployment
+- **x402 v2 (protocol):** [Specification](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md)
+- **Facilitator — machine-readable:** `{FACILITATOR}/openapi.json` (OpenAPI 3.1) — primary contract for agents and codegen.
+- **Facilitator — Markdown mirror:** `{FACILITATOR}/agent-integration.md` (same runbook as this page when deployments stay aligned).
+- **Facilitator — other Markdown artifacts:** e.g. `{FACILITATOR}/seller-quick-start.md`, `{FACILITATOR}/onboarding_guide.md` (see deployment routing).
+- **Humans — docs site:** [API overview](/api-reference) · [Seller Quick Start](/seller-quick-start) · [Buyer Quick Start](/quickstart-buyer).
 
 ---
 

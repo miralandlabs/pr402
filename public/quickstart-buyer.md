@@ -83,17 +83,6 @@ curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
 
 ---
 
-## Agent integrations
-
-| Stack | Install | Notes |
-| --- | --- | --- |
-| MCP | `npx -y @pr402/mcp-server` | `pr402_pay_http_resource`; [`/agent-tools.json`](/agent-tools.json) |
-| Node | `npm i @pr402/client` | `pr402-buy` or `X402AgentClient` |
-| Python | `pip install langchain-pr402` | PyPI |
-| Rust | `cargo install pr402-client` | `pr402-buy` + library |
-
----
-
 ## Checklist
 
 - Match the seller's facilitator host (preview vs mainnet).
