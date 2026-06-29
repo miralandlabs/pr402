@@ -3,7 +3,7 @@
  * pr402-buy — one-shot buyer CLI (TypeScript).
  *
  * Runs the full x402 lifecycle against any seller URL: fetch 402 → build → sign →
- * verify → settle → retry. Seller-agnostic; uses the same `X402AgentClient` the
+ * retry with PAYMENT-SIGNATURE (seller settles). Uses the same `X402AgentClient` the
  * library exposes so the CLI and the importable API evolve together.
  *
  * Distribution:

@@ -1,32 +1,43 @@
-# Buyer Quick Start — 6 Steps to Pay via x402
+# Buyer Quick Start
 
-> **You have a Solana wallet and received HTTP 402 from a seller. Here's what to do.**
+> You have a Solana wallet and got **HTTP 402** from a seller.
 
-> **Status.** pr402 and the `exact` rail are live on **Solana Mainnet** (`https://ipay.sh`) and **Devnet** (`https://preview.ipay.sh`); same service also served on `https://agent.pay402.me` / `https://preview.agent.pay402.me` (not deprecated). For `sla-escrow`, the `oracle_authority` on the payment is chosen by the seller — trust that authority explicitly before funding.
+> **Status.** Live on Mainnet (`https://ipay.sh`) and Devnet (`https://preview.ipay.sh`). Same APIs at `https://agent.pay402.me` / `https://preview.agent.pay402.me`.
 
-Replace **`$BASE`** with the facilitator URL the seller documents. Run **`curl -sS "$BASE/api/v1/facilitator/health" | jq .solanaNetwork`** to confirm the cluster.
+Set **`$BASE`** to the facilitator URL the **seller documents**. Confirm cluster: `GET $BASE/api/v1/facilitator/health`.
 
-Do not silently substitute a different facilitator origin than the seller documented. `payTo`, program ids, asset allowlists, and oracle authorities are deployment-specific.
+Do not substitute a different facilitator origin. `payTo`, mint allowlists, and oracle authorities are deployment-specific.
 
 ---
 
-## Step 1 — Confirm the facilitator supports your scheme
+## Default — use the SDK
 
 ```bash
-curl -sS "$BASE/api/v1/facilitator/capabilities" | jq '.features'
+npm i -g @pr402/client
+pr402-buy --resource <URL> --payer <keypair.json> --mint <MINT>
 ```
 
-Check `unsignedExactPaymentTxBuild: true` (for `exact`) or `unsignedSlaEscrowPaymentTxBuild: true` (for `sla-escrow`).
+One-shot: `npx @pr402/client pr402-buy ...` · Rust: `cargo install pr402-client`
 
-## Step 2 — Save the 402 response
+**Library:** `X402AgentClient.fetchWithAutoPay` · **Starter:** [x402-buyer-starter](https://github.com/miraland-labs/x402-buyer-starter) (`createPay402Fetch`, Bash/Python demos) · **MCP:** `npx -y @pr402/mcp-server` → `pr402_pay_http_resource`
 
-From the seller's 402 body, save:
-- **`accepts[]`** — pick one line matching your wallet's chain/asset
-- **`resource`** — the resource descriptor
+**Flow:** 402 → build → sign → retry the seller with **`PAYMENT-SIGNATURE`**. The **seller** calls facilitator **`/settle`**. Do **not** call **`/verify`** or **`/settle`** as the buyer first.
 
-## Step 3 — Build an unsigned transaction
+---
 
-### For `exact` (instant payment):
+## Manual path (`exact` rail)
+
+For languages without a published SDK:
+
+1. **402** — Save one **`accepts[]`** line and **`resource`**.
+2. **Build** — `POST $BASE/api/v1/facilitator/build-exact-payment-tx` with `{ payer, accepted, resource }`. If the 402 line says `v2:solana:exact`, send wire **`exact`** on the request.
+3. **Sign** — Sign `transaction` at **`payerSignatureIndex`**. Put signed base64 into **`verifyBodyTemplate.paymentPayload.payload.transaction`**.
+4. **Retry seller** — Same request with **`PAYMENT-SIGNATURE`** (raw JSON or base64). Seller settles and returns **200** + optional **`PAYMENT-RESPONSE`**.
+
+Blockhash expired? Rebuild from step 2.
+
+### Build request (step 2)
+
 ```bash
 curl -sS -X POST "$BASE/api/v1/facilitator/build-exact-payment-tx" \
   -H "Content-Type: application/json" \
@@ -37,75 +48,45 @@ curl -sS -X POST "$BASE/api/v1/facilitator/build-exact-payment-tx" \
   }'
 ```
 
-### For `sla-escrow` (time-bound escrow):
-```bash
-curl -sS -X POST "$BASE/api/v1/facilitator/build-sla-escrow-payment-tx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "payer": "<YOUR_PUBKEY>",
-    "accepted": <THE_ACCEPTS_LINE_YOU_CHOSE>,
-    "resource": <RESOURCE_FROM_402>,
-    "slaHash": "<64_HEX_CHARS>",
-    "oracleAuthority": "<ORACLE_PUBKEY>"
-  }'
-```
-
-**Response** gives you `transaction` (base64 unsigned tx) and `verifyBodyTemplate` (pre-filled verify/settle body). If your 402 line uses **`v2:solana:exact`** or **`v2:solana:sla-escrow`**, the template’s **`scheme`** fields are normalized to wire **`exact`** / **`sla-escrow`** — use them as returned.
-
-## Step 4 — Sign the transaction
-
-1. Decode `transaction` → base64 → bincode → `VersionedTransaction`
-2. Sign at index `payerSignatureIndex` (from response) with your Solana keypair
-3. Re-encode: `VersionedTransaction` → bincode → base64
-4. Replace `verifyBodyTemplate.paymentPayload.payload.transaction` with the signed base64
-
-## Step 5 — Verify then settle
-
-```bash
-# Verify
-curl -sS -X POST "$BASE/api/v1/facilitator/verify" \
-  -H "Content-Type: application/json" \
-  -d @verify-body.json | jq .
-
-# Settle (same body)
-curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
-  -H "Content-Type: application/json" \
-  -d @verify-body.json | jq .
-```
-
-**Success:** `{ "success": true, "transaction": "<SOLANA_SIGNATURE>" }`
-
-## Step 6 — Access the paid resource
-
-Send the **filled `verifyBodyTemplate`** JSON to the seller in the `PAYMENT-SIGNATURE` header:
+### Retry (step 4)
 
 ```bash
 curl -sS "<SELLER_RESOURCE_URL>" \
   -H "PAYMENT-SIGNATURE: $(cat verify-body.json)"
 ```
 
-The seller forwards it to `/settle` and serves you the resource.
+### Optional — find sellers first
+
+```bash
+curl -sS "$BASE/api/v1/facilitator/providers?limit=50" | jq '.entries[] | {displayName, serviceUrl, tags}'
+```
+
+### `sla-escrow`
+
+Use **`POST /build-sla-escrow-payment-tx`**. See [`/agent-integration.md`](/agent-integration.md) and the [oracles Buyer Guide](https://github.com/miraland-labs/oracles/blob/main/docs/BUYER_GUIDE.md).
 
 ---
 
-**If anything fails with blockhash errors, go back to Step 3** — Solana blockhashes expire in ~60 seconds.
+## Advanced — buyer-side `/verify` + `/settle`
 
-**Full reference:** `GET /openapi.json` and `GET /agent-integration.md` on the facilitator.
+For debugging or custom flows **without** a seller gate. **Not** the default for `pr402-buy`, MCP, or x402-buyer-starter.
 
-## Agent integrations (pick your stack)
+```bash
+curl -sS -X POST "$BASE/api/v1/facilitator/verify" \
+  -H "Content-Type: application/json" -d @verify-body.json
 
-| Stack | Install | Notes |
-|-------|---------|-------|
-| **MCP** (Cursor, Claude Desktop) | `npx -y @pr402/mcp-server` | Tool `pr402_pay_http_resource`; config in [`/agent-tools.json`](/agent-tools.json) |
-| **Node** | `npm i @pr402/client` | `pr402-buy` CLI or `X402AgentClient` |
-| **Python LangChain** | `pip install langchain-pr402` | [PyPI](https://pypi.org/project/langchain-pr402/) |
-| **Rust** | `cargo install pr402-client` | `pr402-buy` + library |
+curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
+  -H "Content-Type: application/json" -d @verify-body.json
+```
 
-Cursor example: [x402-buyer-starter `examples/mcp/cursor-mcp.json`](https://github.com/miraland-labs/x402-buyer-starter/blob/main/examples/mcp/cursor-mcp.json).
+`/settle` is idempotent. If the seller still requires proof, retry with **`PAYMENT-SIGNATURE`** as in the manual path.
 
-## Buyer launch checklist
+---
 
-- Cache `GET /capabilities` per facilitator host and invalidate it on failed build/verify responses.
-- Treat `verifyBodyTemplate` as authoritative; only replace the transaction payload after signing.
-- Record `correlationId` from `/verify` and reuse it on `/settle` when present.
-- For `sla-escrow`, verify the oracle authority and profile id before funding.
+## Checklist
+
+- Match the seller's facilitator host (preview vs mainnet).
+- After build, only replace the signed **`transaction`** in **`verifyBodyTemplate`**.
+- For **`sla-escrow`**, verify the seller's oracle authority before funding.
+
+**More:** [`/agent-integration.md`](/agent-integration.md) · **`GET /openapi.json`**
