@@ -1443,9 +1443,9 @@ impl Pr402Db {
                 INSERT INTO payment_attempts (
                     correlation_id, resource_provider_id,
                     settle_at, settle_ok, settle_error, settlement_signature, updated_at,
-                    scheme, amount, asset
+                    payer_wallet, scheme, amount, asset
                 )
-                VALUES ($1, $2, NOW(), $3, $4, $5, NOW(), $6, $7, $8)
+                VALUES ($1, $2, NOW(), $3, $4, $5, NOW(), $6, $7, $8, $9)
                 ON CONFLICT (correlation_id) DO UPDATE SET
                     resource_provider_id = COALESCE(EXCLUDED.resource_provider_id, payment_attempts.resource_provider_id),
                     settle_at = NOW(),
@@ -1453,6 +1453,7 @@ impl Pr402Db {
                     settle_error = EXCLUDED.settle_error,
                     settlement_signature = COALESCE(EXCLUDED.settlement_signature, payment_attempts.settlement_signature),
                     updated_at = NOW(),
+                    payer_wallet = COALESCE(EXCLUDED.payer_wallet, payment_attempts.payer_wallet),
                     scheme = COALESCE(EXCLUDED.scheme, payment_attempts.scheme),
                     amount = COALESCE(EXCLUDED.amount, payment_attempts.amount),
                     asset = COALESCE(EXCLUDED.asset, payment_attempts.asset)
@@ -1476,6 +1477,7 @@ impl Pr402Db {
                     &outcome.ok,
                     &outcome.error,
                     &outcome.signature,
+                    &meta.payer_wallet,
                     &meta.scheme,
                     &meta.amount,
                     &meta.asset,

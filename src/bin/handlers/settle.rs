@@ -46,6 +46,7 @@ pub async fn handle_settle(
 
     match facilitator.settle(&settle_request).await {
         Ok(response) => {
+            let payer_wallet = response.payer.clone();
             let mut json = response.into_json();
             if let Some(cid) = persist_meta.as_deref() {
                 pr402::payment_attempt::merge_correlation_into_value(&mut json, cid);
@@ -73,7 +74,7 @@ pub async fn handle_settle(
                             signature: sig.as_deref(),
                         },
                         PaymentAuditMetadata {
-                            payer_wallet: None,
+                            payer_wallet: payer_wallet.as_deref(),
                             scheme: scheme_opt.as_deref(),
                             amount: amount_opt.as_deref(),
                             asset: asset_opt.as_deref(),
