@@ -46,6 +46,7 @@ pub async fn handle_verify(
 
     match facilitator.verify(&verify_request).await {
         Ok(response) => {
+            let payer_wallet = response.payer.clone();
             let effective_cid = persist_meta.clone().or_else(|| {
                 if pr402_db().is_some() && persist_wallet.is_some() {
                     Some(pr402::payment_attempt::mint_correlation_id())
@@ -72,7 +73,7 @@ pub async fn handle_verify(
                             signature: None,
                         },
                         PaymentAuditMetadata {
-                            payer_wallet: None,
+                            payer_wallet: payer_wallet.as_deref(),
                             scheme: scheme_opt.as_deref(),
                             amount: amount_opt.as_deref(),
                             asset: asset_opt.as_deref(),
