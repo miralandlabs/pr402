@@ -35,9 +35,13 @@ pub async fn run_vault_sweep(
         .solana
         .universalsettle()
         .ok_or("UniversalSettle not configured")?;
-    let _fee_destination = us_config
-        .fee_destination
-        .ok_or("UniversalSettle fee destination not configured")?;
+    let _fee_destination = cfg
+        .chain
+        .solana
+        .universalsettle_params()
+        .await
+        .ok_or("UniversalSettle fee destination not configured")?
+        .fee_destination;
 
     let (cfg_pda, _) = cfg.chain.solana.get_config_pda(&us_config.program_id);
     let onchain_us: crate::chain::solana_universalsettle::Config = {

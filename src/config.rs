@@ -3,6 +3,7 @@
 //! Uses environment variables only - no JSON config files needed.
 
 use std::str::FromStr;
+use std::sync::{Arc, OnceLock};
 use url::Url;
 
 use crate::chain::ChainId;
@@ -33,19 +34,31 @@ pub struct Config {
     pub onboard_challenge_ttl_sec: u64,
 }
 
+/// On-chain UniversalSettle `Config` params, read from the Config PDA.
+#[derive(Debug, Clone, Copy)]
+pub struct UsOnchainParams {
+    pub fee_destination: Pubkey,
+    pub fee_bps: u16,
+    pub min_fee_amount: u64,
+    pub min_fee_amount_sol: u64,
+}
+
 /// UniversalSettle configuration for fee-charging facilitator.
+///
+/// `program_id` is known from the environment; the fee destination / bps / floors are read
+/// from the on-chain Config PDA and cached **lazily** in `onchain`. A failed load is never
+/// cached, so the next hot-path call retries — a cold-start RPC blip cannot degrade the
+/// whole (serverless) instance for its lifetime.
 #[derive(Debug, Clone)]
 pub struct UniversalSettleConfig {
     /// UniversalSettle program ID
     pub program_id: Pubkey,
-    /// Fee destination (read from on-chain Config account)
-    pub fee_destination: Option<Pubkey>,
-    /// Fee basis points (read from on-chain Config account)
-    pub fee_bps: Option<u16>,
-    /// Minimum fee for SPL tokens
-    pub min_fee_amount: Option<u64>,
-    /// Minimum fee for Native SOL
-    pub min_fee_amount_sol: Option<u64>,
+    /// On-chain Config params, populated on first successful load. `Arc<OnceLock<_>>` only so the
+    /// struct can keep `#[derive(Clone)]` (required because `Config` derives `Clone` and is cloned
+    /// once at startup). The cache is meaningful per **warm process**: the provider is a
+    /// process-global static reused across Vercel invocations, so the load runs once per cold start
+    /// (or lazily once if boot's warm-up failed) and every later request on that instance reuses it.
+    onchain: Arc<OnceLock<UsOnchainParams>>,
 }
 
 /// SLAEscrow configuration for escrow-based settlements.
@@ -108,10 +121,7 @@ impl Config {
             })?;
             Some(UniversalSettleConfig {
                 program_id,
-                fee_destination: None,
-                fee_bps: None,
-                min_fee_amount: None,
-                min_fee_amount_sol: Some(200_000),
+                onchain: Arc::new(OnceLock::new()),
             })
         } else {
             None
@@ -180,11 +190,50 @@ fn env_truthy(name: &str) -> bool {
 }
 
 impl UniversalSettleConfig {
-    /// Read fee destination from on-chain Config account.
-    pub async fn load_fee_destination(
-        &mut self,
+    /// On-chain params if already loaded (`None` until the first successful [`Self::ensure_loaded`]).
+    pub fn onchain(&self) -> Option<UsOnchainParams> {
+        self.onchain.get().copied()
+    }
+
+    pub fn fee_destination(&self) -> Option<Pubkey> {
+        self.onchain().map(|p| p.fee_destination)
+    }
+
+    pub fn fee_bps(&self) -> Option<u16> {
+        self.onchain().map(|p| p.fee_bps)
+    }
+
+    pub fn min_fee_amount(&self) -> Option<u64> {
+        self.onchain().map(|p| p.min_fee_amount)
+    }
+
+    pub fn min_fee_amount_sol(&self) -> Option<u64> {
+        self.onchain().map(|p| p.min_fee_amount_sol)
+    }
+
+    /// Lazily load the on-chain Config params, caching the first success. On failure nothing is
+    /// cached, so the next call retries (self-healing after a cold-start RPC blip). Idempotent and
+    /// safe to call on every hot-path request.
+    pub async fn ensure_loaded(
+        &self,
         rpc_client: &solana_client::nonblocking::rpc_client::RpcClient,
-    ) -> Result<(), ConfigError> {
+    ) -> Result<UsOnchainParams, ConfigError> {
+        if let Some(params) = self.onchain.get() {
+            return Ok(*params);
+        }
+
+        let params = self.fetch_onchain(rpc_client).await?;
+        // Ignore a lost race: a concurrent caller may have populated the cell first with the
+        // same on-chain data. Either way the cell now holds authoritative params.
+        let _ = self.onchain.set(params);
+        Ok(params)
+    }
+
+    /// Read + parse the on-chain Config PDA (no caching).
+    async fn fetch_onchain(
+        &self,
+        rpc_client: &solana_client::nonblocking::rpc_client::RpcClient,
+    ) -> Result<UsOnchainParams, ConfigError> {
         // Derive Config PDA
         let (config_pda, _) = Pubkey::find_program_address(&[b"config"], &self.program_id);
 
@@ -211,16 +260,12 @@ impl UniversalSettleConfig {
 
         let config_state = bytemuck::from_bytes::<USConfig>(&account.data[8..8 + config_size]);
 
-        self.fee_destination = Some(Pubkey::from(config_state.fee_destination.to_bytes()));
-        self.fee_bps = Some(config_state.fee_bps);
-        self.min_fee_amount = Some(config_state.min_fee_amount);
-        self.min_fee_amount_sol = Some(config_state.min_fee_amount_sol);
-
-        Ok(())
-    }
-
-    pub fn fee_bps(&self) -> Option<u16> {
-        self.fee_bps
+        Ok(UsOnchainParams {
+            fee_destination: Pubkey::from(config_state.fee_destination.to_bytes()),
+            fee_bps: config_state.fee_bps,
+            min_fee_amount: config_state.min_fee_amount,
+            min_fee_amount_sol: config_state.min_fee_amount_sol,
+        })
     }
 }
 

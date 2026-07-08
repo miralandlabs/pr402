@@ -712,8 +712,8 @@ pub async fn settle_transaction(
                 // COLLECTION PRIORITY: prioritized final_beneficiary from verification (or override)
                 let final_beneficiary =
                     collection_beneficiary.unwrap_or(*verification.final_beneficiary.pubkey());
-                let fee_dest = match us_config.fee_destination {
-                    Some(dest) => dest,
+                let fee_dest = match provider.universalsettle_params().await {
+                    Some(params) => params.fee_destination,
                     None => {
                         error!(
                             merchant = %merchant_identity,
