@@ -391,6 +391,102 @@ pub fn verify_create_ata_instruction(
     Ok(())
 }
 
+/// Validate the compute-budget envelope and locate/verify the payment instruction.
+///
+/// Shapes are matched by instruction count (facilitator builds: 3 = SPL/SOL transfer,
+/// 4 = + dest create-ATA, 6 = wSOL auto-wrap, 7 = wrap + dest create-ATA). Some mainnet
+/// wallets append a protection/guard instruction to the transaction they sign, which
+/// shifts a 3-instruction build to 4 (and a 6 to 7) with the payment transfer NOT where
+/// the create-ATA shape expects it — verification then failed with
+/// `Invalid Create ATA instruction` for those wallets only.
+///
+/// Fallback: when the create-ATA slot fails validation, re-interpret the count as
+/// "builder shape + one wallet-appended trailing instruction" and verify the payment
+/// transfer at its builder index. Anything that verified before still verifies with
+/// identical results; a transaction failing both interpretations returns the original
+/// create-ATA error. Safety is unchanged — the exact-amount, SplitVault/payTo
+/// destination, and fee-payer-exclusion rules still apply to every verified transaction,
+/// so the tolerated trailing instruction (signed by the payer) cannot touch the fee
+/// payer or alter the payment.
+async fn verify_budget_and_payment_instructions(
+    provider: &SolanaChainProvider,
+    transaction: &VersionedTransaction,
+    transfer_requirement: &TransferRequirement<'_>,
+) -> Result<TransferCheckedInstruction, PaymentVerificationError> {
+    let budget = crate::chain::TxBudget::ExactSplTransfer;
+    let _compute_units = verify_compute_limit_instruction(budget.cu_limit(), transaction, 0)?;
+    verify_compute_price_instruction(budget.cu_price(), transaction, 1)?;
+
+    let transfer_instruction = match transaction.message.instructions().len() {
+        3 => {
+            verify_transfer_instruction(provider, transaction, 2, transfer_requirement, false)
+                .await?
+        }
+        4 => match verify_create_ata_instruction(transaction, 2, transfer_requirement) {
+            Ok(()) => {
+                verify_transfer_instruction(provider, transaction, 3, transfer_requirement, true)
+                    .await?
+            }
+            Err(create_ata_err) => {
+                let transfer = verify_transfer_instruction(
+                    provider,
+                    transaction,
+                    2,
+                    transfer_requirement,
+                    false,
+                )
+                .await
+                .map_err(|_| create_ata_err)?;
+                log_tolerated_trailing_instruction(transaction, 3);
+                transfer
+            }
+        },
+        6 => {
+            // indices 2, 3, 4 are auto-wrap (create_ata, transfer SOL, sync_native)
+            verify_transfer_instruction(provider, transaction, 5, transfer_requirement, false)
+                .await?
+        }
+        7 => match verify_create_ata_instruction(transaction, 5, transfer_requirement) {
+            Ok(()) => {
+                // indices 2, 3, 4 are auto-wrap, index 5 is dest create_ata
+                verify_transfer_instruction(provider, transaction, 6, transfer_requirement, true)
+                    .await?
+            }
+            Err(create_ata_err) => {
+                let transfer = verify_transfer_instruction(
+                    provider,
+                    transaction,
+                    5,
+                    transfer_requirement,
+                    false,
+                )
+                .await
+                .map_err(|_| create_ata_err)?;
+                log_tolerated_trailing_instruction(transaction, 6);
+                transfer
+            }
+        },
+        _ => return Err(SolanaExactError::InvalidTransactionInstructionsCount.into()),
+    };
+    Ok(transfer_instruction)
+}
+
+/// Audit trail + production diagnostic for the wallet-appended-instruction fallback.
+fn log_tolerated_trailing_instruction(transaction: &VersionedTransaction, index: usize) {
+    let keys = transaction.message.static_account_keys();
+    let program_id = transaction
+        .message
+        .instructions()
+        .get(index)
+        .map(|ix| ix.program_id(keys).to_string())
+        .unwrap_or_default();
+    tracing::warn!(
+        index,
+        program_id = %program_id,
+        "tolerated wallet-appended trailing instruction after verified payment transfer"
+    );
+}
+
 pub async fn verify_transaction(
     provider: &SolanaChainProvider,
     transaction_b64_string: String,
@@ -427,34 +523,9 @@ pub async fn verify_transaction(
     }
 
     // perform transaction introspection to validate the transaction structure and details
-    let instructions = transaction.message.instructions();
-    let budget = crate::chain::TxBudget::ExactSplTransfer;
-    let _compute_units = verify_compute_limit_instruction(budget.cu_limit(), &transaction, 0)?;
-    verify_compute_price_instruction(budget.cu_price(), &transaction, 1)?;
-
-    let transfer_instruction = match instructions.len() {
-        3 => {
-            verify_transfer_instruction(provider, &transaction, 2, transfer_requirement, false)
-                .await?
-        }
-        4 => {
-            verify_create_ata_instruction(&transaction, 2, transfer_requirement)?;
-            verify_transfer_instruction(provider, &transaction, 3, transfer_requirement, true)
-                .await?
-        }
-        6 => {
-            // indices 2, 3, 4 are auto-wrap (create_ata, transfer SOL, sync_native)
-            verify_transfer_instruction(provider, &transaction, 5, transfer_requirement, false)
-                .await?
-        }
-        7 => {
-            // indices 2, 3, 4 are auto-wrap, index 5 is dest create_ata
-            verify_create_ata_instruction(&transaction, 5, transfer_requirement)?;
-            verify_transfer_instruction(provider, &transaction, 6, transfer_requirement, true)
-                .await?
-        }
-        _ => return Err(SolanaExactError::InvalidTransactionInstructionsCount.into()),
-    };
+    let transfer_instruction =
+        verify_budget_and_payment_instructions(provider, &transaction, transfer_requirement)
+            .await?;
 
     let pay_to_pk = *transfer_requirement.pay_to.pubkey();
     let (vault_from_pay_to, _) = provider.get_vault_pda(&pay_to_pk);
@@ -1108,14 +1179,192 @@ impl From<SolanaChainProviderError> for PaymentVerificationError {
 }
 
 #[cfg(test)]
-mod compute_budget_tests {
+mod payment_shape_tests {
     use super::*;
     use crate::chain::TxBudget;
-    use crate::util::tx_builder::{compute_budget_ix_set_limit, compute_budget_ix_set_price};
+    use crate::util::tx_builder::{
+        compute_budget_ix_set_limit, compute_budget_ix_set_price,
+        create_associated_token_account_idempotent_ix,
+    };
     use solana_hash::Hash;
     use solana_keypair::Keypair;
     use solana_signer::Signer;
-    use solana_transaction::{Instruction, Transaction};
+    use solana_transaction::{AccountMeta, Instruction, Transaction};
+    use std::str::FromStr;
+
+    fn test_provider() -> SolanaChainProvider {
+        SolanaChainProvider::new(
+            "http://127.0.0.1:8899",
+            Keypair::new(),
+            crate::chain::ChainId::from_str("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp").unwrap(),
+            None,
+            None,
+        )
+    }
+
+    struct Fixture {
+        payer: Keypair,
+        mint: Pubkey,
+        pay_to: Pubkey,
+        source_ata: Pubkey,
+        dest_ata: Pubkey,
+        amount: u64,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            Self {
+                payer: Keypair::new(),
+                mint: Pubkey::new_unique(),
+                pay_to: Pubkey::new_unique(),
+                source_ata: Pubkey::new_unique(),
+                dest_ata: Pubkey::new_unique(),
+                amount: 1_000_000,
+            }
+        }
+
+        fn budget_ixs(&self) -> Vec<Instruction> {
+            let budget = TxBudget::ExactSplTransfer;
+            vec![
+                compute_budget_ix_set_limit(budget.cu_limit()),
+                compute_budget_ix_set_price(budget.cu_price()),
+            ]
+        }
+
+        fn transfer_ix(&self) -> Instruction {
+            spl_token::instruction::transfer_checked(
+                &spl_token::ID,
+                &self.source_ata,
+                &self.mint,
+                &self.dest_ata,
+                &self.payer.pubkey(),
+                &[],
+                self.amount,
+                6,
+            )
+            .unwrap()
+        }
+
+        fn dest_create_ata_ix(&self) -> Instruction {
+            create_associated_token_account_idempotent_ix(
+                &self.payer.pubkey(),
+                &self.pay_to,
+                &self.mint,
+                &spl_token::ID,
+            )
+        }
+
+        /// Opaque non-payment instruction, like a wallet-injected guard/assertion.
+        fn guard_ix(&self) -> Instruction {
+            Instruction {
+                program_id: Pubkey::new_unique(),
+                accounts: vec![AccountMeta::new_readonly(self.payer.pubkey(), false)],
+                data: vec![42, 0, 7],
+            }
+        }
+
+        fn tx(&self, ixs: Vec<Instruction>) -> VersionedTransaction {
+            VersionedTransaction::from(Transaction::new_signed_with_payer(
+                &ixs,
+                Some(&self.payer.pubkey()),
+                &[&self.payer],
+                Hash::new_unique(),
+            ))
+        }
+    }
+
+    async fn run_verify(
+        fixture: &Fixture,
+        tx: &VersionedTransaction,
+    ) -> Result<TransferCheckedInstruction, PaymentVerificationError> {
+        let asset = Address::new(fixture.mint);
+        let pay_to = Address::new(fixture.pay_to);
+        let requirement = TransferRequirement {
+            asset: &asset,
+            pay_to: &pay_to,
+            amount: fixture.amount,
+            merchant_wallet: None,
+            collection_beneficiary: None,
+        };
+        verify_budget_and_payment_instructions(&test_provider(), tx, &requirement).await
+    }
+
+    #[tokio::test]
+    async fn three_ix_builder_shape_verifies() {
+        let f = Fixture::new();
+        let mut ixs = f.budget_ixs();
+        ixs.push(f.transfer_ix());
+        let transfer = run_verify(&f, &f.tx(ixs)).await.unwrap();
+        assert_eq!(transfer.amount, f.amount);
+        assert_eq!(transfer.destination, f.dest_ata);
+    }
+
+    #[tokio::test]
+    async fn four_ix_with_valid_dest_create_ata_verifies() {
+        let f = Fixture::new();
+        let mut ixs = f.budget_ixs();
+        ixs.push(f.dest_create_ata_ix());
+        ixs.push(f.transfer_ix());
+        let transfer = run_verify(&f, &f.tx(ixs)).await.unwrap();
+        assert_eq!(transfer.amount, f.amount);
+    }
+
+    #[tokio::test]
+    async fn four_ix_with_wallet_appended_guard_verifies_via_fallback() {
+        // The production incident: a 3-instruction facilitator build plus one
+        // wallet-appended guard instruction. Index 2 is the payment transfer, not a
+        // create-ATA — previously rejected with "Invalid Create ATA instruction".
+        let f = Fixture::new();
+        let mut ixs = f.budget_ixs();
+        ixs.push(f.transfer_ix());
+        ixs.push(f.guard_ix());
+        let transfer = run_verify(&f, &f.tx(ixs)).await.unwrap();
+        assert_eq!(transfer.amount, f.amount);
+        assert_eq!(transfer.destination, f.dest_ata);
+    }
+
+    #[tokio::test]
+    async fn four_ix_with_neither_interpretation_keeps_create_ata_error() {
+        // Index 2 is garbage (neither create-ATA nor a payment transfer): both
+        // interpretations fail and the original create-ATA error is preserved.
+        let f = Fixture::new();
+        let mut ixs = f.budget_ixs();
+        ixs.push(f.guard_ix());
+        ixs.push(f.transfer_ix());
+        let err = run_verify(&f, &f.tx(ixs)).await.unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid Create ATA"),
+            "err = {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn seven_ix_wrap_with_wallet_appended_guard_verifies_via_fallback() {
+        // 6-instruction auto-wrap build plus one appended guard: the payment transfer
+        // sits at index 5 where the 7-shape expects the dest create-ATA.
+        let f = Fixture::new();
+        let mut ixs = f.budget_ixs();
+        ixs.push(f.guard_ix()); // placeholder wrap create_ata (indices 2-4 unvalidated)
+        ixs.push(f.guard_ix()); // placeholder wrap SOL transfer
+        ixs.push(f.guard_ix()); // placeholder sync_native
+        ixs.push(f.transfer_ix());
+        ixs.push(f.guard_ix());
+        let transfer = run_verify(&f, &f.tx(ixs)).await.unwrap();
+        assert_eq!(transfer.amount, f.amount);
+    }
+
+    #[tokio::test]
+    async fn wrong_amount_still_rejected_in_fallback() {
+        // The fallback must not weaken the exact-amount rule.
+        let f = Fixture::new();
+        let mut ixs = f.budget_ixs();
+        let mut transfer = f.transfer_ix();
+        // Tamper: change the amount bytes (TransferChecked data = [12, amount_le, decimals])
+        transfer.data[1..9].copy_from_slice(&(f.amount - 1).to_le_bytes());
+        ixs.push(transfer);
+        ixs.push(f.guard_ix());
+        assert!(run_verify(&f, &f.tx(ixs)).await.is_err());
+    }
 
     fn tx_with_budget_ixs(ixs: Vec<Instruction>) -> VersionedTransaction {
         let payer = Keypair::new();
