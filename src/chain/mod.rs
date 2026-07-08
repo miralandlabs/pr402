@@ -39,15 +39,18 @@ impl ChainProvider {
         let _pubsub_url = config.solana_pubsub_url.as_ref().map(|u| u.to_string());
 
         // Load UniversalSettle config if present
-        let mut universalsettle = config.universalsettle.clone();
+        let universalsettle = config.universalsettle.clone();
         let rpc_client = solana_client::nonblocking::rpc_client::RpcClient::new_with_commitment(
             config.solana_rpc_url.as_ref().to_owned(),
             solana_commitment_config::CommitmentConfig::confirmed(),
         );
 
-        if let Some(ref mut us_config) = universalsettle {
-            if let Err(e) = us_config.load_fee_destination(&rpc_client).await {
-                tracing::warn!(error = %e, "Failed to load UniversalSettle fee destination");
+        if let Some(ref us_config) = universalsettle {
+            // Best-effort warm-up: populate the on-chain params cache at boot. On failure the
+            // hot paths lazily retry via `SolanaChainProvider::universalsettle_params`, so a
+            // transient RPC blip here no longer degrades the instance for its lifetime.
+            if let Err(e) = us_config.ensure_loaded(&rpc_client).await {
+                tracing::warn!(error = %e, "Failed to warm UniversalSettle on-chain params (will lazy-load on first request)");
             }
         }
 

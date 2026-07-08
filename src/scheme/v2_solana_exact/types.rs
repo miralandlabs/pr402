@@ -127,9 +127,9 @@ pub fn v2_upgrade(
                             fee_payer: provider.fee_payer().into(),
                             program_id: us_config.program_id.into(),
                             config_address: config_address.into(),
-                            fee_bps: us_config.fee_bps.unwrap_or(0).into(),
-                            min_fee_amount: us_config.min_fee_amount.unwrap_or(0).into(),
-                            min_fee_amount_sol: us_config.min_fee_amount_sol.unwrap_or(0).into(),
+                            fee_bps: us_config.fee_bps().unwrap_or(0).into(),
+                            min_fee_amount: us_config.min_fee_amount().unwrap_or(0).into(),
+                            min_fee_amount_sol: us_config.min_fee_amount_sol().unwrap_or(0).into(),
                             // See `/supported` for the authoritative source; `/payment-required/enrich`
                             // echoes the same envelope so agents don't need a second call.
                             max_compute_unit_limit: (crate::chain::TxBudget::ExactSplTransfer

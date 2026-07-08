@@ -84,16 +84,24 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         let seller = merchant_id;
 
         // Just-in-Time Provisioning: Ensure vault is created only when a real settlement is requested.
-        if let Some(us_config) = self.provider.universalsettle() {
-            let fee_dest = us_config.fee_destination.ok_or_else(|| {
-                X402SchemeFacilitatorError::OnchainFailure(
-                    "UniversalSettle fee destination not configured".to_string(),
-                )
-            })?;
-            let fee_bps = us_config.fee_bps.unwrap_or(100);
+        if self.provider.universalsettle().is_some() {
+            let params = self
+                .provider
+                .universalsettle_params()
+                .await
+                .ok_or_else(|| {
+                    X402SchemeFacilitatorError::OnchainFailure(
+                        "UniversalSettle fee destination not configured".to_string(),
+                    )
+                })?;
             let asset = *request.payment_requirements.asset.pubkey();
             self.provider
-                .ensure_vault_setup(seller.pubkey(), &fee_dest, fee_bps, Some(asset))
+                .ensure_vault_setup(
+                    seller.pubkey(),
+                    &params.fee_destination,
+                    params.fee_bps,
+                    Some(asset),
+                )
                 .await?;
         }
 
@@ -123,9 +131,9 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
                     fee_payer: provider.fee_payer().into(),
                     program_id: us_config.program_id.into(),
                     config_address: config_address.into(),
-                    fee_bps: us_config.fee_bps.unwrap_or(0).into(),
-                    min_fee_amount: us_config.min_fee_amount.unwrap_or(0).into(),
-                    min_fee_amount_sol: us_config.min_fee_amount_sol.unwrap_or(0).into(),
+                    fee_bps: us_config.fee_bps().unwrap_or(0).into(),
+                    min_fee_amount: us_config.min_fee_amount().unwrap_or(0).into(),
+                    min_fee_amount_sol: us_config.min_fee_amount_sol().unwrap_or(0).into(),
                     // Advertise the CU envelope the facilitator actually enforces on verify.
                     // Buyers building from scratch can validate locally; SDKs using
                     // `/build-*-payment-tx` inherit these automatically.
@@ -179,7 +187,7 @@ impl X402SchemeFacilitator for V2SolanaExactFacilitator {
         let us_config = self.provider.universalsettle().ok_or_else(|| {
             X402SchemeFacilitatorError::OnchainFailure("UniversalSettle not enabled".to_string())
         })?;
-        let fee_bps = us_config.fee_bps.unwrap_or(0);
+        let fee_bps = us_config.fee_bps().unwrap_or(0);
 
         // MATHEMATICAL DISCOVERY: Calculate PDAs without spending SOL on-chain.
         let (vault_pda, _) = self.provider.get_vault_pda(&seller);

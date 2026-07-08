@@ -134,6 +134,24 @@ impl SolanaChainProvider {
         self.universalsettle.as_ref()
     }
 
+    /// Lazily load (and cache) the on-chain UniversalSettle Config params, retrying on each call
+    /// until the first success. Returns `None` if UniversalSettle isn't configured for this
+    /// deployment, or if the on-chain load has not yet succeeded. Prefer this over reading the
+    /// cached fields directly so a cold-start RPC failure self-heals on a later request.
+    pub async fn universalsettle_params(&self) -> Option<crate::config::UsOnchainParams> {
+        let us = self.universalsettle.as_ref()?;
+        match us.ensure_loaded(&self.rpc_client).await {
+            Ok(params) => Some(params),
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "lazy load of on-chain UniversalSettle config failed; will retry next call"
+                );
+                None
+            }
+        }
+    }
+
     pub fn sla_escrow(&self) -> Option<&crate::config::SLAEscrowConfig> {
         self.escrow.as_ref()
     }

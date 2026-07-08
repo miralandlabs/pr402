@@ -200,13 +200,14 @@ pub async fn build_exact_spl_payment_tx(
     let is_native_sol = pay_mint == NATIVE_SOL_MINT;
 
     // ── Pre-build vault provisioning (UniversalSettle) ───────────────
-    if let Some(us_config) = provider.universalsettle() {
-        let fee_dest = us_config.fee_destination.ok_or_else(|| {
+    if provider.universalsettle().is_some() {
+        let params = provider.universalsettle_params().await.ok_or_else(|| {
             ExactPaymentBuildError::InvalidRequest(
                 "UniversalSettle fee destination not configured".into(),
             )
         })?;
-        let fee_bps = us_config.fee_bps.unwrap_or(100);
+        let fee_dest = params.fee_destination;
+        let fee_bps = params.fee_bps;
         let mint_for_setup = if is_native_sol { None } else { Some(pay_mint) };
         let setup_identity = merchant_wallet.unwrap_or(pay_to);
         provider
