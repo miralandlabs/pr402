@@ -198,27 +198,16 @@ fn sla_v2_json_ok<T: serde::Serialize>(out: &T) -> Response<Body> {
         .unwrap()
 }
 
-/// Read the request body into a String, or a canonical error response.
-fn sla_v2_body_str(body: Body) -> Result<String, Response<Body>> {
-    match body {
-        Body::Text(s) => Ok(s),
-        Body::Binary(b) => Ok(String::from_utf8_lossy(&b).to_string()),
-        Body::Empty => Err(error_response(
-            StatusCode::BAD_REQUEST,
-            "Missing request body",
-        )),
-    }
-}
-
 /// `POST /api/v1/facilitator/build-sla-escrow-payment-v2-tx` — FundPaymentV2 (ix 8).
 pub async fn handle_build_sla_escrow_payment_v2_tx(body: Body) -> Response<Body> {
     let cp = match chain_provider_for_build() {
         Ok(c) => c,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let body_str = match sla_v2_body_str(body) {
-        Ok(s) => s,
-        Err(r) => return r,
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
     };
     let req: pr402::sla_escrow_payment_build::BuildFundPaymentV2TxRequest =
         match serde_json::from_str(&body_str) {
@@ -239,9 +228,10 @@ pub async fn handle_build_sla_escrow_approve_tx(body: Body) -> Response<Body> {
         Ok(c) => c,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let body_str = match sla_v2_body_str(body) {
-        Ok(s) => s,
-        Err(r) => return r,
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
     };
     let req: pr402::sla_escrow_payment_build::BuildApproveDeliveryTxRequest =
         match serde_json::from_str(&body_str) {
@@ -262,9 +252,10 @@ pub async fn handle_build_sla_escrow_dispute_tx(body: Body) -> Response<Body> {
         Ok(c) => c,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let body_str = match sla_v2_body_str(body) {
-        Ok(s) => s,
-        Err(r) => return r,
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
     };
     let req: pr402::sla_escrow_payment_build::BuildDisputePaymentTxRequest =
         match serde_json::from_str(&body_str) {
@@ -285,9 +276,10 @@ pub async fn handle_build_sla_escrow_mutual_action_tx(body: Body) -> Response<Bo
         Ok(c) => c,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let body_str = match sla_v2_body_str(body) {
-        Ok(s) => s,
-        Err(r) => return r,
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
     };
     let req: pr402::sla_escrow_payment_build::BuildMutualActionTxRequest =
         match serde_json::from_str(&body_str) {
@@ -308,9 +300,10 @@ pub async fn handle_build_sla_escrow_resolve_split_tx(body: Body) -> Response<Bo
         Ok(c) => c,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let body_str = match sla_v2_body_str(body) {
-        Ok(s) => s,
-        Err(r) => return r,
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
     };
     let req: pr402::sla_escrow_payment_build::BuildResolveWithSplitTxRequest =
         match serde_json::from_str(&body_str) {
