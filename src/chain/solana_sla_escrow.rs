@@ -801,8 +801,7 @@ pub fn build_mutual_action_instruction_from_uid_bytes(
     }
 }
 
-const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey =
-    pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 /// `ResolveWithSplit` instruction data (72 bytes). `expected_delivery_hash` binds
 /// the award to the reviewed delivery version (H-06).
@@ -896,7 +895,10 @@ pub fn build_resolve_with_split_instruction_from_uid_bytes(
         accounts.push(AccountMeta::new(buyer_tokens, false));
         accounts.push(AccountMeta::new(buyer, false));
         accounts.push(AccountMeta::new_readonly(token_program, false));
-        accounts.push(AccountMeta::new_readonly(ASSOCIATED_TOKEN_PROGRAM_ID, false));
+        accounts.push(AccountMeta::new_readonly(
+            ASSOCIATED_TOKEN_PROGRAM_ID,
+            false,
+        ));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
         accounts.push(AccountMeta::new(ext_pda, false));
         accounts.push(AccountMeta::new(buyer, false)); // ext rent recipient
@@ -952,7 +954,8 @@ mod tests_settlement {
         let caller = Pubkey::new_unique();
         let buyer = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
-        let ix = build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], None, false);
+        let ix =
+            build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], None, false);
         // SPL path: 9 accounts + 0 optional = 9
         assert_eq!(ix.accounts.len(), 9);
         assert_eq!(ix.data, vec![SLAEscrowInstruction::RefundPayment as u8]);
@@ -965,8 +968,15 @@ mod tests_settlement {
         let buyer = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
         let oracle = Pubkey::new_unique();
-        let ix =
-            build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], Some(oracle), false);
+        let ix = build_refund_payment_instruction(
+            pid,
+            caller,
+            buyer,
+            mint,
+            &[2u8; 32],
+            Some(oracle),
+            false,
+        );
         // SPL path: 9 + 4 (oracle_tokens, oracle_authority, ata_program, system_program) = 13
         assert_eq!(ix.accounts.len(), 13);
     }
