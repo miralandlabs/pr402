@@ -193,7 +193,8 @@ pub async fn run_sla_escrow_settle(
             }
         };
 
-        if payment_view.state != 0 {
+        // v0.5: FUNDED(0) and FUNDED_EXT(10) are both open; anything else is terminal.
+        if payment_view.state != 0 && payment_view.state != 10 {
             skipped += 1;
             items.push(SlaEscrowSettleItemResult {
                 correlation_id: c.correlation_id.clone(),
@@ -205,6 +206,8 @@ pub async fn run_sla_escrow_settle(
             });
             continue;
         }
+        // FUNDED_EXT payments carry the trailing [payment_ext, rent(=buyer)] pair.
+        let ext_rent = (payment_view.state == 10).then_some(payment_view.buyer);
 
         let is_expired = now_unix > payment_view.expires_at;
         let action = decide_settlement_action(&payment_view, is_expired);
@@ -225,6 +228,7 @@ pub async fn run_sla_escrow_settle(
                         payment_view.mint,
                         uid_bytes,
                         oracle_authority_for(&payment_view),
+                        ext_rent,
                     ),
                     items: &mut items,
                     succeeded: &mut succeeded,
@@ -247,6 +251,7 @@ pub async fn run_sla_escrow_settle(
                         payment_view.mint,
                         uid_bytes,
                         oracle_authority_for(&payment_view),
+                        payment_view.state == 10,
                     ),
                     items: &mut items,
                     succeeded: &mut succeeded,
@@ -472,6 +477,7 @@ pub async fn build_settle_tx_for_payment(
                 payment_view.mint,
                 &uid_bytes,
                 oracle_authority_for(&payment_view),
+                (payment_view.state == 10).then_some(payment_view.buyer),
             ),
         ),
         SettlementAction::Refund => (
@@ -483,6 +489,7 @@ pub async fn build_settle_tx_for_payment(
                 payment_view.mint,
                 &uid_bytes,
                 oracle_authority_for(&payment_view),
+                payment_view.state == 10,
             ),
         ),
         SettlementAction::SkipPreOutcome | SettlementAction::SkipBuyerOnly => {

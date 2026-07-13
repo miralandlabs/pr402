@@ -370,6 +370,9 @@ pub fn build_release_payment_instruction(
     mint: Pubkey,
     payment_uid: &[u8; 32],
     oracle_authority: Option<Pubkey>,
+    // v0.5: `Some(buyer)` for FUNDED_EXT payments — appends the trailing
+    // `[payment_ext, rent(=buyer)]` pair BEFORE the tip accounts. `None` = legacy.
+    ext_rent_buyer: Option<Pubkey>,
 ) -> Instruction {
     let (bank_pda, _) = derive_bank_pda(&program_id);
     let (config_pda, _) = derive_config_pda(&program_id);
@@ -377,6 +380,10 @@ pub fn build_release_payment_instruction(
     let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
 
     let is_sol = mint == Pubkey::default();
+    let ext_pair = ext_rent_buyer.map(|buyer| {
+        let (ext_pda, _) = derive_payment_ext_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+        (ext_pda, buyer)
+    });
 
     let data = vec![SLAEscrowInstruction::ReleasePayment as u8];
 
@@ -398,6 +405,10 @@ pub fn build_release_payment_instruction(
         accounts.push(AccountMeta::new(sol_storage_pda, false));
         accounts.push(AccountMeta::new(seller, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some((ext_pda, buyer)) = ext_pair {
+            accounts.push(AccountMeta::new(ext_pda, false));
+            accounts.push(AccountMeta::new(buyer, false));
+        }
         if let Some(oracle) = oracle_authority {
             accounts.push(AccountMeta::new(oracle, false));
         }
@@ -416,6 +427,10 @@ pub fn build_release_payment_instruction(
         accounts.push(AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false));
         accounts.push(AccountMeta::new_readonly(SPL_ATA_PROGRAM_ID, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some((ext_pda, buyer)) = ext_pair {
+            accounts.push(AccountMeta::new(ext_pda, false));
+            accounts.push(AccountMeta::new(buyer, false));
+        }
         if let Some(oracle) = oracle_authority {
             let oracle_tokens =
                 associated_token_address_with_program(&oracle, &mint, &SPL_TOKEN_PROGRAM_ID);
@@ -452,6 +467,9 @@ pub fn build_refund_payment_instruction(
     mint: Pubkey,
     payment_uid: &[u8; 32],
     oracle_authority: Option<Pubkey>,
+    // v0.5: `true` for FUNDED_EXT payments — appends `[payment_ext, rent(=buyer)]`
+    // before the tip accounts. The rent recipient is the recorded `buyer`.
+    is_extended: bool,
 ) -> Instruction {
     let (bank_pda, _) = derive_bank_pda(&program_id);
     let (config_pda, _) = derive_config_pda(&program_id);
@@ -459,6 +477,10 @@ pub fn build_refund_payment_instruction(
     let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
 
     let is_sol = mint == Pubkey::default();
+    let ext_pair = is_extended.then(|| {
+        let (ext_pda, _) = derive_payment_ext_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+        (ext_pda, buyer)
+    });
 
     let data = vec![SLAEscrowInstruction::RefundPayment as u8];
 
@@ -480,6 +502,10 @@ pub fn build_refund_payment_instruction(
         accounts.push(AccountMeta::new(sol_storage_pda, false));
         accounts.push(AccountMeta::new(buyer, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some((ext_pda, rent)) = ext_pair {
+            accounts.push(AccountMeta::new(ext_pda, false));
+            accounts.push(AccountMeta::new(rent, false));
+        }
         if let Some(oracle) = oracle_authority {
             accounts.push(AccountMeta::new(oracle, false));
         }
@@ -494,6 +520,10 @@ pub fn build_refund_payment_instruction(
         accounts.push(AccountMeta::new(escrow_tokens, false));
         accounts.push(AccountMeta::new(buyer_tokens, false));
         accounts.push(AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false));
+        if let Some((ext_pda, rent)) = ext_pair {
+            accounts.push(AccountMeta::new(ext_pda, false));
+            accounts.push(AccountMeta::new(rent, false));
+        }
         if let Some(oracle) = oracle_authority {
             let oracle_tokens =
                 associated_token_address_with_program(&oracle, &mint, &SPL_TOKEN_PROGRAM_ID);
@@ -891,7 +921,7 @@ mod tests_settlement {
         let seller = Pubkey::new_unique();
         let mint = Pubkey::default();
         let uid = [1u8; 32];
-        let ix = build_release_payment_instruction(pid, caller, seller, mint, &uid, None);
+        let ix = build_release_payment_instruction(pid, caller, seller, mint, &uid, None, None);
         // SOL path: 9 accounts + 0 optional = 9
         assert_eq!(ix.accounts.len(), 9);
         assert_eq!(ix.data, vec![SLAEscrowInstruction::ReleasePayment as u8]);
@@ -910,6 +940,7 @@ mod tests_settlement {
             Pubkey::default(),
             &[1u8; 32],
             Some(oracle),
+            None,
         );
         // SOL path: 9 + 1 oracle = 10
         assert_eq!(ix.accounts.len(), 10);
@@ -921,7 +952,7 @@ mod tests_settlement {
         let caller = Pubkey::new_unique();
         let buyer = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
-        let ix = build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], None);
+        let ix = build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], None, false);
         // SPL path: 9 accounts + 0 optional = 9
         assert_eq!(ix.accounts.len(), 9);
         assert_eq!(ix.data, vec![SLAEscrowInstruction::RefundPayment as u8]);
@@ -935,7 +966,7 @@ mod tests_settlement {
         let mint = Pubkey::new_unique();
         let oracle = Pubkey::new_unique();
         let ix =
-            build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], Some(oracle));
+            build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], Some(oracle), false);
         // SPL path: 9 + 4 (oracle_tokens, oracle_authority, ata_program, system_program) = 13
         assert_eq!(ix.accounts.len(), 13);
     }
