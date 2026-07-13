@@ -870,6 +870,520 @@ pub async fn build_oracle_confirm_tx(
     })
 }
 
+// ============================================================================
+// v0.5 extended-payment builders (additive; instructions 7–12).
+//
+// Each returns an **unsigned** client-signed `VersionedTransaction` — the
+// buyer / seller / adjudicator signs and broadcasts it. These do NOT touch the
+// v0.4 endpoints above; legacy callers keep using `build-sla-escrow-payment-tx`
+// and `build-sla-escrow-settle-tx` unchanged. Extended payments settle via the
+// existing settle endpoint (the keeper now handles `FUNDED_EXT`).
+// ============================================================================
+
+/// Shared response for the stateless v0.5 action builders (approve / dispute /
+/// mutual-action / resolve-split). `payment_ext_pda` is the companion PDA that
+/// every v0.5 payment carries.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildSlaEscrowV2TxResponse {
+    pub transaction: String,
+    pub program_id: String,
+    pub payment_pda: String,
+    pub payment_ext_pda: String,
+}
+
+/// Resolve the SPL token program for an extended-payment tx; defaults to the
+/// canonical SPL Token program when the caller omits it (ignored for native SOL).
+fn resolve_token_program_id(s: Option<&str>) -> Result<Pubkey, SlaEscrowPaymentBuildError> {
+    match s {
+        Some(v) if !v.is_empty() => Pubkey::from_str(v).map_err(|e| {
+            SlaEscrowPaymentBuildError::InvalidRequest(format!("tokenProgram: {}", e))
+        }),
+        _ => Ok(crate::chain::solana::TOKEN_PROGRAM_ID),
+    }
+}
+
+/// Assemble + bincode/base64-serialize an unsigned single-instruction v0.5 tx
+/// and derive the standard PDAs for the response.
+async fn finalize_v2_tx(
+    provider: &SolanaChainProvider,
+    program_id: Pubkey,
+    ix: Instruction,
+    fee_payer_pk: Pubkey,
+    budget: TxBudget,
+    payment_uid_bytes: &[u8; 32],
+) -> Result<BuildSlaEscrowV2TxResponse, SlaEscrowPaymentBuildError> {
+    let recent_blockhash = provider
+        .rpc_client()
+        .get_latest_blockhash()
+        .await
+        .map_err(|e| SlaEscrowPaymentBuildError::Rpc(e.to_string()))?;
+    let cu_limit_ix = compute_budget_ix_set_limit(budget.cu_limit());
+    let cu_price_ix = compute_budget_ix_set_price(budget.cu_price());
+    let ixs = vec![cu_limit_ix, cu_price_ix, ix];
+    let message = Message::new_with_blockhash(&ixs, Some(&fee_payer_pk), &recent_blockhash);
+    let tx = VersionedTransaction::from(Transaction::new_unsigned(message));
+    let tx_b64 = STANDARD.encode(bincode::serialize(&tx).map_err(|e| {
+        SlaEscrowPaymentBuildError::InvalidRequest(format!("bincode serialize: {}", e))
+    })?);
+
+    let (bank_pda, _) = crate::chain::solana_sla_escrow::derive_bank_pda(&program_id);
+    let (payment_pda, _) = crate::chain::solana_sla_escrow::derive_payment_pda_from_bytes(
+        &program_id,
+        &bank_pda,
+        payment_uid_bytes,
+    );
+    let (payment_ext_pda, _) = crate::chain::solana_sla_escrow::derive_payment_ext_pda_from_bytes(
+        &program_id,
+        &bank_pda,
+        payment_uid_bytes,
+    );
+    Ok(BuildSlaEscrowV2TxResponse {
+        transaction: tx_b64,
+        program_id: program_id.to_string(),
+        payment_pda: payment_pda.to_string(),
+        payment_ext_pda: payment_ext_pda.to_string(),
+    })
+}
+
+/// Lower-hex encode a 32-byte payment UID for response surfacing.
+fn uid_bytes_to_hex(uid: &[u8; 32]) -> String {
+    let mut s = String::with_capacity(64);
+    for b in uid {
+        s.push_str(&format!("{:02x}", b));
+    }
+    s
+}
+
+// ---------------------------------------------------------------------------
+// ApproveDelivery (ix 7) — buyer renders a final BuyerAccepted verdict.
+// ---------------------------------------------------------------------------
+
+/// Request body for `POST /api/v1/facilitator/build-sla-escrow-approve-tx`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildApproveDeliveryTxRequest {
+    pub buyer: String,
+    pub mint: String,
+    pub payment_uid_hex: String,
+    pub delivery_hash: String,
+    /// Fee payer; defaults to the buyer (the required signer).
+    #[serde(default)]
+    pub fee_payer: Option<String>,
+}
+
+pub async fn build_approve_delivery_tx(
+    provider: &SolanaChainProvider,
+    req: BuildApproveDeliveryTxRequest,
+) -> Result<BuildSlaEscrowV2TxResponse, SlaEscrowPaymentBuildError> {
+    let program_id = provider
+        .sla_escrow()
+        .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?
+        .program_id;
+    let buyer = Pubkey::from_str(&req.buyer)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("buyer: {}", e)))?;
+    let mint = Pubkey::from_str(&req.mint)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("mint: {}", e)))?;
+    let uid = parse_payment_uid_hex(&req.payment_uid_hex)
+        .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
+    let delivery_hash = parse_sla_hash_hex(&req.delivery_hash)?;
+
+    let ix = crate::chain::solana_sla_escrow::build_approve_delivery_instruction_from_uid_bytes(
+        program_id,
+        buyer,
+        mint,
+        &uid,
+        delivery_hash,
+    );
+    let fee_payer_pk = match req.fee_payer.as_deref() {
+        Some(v) if !v.is_empty() => Pubkey::from_str(v)
+            .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("feePayer: {}", e)))?,
+        _ => buyer,
+    };
+    finalize_v2_tx(
+        provider,
+        program_id,
+        ix,
+        fee_payer_pk,
+        TxBudget::OracleConfirm,
+        &uid,
+    )
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// DisputePayment (ix 11) — buyer suspends time-based settlement until verdict.
+// ---------------------------------------------------------------------------
+
+/// Request body for `POST /api/v1/facilitator/build-sla-escrow-dispute-tx`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildDisputePaymentTxRequest {
+    pub buyer: String,
+    pub mint: String,
+    pub payment_uid_hex: String,
+    /// Optional 32-byte reason hash (defaults to all-zero).
+    #[serde(default)]
+    pub dispute_reason_hash: Option<String>,
+    #[serde(default)]
+    pub fee_payer: Option<String>,
+}
+
+pub async fn build_dispute_payment_tx(
+    provider: &SolanaChainProvider,
+    req: BuildDisputePaymentTxRequest,
+) -> Result<BuildSlaEscrowV2TxResponse, SlaEscrowPaymentBuildError> {
+    let program_id = provider
+        .sla_escrow()
+        .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?
+        .program_id;
+    let buyer = Pubkey::from_str(&req.buyer)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("buyer: {}", e)))?;
+    let mint = Pubkey::from_str(&req.mint)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("mint: {}", e)))?;
+    let uid = parse_payment_uid_hex(&req.payment_uid_hex)
+        .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
+    let reason_hash = match req.dispute_reason_hash.as_deref() {
+        Some(s) if !s.is_empty() => parse_sla_hash_hex(s)?,
+        _ => [0u8; 32],
+    };
+
+    let ix = crate::chain::solana_sla_escrow::build_dispute_payment_instruction_from_uid_bytes(
+        program_id,
+        buyer,
+        mint,
+        &uid,
+        reason_hash,
+    );
+    let fee_payer_pk = match req.fee_payer.as_deref() {
+        Some(v) if !v.is_empty() => Pubkey::from_str(v)
+            .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("feePayer: {}", e)))?,
+        _ => buyer,
+    };
+    finalize_v2_tx(
+        provider,
+        program_id,
+        ix,
+        fee_payer_pk,
+        TxBudget::OracleConfirm,
+        &uid,
+    )
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// ProposeMutualAction (ix 9) / AcceptMutualAction (ix 10) — rotate adjudicator
+// or extend TTL by two-party agreement.
+// ---------------------------------------------------------------------------
+
+/// Request body for `POST /api/v1/facilitator/build-sla-escrow-mutual-action-tx`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildMutualActionTxRequest {
+    /// The signing party (buyer or seller).
+    pub party: String,
+    pub mint: String,
+    pub payment_uid_hex: String,
+    /// `false` = propose, `true` = accept the counterparty's proposal.
+    pub accept: bool,
+    /// `PROPOSAL_ACTION_*`: 1 = rotate adjudicator, 2 = extend TTL.
+    pub action: u8,
+    /// Payload value (e.g. extension seconds for action 2).
+    #[serde(default)]
+    pub value: i64,
+    /// Rotation target pubkey for action 1 (defaults to the zero pubkey).
+    #[serde(default)]
+    pub pubkey: Option<String>,
+    #[serde(default)]
+    pub fee_payer: Option<String>,
+}
+
+pub async fn build_mutual_action_tx(
+    provider: &SolanaChainProvider,
+    req: BuildMutualActionTxRequest,
+) -> Result<BuildSlaEscrowV2TxResponse, SlaEscrowPaymentBuildError> {
+    let program_id = provider
+        .sla_escrow()
+        .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?
+        .program_id;
+    let party = Pubkey::from_str(&req.party)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("party: {}", e)))?;
+    let mint = Pubkey::from_str(&req.mint)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("mint: {}", e)))?;
+    let uid = parse_payment_uid_hex(&req.payment_uid_hex)
+        .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
+    let target = match req.pubkey.as_deref() {
+        Some(s) if !s.is_empty() => Pubkey::from_str(s)
+            .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("pubkey: {}", e)))?,
+        _ => Pubkey::default(),
+    };
+
+    let ix = crate::chain::solana_sla_escrow::build_mutual_action_instruction_from_uid_bytes(
+        program_id, party, mint, &uid, req.accept, req.action, req.value, target,
+    );
+    let fee_payer_pk = match req.fee_payer.as_deref() {
+        Some(v) if !v.is_empty() => Pubkey::from_str(v)
+            .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("feePayer: {}", e)))?,
+        _ => party,
+    };
+    finalize_v2_tx(
+        provider,
+        program_id,
+        ix,
+        fee_payer_pk,
+        TxBudget::OracleConfirm,
+        &uid,
+    )
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// ResolveWithSplit (ix 12) — adjudicator renders a bps partial award + settles.
+// ---------------------------------------------------------------------------
+
+/// Request body for `POST /api/v1/facilitator/build-sla-escrow-resolve-split-tx`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildResolveWithSplitTxRequest {
+    /// Recorded (possibly rotated) adjudicator — the required signer.
+    pub adjudicator: String,
+    pub mint: String,
+    pub payment_uid_hex: String,
+    /// Seller's share in basis points (0..=10000); buyer receives the remainder.
+    pub seller_bps: u16,
+    #[serde(default)]
+    pub resolution_reason: u16,
+    #[serde(default)]
+    pub resolution_hash: Option<String>,
+    /// Binds the award to the reviewed delivery version (H-06).
+    pub expected_delivery_hash: String,
+    pub seller: String,
+    pub buyer: String,
+    #[serde(default)]
+    pub token_program: Option<String>,
+    #[serde(default)]
+    pub fee_payer: Option<String>,
+}
+
+pub async fn build_resolve_with_split_tx(
+    provider: &SolanaChainProvider,
+    req: BuildResolveWithSplitTxRequest,
+) -> Result<BuildSlaEscrowV2TxResponse, SlaEscrowPaymentBuildError> {
+    let program_id = provider
+        .sla_escrow()
+        .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?
+        .program_id;
+    let adjudicator = Pubkey::from_str(&req.adjudicator)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("adjudicator: {}", e)))?;
+    let mint = Pubkey::from_str(&req.mint)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("mint: {}", e)))?;
+    let seller = Pubkey::from_str(&req.seller)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("seller: {}", e)))?;
+    let buyer = Pubkey::from_str(&req.buyer)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("buyer: {}", e)))?;
+    let uid = parse_payment_uid_hex(&req.payment_uid_hex)
+        .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
+    if req.seller_bps > 10_000 {
+        return Err(SlaEscrowPaymentBuildError::InvalidRequest(
+            "sellerBps must be 0..=10000".into(),
+        ));
+    }
+    let resolution_hash = match req.resolution_hash.as_deref() {
+        Some(s) if !s.is_empty() => parse_sla_hash_hex(s)?,
+        _ => [0u8; 32],
+    };
+    let expected_delivery_hash = parse_sla_hash_hex(&req.expected_delivery_hash)?;
+    let token_program = resolve_token_program_id(req.token_program.as_deref())?;
+
+    let ix = crate::chain::solana_sla_escrow::build_resolve_with_split_instruction_from_uid_bytes(
+        program_id,
+        adjudicator,
+        mint,
+        &uid,
+        req.seller_bps,
+        req.resolution_reason,
+        resolution_hash,
+        expected_delivery_hash,
+        seller,
+        buyer,
+        token_program,
+    );
+    let fee_payer_pk = match req.fee_payer.as_deref() {
+        Some(v) if !v.is_empty() => Pubkey::from_str(v)
+            .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("feePayer: {}", e)))?,
+        _ => adjudicator,
+    };
+    finalize_v2_tx(
+        provider,
+        program_id,
+        ix,
+        fee_payer_pk,
+        TxBudget::EscrowSettle,
+        &uid,
+    )
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// FundPaymentV2 (ix 8) — create an extended payment (companion `PaymentExt`).
+// ---------------------------------------------------------------------------
+
+/// Response for `build-sla-escrow-payment-v2-tx`. Adds the resolved UID (string
+/// and on-chain hex) so callers that let the facilitator mint a UID can recover it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildFundPaymentV2TxResponse {
+    pub transaction: String,
+    pub program_id: String,
+    pub payment_pda: String,
+    pub payment_ext_pda: String,
+    pub payment_uid: String,
+    pub payment_uid_hex: String,
+}
+
+/// Request body for `POST /api/v1/facilitator/build-sla-escrow-payment-v2-tx`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildFundPaymentV2TxRequest {
+    pub buyer: String,
+    pub seller: String,
+    pub mint: String,
+    /// Amount in base units, as a decimal string (avoids JSON number precision loss).
+    pub amount: String,
+    pub ttl_seconds: i64,
+    pub sla_hash: String,
+    pub oracle_authority: String,
+    /// Mutually exclusive with `payment_uid_hex`. If neither is set, a ULID is minted.
+    #[serde(default)]
+    pub payment_uid: Option<String>,
+    #[serde(default)]
+    pub payment_uid_hex: Option<String>,
+    #[serde(default)]
+    pub token_program: Option<String>,
+    /// Escrow-parameter overrides (0 = use the bank/config default).
+    #[serde(default)]
+    pub closure_delay_override: i64,
+    #[serde(default)]
+    pub refund_cooldown_override: i64,
+    #[serde(default)]
+    pub delivery_cutoff_override: i64,
+    #[serde(default)]
+    pub arbitration_window_seconds: i64,
+    /// Minimum oracle tip in base units (decimal string; defaults to "0").
+    #[serde(default)]
+    pub min_oracle_tip: Option<String>,
+    #[serde(default)]
+    pub fee_payer: Option<String>,
+}
+
+pub async fn build_fund_payment_v2_tx(
+    provider: &SolanaChainProvider,
+    req: BuildFundPaymentV2TxRequest,
+) -> Result<BuildFundPaymentV2TxResponse, SlaEscrowPaymentBuildError> {
+    let program_id = provider
+        .sla_escrow()
+        .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?
+        .program_id;
+    let buyer = Pubkey::from_str(&req.buyer)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("buyer: {}", e)))?;
+    let seller = Pubkey::from_str(&req.seller)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("seller: {}", e)))?;
+    let mint = Pubkey::from_str(&req.mint)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("mint: {}", e)))?;
+    let oracle_authority = Pubkey::from_str(&req.oracle_authority).map_err(|e| {
+        SlaEscrowPaymentBuildError::InvalidRequest(format!("oracleAuthority: {}", e))
+    })?;
+    let sla_hash = parse_sla_hash_hex(&req.sla_hash)?;
+    let token_program = resolve_token_program_id(req.token_program.as_deref())?;
+    let amount: u64 = req
+        .amount
+        .parse()
+        .map_err(|_| SlaEscrowPaymentBuildError::InvalidRequest("amount: not a u64".into()))?;
+    let min_oracle_tip: u64 = req
+        .min_oracle_tip
+        .as_deref()
+        .unwrap_or("0")
+        .parse()
+        .map_err(|_| {
+            SlaEscrowPaymentBuildError::InvalidRequest("minOracleTip: not a u64".into())
+        })?;
+
+    // UID resolution mirrors the v1 builder: hex verbatim, string via
+    // sanitize_uid, or a freshly minted ULID; the two forms are exclusive.
+    let str_uid_set = req
+        .payment_uid
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    let hex_uid_set = req
+        .payment_uid_hex
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    let (payment_uid_str, payment_uid_bytes) = match (str_uid_set, hex_uid_set) {
+        (true, true) => {
+            return Err(SlaEscrowPaymentBuildError::InvalidRequest(
+                "payment_uid and payment_uid_hex are mutually exclusive; set at most one".into(),
+            ));
+        }
+        (false, true) => {
+            let hex = req.payment_uid_hex.as_deref().unwrap();
+            let bytes =
+                parse_payment_uid_hex(hex).map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
+            (hex.to_string(), bytes)
+        }
+        (true, false) => {
+            let s = req.payment_uid.as_deref().unwrap();
+            (s.to_string(), sanitize_uid(s))
+        }
+        (false, false) => {
+            let s = ulid::Ulid::new().to_string();
+            let bytes = sanitize_uid(&s);
+            (s, bytes)
+        }
+    };
+
+    let ix = crate::chain::solana_sla_escrow::build_fund_payment_v2_instruction_from_uid_bytes(
+        program_id,
+        buyer,
+        seller,
+        mint,
+        amount,
+        req.ttl_seconds,
+        &payment_uid_bytes,
+        sla_hash,
+        oracle_authority,
+        token_program,
+        req.closure_delay_override,
+        req.refund_cooldown_override,
+        req.delivery_cutoff_override,
+        req.arbitration_window_seconds,
+        min_oracle_tip,
+    );
+    let fee_payer_pk = match req.fee_payer.as_deref() {
+        Some(v) if !v.is_empty() => Pubkey::from_str(v)
+            .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("feePayer: {}", e)))?,
+        _ => buyer,
+    };
+    let base = finalize_v2_tx(
+        provider,
+        program_id,
+        ix,
+        fee_payer_pk,
+        TxBudget::FundPayment,
+        &payment_uid_bytes,
+    )
+    .await?;
+    Ok(BuildFundPaymentV2TxResponse {
+        transaction: base.transaction,
+        program_id: base.program_id,
+        payment_pda: base.payment_pda,
+        payment_ext_pda: base.payment_ext_pda,
+        payment_uid: payment_uid_str,
+        payment_uid_hex: uid_bytes_to_hex(&payment_uid_bytes),
+    })
+}
+
 /// Wave A §3.2 helper — look up the advertised `registry_url` for a given
 /// canonical `profile_id`. Reads the same per-profile parameter keys that
 /// `discovery::build_sla_escrow_oracle_profiles` consults so the gate sees

@@ -267,6 +267,16 @@ struct CapabilitiesHttpEndpoints {
     settle: HttpEndpointInfo,
     build_exact_payment_tx: HttpEndpointInfo,
     build_sla_escrow_payment_tx: HttpEndpointInfo,
+    /// `POST` — build unsigned FundPaymentV2 (v0.5 extended payment; ix 8).
+    build_sla_escrow_payment_v2_tx: HttpEndpointInfo,
+    /// `POST` — build unsigned ApproveDelivery verdict tx (v0.5; ix 7).
+    build_sla_escrow_approve_tx: HttpEndpointInfo,
+    /// `POST` — build unsigned DisputePayment tx (v0.5; ix 11).
+    build_sla_escrow_dispute_tx: HttpEndpointInfo,
+    /// `POST` — build unsigned Propose/Accept mutual-action tx (v0.5; ix 9/10).
+    build_sla_escrow_mutual_action_tx: HttpEndpointInfo,
+    /// `POST` — build unsigned ResolveWithSplit adjudication tx (v0.5; ix 12).
+    build_sla_escrow_resolve_split_tx: HttpEndpointInfo,
     build_oracle_confirm_tx: HttpEndpointInfo,
     /// `POST` — build unsigned refund transaction (merchant → payer `TransferChecked`).
     build_refund_tx: HttpEndpointInfo,
@@ -901,6 +911,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
                 ("POST", "/api/v1/facilitator/build-sla-escrow-settle-tx") => {
                     handle_build_sla_escrow_settle_tx(body).await
+                }
+                ("POST", "/api/v1/facilitator/build-sla-escrow-payment-v2-tx") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handlers::build::handle_build_sla_escrow_payment_v2_tx(body).await
+                    }
+                }
+                ("POST", "/api/v1/facilitator/build-sla-escrow-approve-tx") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handlers::build::handle_build_sla_escrow_approve_tx(body).await
+                    }
+                }
+                ("POST", "/api/v1/facilitator/build-sla-escrow-dispute-tx") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handlers::build::handle_build_sla_escrow_dispute_tx(body).await
+                    }
+                }
+                ("POST", "/api/v1/facilitator/build-sla-escrow-mutual-action-tx") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handlers::build::handle_build_sla_escrow_mutual_action_tx(body).await
+                    }
+                }
+                ("POST", "/api/v1/facilitator/build-sla-escrow-resolve-split-tx") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handlers::build::handle_build_sla_escrow_resolve_split_tx(body).await
+                    }
                 }
                 _ => {
                     warn!(

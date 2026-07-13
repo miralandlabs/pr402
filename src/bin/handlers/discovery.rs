@@ -98,6 +98,31 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/build-sla-escrow-payment-tx",
                 auth: None,
             },
+            build_sla_escrow_payment_v2_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-sla-escrow-payment-v2-tx",
+                auth: None,
+            },
+            build_sla_escrow_approve_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-sla-escrow-approve-tx",
+                auth: None,
+            },
+            build_sla_escrow_dispute_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-sla-escrow-dispute-tx",
+                auth: None,
+            },
+            build_sla_escrow_mutual_action_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-sla-escrow-mutual-action-tx",
+                auth: None,
+            },
+            build_sla_escrow_resolve_split_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-sla-escrow-resolve-split-tx",
+                auth: None,
+            },
             build_oracle_confirm_tx: HttpEndpointInfo {
                 method: "POST",
                 path: "/api/v1/facilitator/oracle/build-confirm",

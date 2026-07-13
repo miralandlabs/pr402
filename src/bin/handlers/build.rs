@@ -169,6 +169,162 @@ pub async fn handle_build_oracle_confirm_tx(body: Body) -> Response<Body> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// v0.5 extended-payment endpoints (additive; ix 7–12). Thin wrappers over the
+// builders in `pr402::sla_escrow_payment_build`. Each returns an unsigned,
+// client-signed tx. The v0.4 endpoints are untouched.
+// ---------------------------------------------------------------------------
+
+/// Map a build error to its HTTP status (shared by the v0.5 action endpoints).
+fn sla_v2_build_status(
+    e: &pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError,
+) -> StatusCode {
+    use pr402::sla_escrow_payment_build::SlaEscrowPaymentBuildError as E;
+    match e {
+        E::NetworkMismatch { .. } | E::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+        E::Unsupported(_) | E::NotConfigured => StatusCode::NOT_IMPLEMENTED,
+        E::Rpc(_) => StatusCode::BAD_GATEWAY,
+        E::OracleUnhealthy(_) => StatusCode::SERVICE_UNAVAILABLE,
+    }
+}
+
+fn sla_v2_json_ok<T: serde::Serialize>(out: &T) -> Response<Body> {
+    facilitator_response!()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Body::Text(
+            serde_json::to_string(out).unwrap_or_else(|_| r#"{"error":"serialize failed"}"#.into()),
+        ))
+        .unwrap()
+}
+
+/// Read the request body into a String, or a canonical error response.
+fn sla_v2_body_str(body: Body) -> Result<String, Response<Body>> {
+    match body {
+        Body::Text(s) => Ok(s),
+        Body::Binary(b) => Ok(String::from_utf8_lossy(&b).to_string()),
+        Body::Empty => Err(error_response(
+            StatusCode::BAD_REQUEST,
+            "Missing request body",
+        )),
+    }
+}
+
+/// `POST /api/v1/facilitator/build-sla-escrow-payment-v2-tx` — FundPaymentV2 (ix 8).
+pub async fn handle_build_sla_escrow_payment_v2_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match sla_v2_body_str(body) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let req: pr402::sla_escrow_payment_build::BuildFundPaymentV2TxRequest =
+        match serde_json::from_str(&body_str) {
+            Ok(r) => r,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
+            }
+        };
+    match pr402::sla_escrow_payment_build::build_fund_payment_v2_tx(&cp.solana, req).await {
+        Ok(out) => sla_v2_json_ok(&out),
+        Err(e) => error_response(sla_v2_build_status(&e), &e.to_string()),
+    }
+}
+
+/// `POST /api/v1/facilitator/build-sla-escrow-approve-tx` — ApproveDelivery (ix 7).
+pub async fn handle_build_sla_escrow_approve_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match sla_v2_body_str(body) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let req: pr402::sla_escrow_payment_build::BuildApproveDeliveryTxRequest =
+        match serde_json::from_str(&body_str) {
+            Ok(r) => r,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
+            }
+        };
+    match pr402::sla_escrow_payment_build::build_approve_delivery_tx(&cp.solana, req).await {
+        Ok(out) => sla_v2_json_ok(&out),
+        Err(e) => error_response(sla_v2_build_status(&e), &e.to_string()),
+    }
+}
+
+/// `POST /api/v1/facilitator/build-sla-escrow-dispute-tx` — DisputePayment (ix 11).
+pub async fn handle_build_sla_escrow_dispute_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match sla_v2_body_str(body) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let req: pr402::sla_escrow_payment_build::BuildDisputePaymentTxRequest =
+        match serde_json::from_str(&body_str) {
+            Ok(r) => r,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
+            }
+        };
+    match pr402::sla_escrow_payment_build::build_dispute_payment_tx(&cp.solana, req).await {
+        Ok(out) => sla_v2_json_ok(&out),
+        Err(e) => error_response(sla_v2_build_status(&e), &e.to_string()),
+    }
+}
+
+/// `POST /api/v1/facilitator/build-sla-escrow-mutual-action-tx` — Propose/Accept (ix 9/10).
+pub async fn handle_build_sla_escrow_mutual_action_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match sla_v2_body_str(body) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let req: pr402::sla_escrow_payment_build::BuildMutualActionTxRequest =
+        match serde_json::from_str(&body_str) {
+            Ok(r) => r,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
+            }
+        };
+    match pr402::sla_escrow_payment_build::build_mutual_action_tx(&cp.solana, req).await {
+        Ok(out) => sla_v2_json_ok(&out),
+        Err(e) => error_response(sla_v2_build_status(&e), &e.to_string()),
+    }
+}
+
+/// `POST /api/v1/facilitator/build-sla-escrow-resolve-split-tx` — ResolveWithSplit (ix 12).
+pub async fn handle_build_sla_escrow_resolve_split_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match sla_v2_body_str(body) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    let req: pr402::sla_escrow_payment_build::BuildResolveWithSplitTxRequest =
+        match serde_json::from_str(&body_str) {
+            Ok(r) => r,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
+            }
+        };
+    match pr402::sla_escrow_payment_build::build_resolve_with_split_tx(&cp.solana, req).await {
+        Ok(out) => sla_v2_json_ok(&out),
+        Err(e) => error_response(sla_v2_build_status(&e), &e.to_string()),
+    }
+}
+
 /// Build an unsigned refund transaction (merchant → payer `TransferChecked`).
 /// See [`pr402::refund_tx_build`].
 pub async fn handle_build_refund_tx(body: Body) -> Response<Body> {
