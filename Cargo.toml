@@ -46,8 +46,8 @@ spl-token = { version = "9.0", features = ["no-entrypoint"] }
 solana-client = "3.1"
 solana-account-decoder-client-types = "3.1"
 bs58 = "0.5"
-universalsettle-api = "0.2.0"
-sla-escrow-api = "0.4.0"
+universalsettle-api = "0.2.2"
+sla-escrow-api = "0.5.0"
 bytemuck = "1.16"
 
 # Base64 encoding
