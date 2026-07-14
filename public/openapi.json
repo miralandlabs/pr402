@@ -57,6 +57,78 @@
     }
   ],
   "paths": {
+    "/api/v1/facilitator/build-sla-escrow-submit-delivery-tx": {
+      "post": {
+        "tags": [
+          "pr402 Extension: Tx Build"
+        ],
+        "summary": "Build unsigned SLA-Escrow SubmitDelivery transaction",
+        "description": "Returns base64-bincode **unsigned** `VersionedTransaction` for the **seller** to sign and land on-chain (`SubmitDelivery`, ix 5): the seller commits the delivery hash. The seller must be the recorded `payment.seller`, and must submit before `expires_at - delivery_cutoff_seconds` (else the program rejects with `DeliveryTooLateForOracle`). One endpoint serves both legacy (v0.4) and extended (v0.5) payments. Same build-endpoint rate limit as `/build-*-payment-tx` (**429** when exceeded).",
+        "operationId": "buildSlaEscrowSubmitDeliveryTx",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuildSubmitDeliveryTxRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unsigned SubmitDelivery transaction + PDAs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildSubmitDeliveryTxResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Build endpoint rate limit (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "SLA-Escrow not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "RPC error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilitatorErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/facilitator/build-sla-escrow-payment-v2-tx": {
       "post": {
         "tags": [
@@ -1753,6 +1825,61 @@
       }
     },
     "schemas": {
+      "BuildSubmitDeliveryTxRequest": {
+        "type": "object",
+        "required": [
+          "seller",
+          "mint",
+          "paymentUidHex",
+          "deliveryHash"
+        ],
+        "properties": {
+          "seller": {
+            "type": "string",
+            "description": "Recorded merchant payout key (base58); the required signer, must equal payment.seller"
+          },
+          "mint": {
+            "type": "string",
+            "description": "Payment mint pubkey (base58); system program id for native SOL"
+          },
+          "paymentUidHex": {
+            "type": "string",
+            "description": "On-chain 32-byte payment uid as 64 lowercase hex chars"
+          },
+          "deliveryHash": {
+            "type": "string",
+            "description": "64 hex chars (32 bytes); the delivery-outcome hash to commit on-chain"
+          },
+          "feePayer": {
+            "type": "string",
+            "description": "Optional SOL fee-payer pubkey (base58); defaults to the seller"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BuildSubmitDeliveryTxResponse": {
+        "type": "object",
+        "required": [
+          "transaction",
+          "programId",
+          "paymentPda"
+        ],
+        "properties": {
+          "transaction": {
+            "type": "string",
+            "description": "base64(bincode VersionedTransaction), unsigned; sign with the seller keypair"
+          },
+          "programId": {
+            "type": "string",
+            "description": "SLA-Escrow program id (base58)"
+          },
+          "paymentPda": {
+            "type": "string",
+            "description": "Payment account PDA (base58)"
+          }
+        },
+        "additionalProperties": false
+      },
       "BuildFundPaymentV2TxRequest": {
         "type": "object",
         "required": [

@@ -222,6 +222,30 @@ pub async fn handle_build_sla_escrow_payment_v2_tx(body: Body) -> Response<Body>
     }
 }
 
+/// `POST /api/v1/facilitator/build-sla-escrow-submit-delivery-tx` — SubmitDelivery (ix 5).
+pub async fn handle_build_sla_escrow_submit_delivery_tx(body: Body) -> Response<Body> {
+    let cp = match chain_provider_for_build() {
+        Ok(c) => c,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let body_str = match body {
+        Body::Text(s) => s,
+        Body::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+        Body::Empty => return error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+    };
+    let req: pr402::sla_escrow_payment_build::BuildSubmitDeliveryTxRequest =
+        match serde_json::from_str(&body_str) {
+            Ok(r) => r,
+            Err(e) => {
+                return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e))
+            }
+        };
+    match pr402::sla_escrow_payment_build::build_submit_delivery_tx(&cp.solana, req).await {
+        Ok(out) => sla_v2_json_ok(&out),
+        Err(e) => error_response(sla_v2_build_status(&e), &e.to_string()),
+    }
+}
+
 /// `POST /api/v1/facilitator/build-sla-escrow-approve-tx` — ApproveDelivery (ix 7).
 pub async fn handle_build_sla_escrow_approve_tx(body: Body) -> Response<Body> {
     let cp = match chain_provider_for_build() {

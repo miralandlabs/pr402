@@ -103,6 +103,11 @@ pub async fn handle_capabilities(
                 path: "/api/v1/facilitator/build-sla-escrow-payment-v2-tx",
                 auth: None,
             },
+            build_sla_escrow_submit_delivery_tx: HttpEndpointInfo {
+                method: "POST",
+                path: "/api/v1/facilitator/build-sla-escrow-submit-delivery-tx",
+                auth: None,
+            },
             build_sla_escrow_approve_tx: HttpEndpointInfo {
                 method: "POST",
                 path: "/api/v1/facilitator/build-sla-escrow-approve-tx",

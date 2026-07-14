@@ -432,6 +432,14 @@
       ]
     },
     {
+      "src": "/api/v1/facilitator/build-sla-escrow-submit-delivery-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
       "src": "/api/v1/facilitator/build-sla-escrow-approve-tx",
       "dest": "/src/bin/facilitator",
       "methods": [

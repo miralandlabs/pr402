@@ -713,6 +713,37 @@ pub fn build_fund_payment_v2_instruction_from_uid_bytes(
     ix
 }
 
+/// Build `SubmitDelivery` (ix 5): the seller commits the delivery hash on-chain.
+/// Accounts `[seller(signer), bank, config, escrow, payment]` — identical to
+/// `ApproveDelivery`/`ConfirmOracle`; the caller must be the recorded `payment.seller`.
+/// Works for both legacy (v0.4) and extended (v0.5) payments (no `PaymentExt` account).
+pub fn build_submit_delivery_instruction_from_uid_bytes(
+    program_id: Pubkey,
+    seller: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+    delivery_hash: [u8; 32],
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+    let mut data = Vec::with_capacity(33);
+    data.push(SLAEscrowInstruction::SubmitDelivery as u8);
+    data.extend_from_slice(&delivery_hash);
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(seller, true),
+            AccountMeta::new_readonly(bank_pda, false),
+            AccountMeta::new_readonly(config_pda, false),
+            AccountMeta::new_readonly(escrow_pda, false),
+            AccountMeta::new(payment_pda, false),
+        ],
+        data,
+    }
+}
+
 /// Build `ApproveDelivery` (ix 7): buyer renders a final BuyerAccepted verdict.
 /// Accounts `[buyer(signer), bank, config, escrow, payment]` (mirrors ConfirmOracle).
 pub fn build_approve_delivery_instruction_from_uid_bytes(
@@ -927,6 +958,26 @@ mod tests_settlement {
         // SOL path: 9 accounts + 0 optional = 9
         assert_eq!(ix.accounts.len(), 9);
         assert_eq!(ix.data, vec![SLAEscrowInstruction::ReleasePayment as u8]);
+    }
+
+    #[test]
+    fn submit_delivery_layout() {
+        let pid = Pubkey::new_unique();
+        let seller = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let uid = [3u8; 32];
+        let dh = [7u8; 32];
+        let ix = build_submit_delivery_instruction_from_uid_bytes(pid, seller, mint, &uid, dh);
+        // 5 accounts: [seller(signer,w), bank(ro), config(ro), escrow(ro), payment(w)]
+        assert_eq!(ix.accounts.len(), 5);
+        assert_eq!(ix.accounts[0].pubkey, seller);
+        assert!(ix.accounts[0].is_signer && ix.accounts[0].is_writable);
+        assert!(!ix.accounts[3].is_writable); // escrow read-only
+        assert!(ix.accounts[4].is_writable); // payment writable
+                                             // data = [5u8] || delivery_hash (33 bytes)
+        assert_eq!(ix.data.len(), 33);
+        assert_eq!(ix.data[0], SLAEscrowInstruction::SubmitDelivery as u8);
+        assert_eq!(&ix.data[1..], &dh);
     }
 
     #[test]

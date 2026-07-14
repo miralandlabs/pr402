@@ -956,6 +956,84 @@ fn uid_bytes_to_hex(uid: &[u8; 32]) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// SubmitDelivery (ix 5) — seller commits the delivery hash on-chain.
+//
+// Not a v0.5 instruction, but exposed here so sellers stop hand-rolling the
+// PDA seeds + discriminator + account layout (as the reference seller does).
+// One endpoint serves both legacy and extended payments (no PaymentExt account),
+// so the response is the minimal `{transaction, programId, paymentPda}` — no ext.
+// ---------------------------------------------------------------------------
+
+/// Response for `build-sla-escrow-submit-delivery-tx` (ext-agnostic — no `paymentExtPda`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildSubmitDeliveryTxResponse {
+    pub transaction: String,
+    pub program_id: String,
+    pub payment_pda: String,
+}
+
+/// Request body for `POST /api/v1/facilitator/build-sla-escrow-submit-delivery-tx`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildSubmitDeliveryTxRequest {
+    /// Recorded merchant payout key — the required signer; must equal `payment.seller`.
+    pub seller: String,
+    pub mint: String,
+    pub payment_uid_hex: String,
+    /// 32-byte delivery-outcome hash (64 hex chars) to commit on-chain.
+    pub delivery_hash: String,
+    #[serde(default)]
+    pub fee_payer: Option<String>,
+}
+
+pub async fn build_submit_delivery_tx(
+    provider: &SolanaChainProvider,
+    req: BuildSubmitDeliveryTxRequest,
+) -> Result<BuildSubmitDeliveryTxResponse, SlaEscrowPaymentBuildError> {
+    let program_id = provider
+        .sla_escrow()
+        .ok_or(SlaEscrowPaymentBuildError::NotConfigured)?
+        .program_id;
+    let seller = Pubkey::from_str(&req.seller)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("seller: {}", e)))?;
+    let mint = Pubkey::from_str(&req.mint)
+        .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("mint: {}", e)))?;
+    let uid = parse_payment_uid_hex(&req.payment_uid_hex)
+        .map_err(SlaEscrowPaymentBuildError::InvalidRequest)?;
+    let delivery_hash = parse_sla_hash_hex(&req.delivery_hash)?;
+
+    let ix = crate::chain::solana_sla_escrow::build_submit_delivery_instruction_from_uid_bytes(
+        program_id,
+        seller,
+        mint,
+        &uid,
+        delivery_hash,
+    );
+    let fee_payer_pk = match req.fee_payer.as_deref() {
+        Some(v) if !v.is_empty() => Pubkey::from_str(v)
+            .map_err(|e| SlaEscrowPaymentBuildError::InvalidRequest(format!("feePayer: {}", e)))?,
+        _ => seller,
+    };
+    // Reuse the shared assembly (a lightweight state write — same budget as approve/dispute);
+    // drop the ext PDA it derives, since SubmitDelivery never touches PaymentExt.
+    let base = finalize_v2_tx(
+        provider,
+        program_id,
+        ix,
+        fee_payer_pk,
+        TxBudget::OracleConfirm,
+        &uid,
+    )
+    .await?;
+    Ok(BuildSubmitDeliveryTxResponse {
+        transaction: base.transaction,
+        program_id: base.program_id,
+        payment_pda: base.payment_pda,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // ApproveDelivery (ix 7) — buyer renders a final BuyerAccepted verdict.
 // ---------------------------------------------------------------------------
 

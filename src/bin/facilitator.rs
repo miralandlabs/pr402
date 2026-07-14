@@ -269,6 +269,8 @@ struct CapabilitiesHttpEndpoints {
     build_sla_escrow_payment_tx: HttpEndpointInfo,
     /// `POST` — build unsigned FundPaymentV2 (v0.5 extended payment; ix 8).
     build_sla_escrow_payment_v2_tx: HttpEndpointInfo,
+    /// `POST` — build unsigned SubmitDelivery tx for the seller (ix 5).
+    build_sla_escrow_submit_delivery_tx: HttpEndpointInfo,
     /// `POST` — build unsigned ApproveDelivery verdict tx (v0.5; ix 7).
     build_sla_escrow_approve_tx: HttpEndpointInfo,
     /// `POST` — build unsigned DisputePayment tx (v0.5; ix 11).
@@ -917,6 +919,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         limited
                     } else {
                         handlers::build::handle_build_sla_escrow_payment_v2_tx(body).await
+                    }
+                }
+                ("POST", "/api/v1/facilitator/build-sla-escrow-submit-delivery-tx") => {
+                    if let Some(limited) = check_build_rate_limit() {
+                        limited
+                    } else {
+                        handlers::build::handle_build_sla_escrow_submit_delivery_tx(body).await
                     }
                 }
                 ("POST", "/api/v1/facilitator/build-sla-escrow-approve-tx") => {
