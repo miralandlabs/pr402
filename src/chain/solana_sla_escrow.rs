@@ -20,6 +20,13 @@ pub enum SLAEscrowInstruction {
     ExtendPaymentTTL = 4,
     SubmitDelivery = 5,
     ConfirmOracle = 6,
+    // v0.5 extended-payment generation (additive; matches sla-escrow api ix 7-12).
+    ApproveDelivery = 7,
+    FundPaymentV2 = 8,
+    ProposeMutualAction = 9,
+    AcceptMutualAction = 10,
+    DisputePayment = 11,
+    ResolveWithSplit = 12,
 }
 
 /// SLAEscrow FundPayment instruction data structure (176 bytes total).
@@ -363,6 +370,9 @@ pub fn build_release_payment_instruction(
     mint: Pubkey,
     payment_uid: &[u8; 32],
     oracle_authority: Option<Pubkey>,
+    // v0.5: `Some(buyer)` for FUNDED_EXT payments — appends the trailing
+    // `[payment_ext, rent(=buyer)]` pair BEFORE the tip accounts. `None` = legacy.
+    ext_rent_buyer: Option<Pubkey>,
 ) -> Instruction {
     let (bank_pda, _) = derive_bank_pda(&program_id);
     let (config_pda, _) = derive_config_pda(&program_id);
@@ -370,6 +380,10 @@ pub fn build_release_payment_instruction(
     let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
 
     let is_sol = mint == Pubkey::default();
+    let ext_pair = ext_rent_buyer.map(|buyer| {
+        let (ext_pda, _) = derive_payment_ext_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+        (ext_pda, buyer)
+    });
 
     let data = vec![SLAEscrowInstruction::ReleasePayment as u8];
 
@@ -391,6 +405,10 @@ pub fn build_release_payment_instruction(
         accounts.push(AccountMeta::new(sol_storage_pda, false));
         accounts.push(AccountMeta::new(seller, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some((ext_pda, buyer)) = ext_pair {
+            accounts.push(AccountMeta::new(ext_pda, false));
+            accounts.push(AccountMeta::new(buyer, false));
+        }
         if let Some(oracle) = oracle_authority {
             accounts.push(AccountMeta::new(oracle, false));
         }
@@ -409,6 +427,10 @@ pub fn build_release_payment_instruction(
         accounts.push(AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false));
         accounts.push(AccountMeta::new_readonly(SPL_ATA_PROGRAM_ID, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some((ext_pda, buyer)) = ext_pair {
+            accounts.push(AccountMeta::new(ext_pda, false));
+            accounts.push(AccountMeta::new(buyer, false));
+        }
         if let Some(oracle) = oracle_authority {
             let oracle_tokens =
                 associated_token_address_with_program(&oracle, &mint, &SPL_TOKEN_PROGRAM_ID);
@@ -445,6 +467,9 @@ pub fn build_refund_payment_instruction(
     mint: Pubkey,
     payment_uid: &[u8; 32],
     oracle_authority: Option<Pubkey>,
+    // v0.5: `true` for FUNDED_EXT payments — appends `[payment_ext, rent(=buyer)]`
+    // before the tip accounts. The rent recipient is the recorded `buyer`.
+    is_extended: bool,
 ) -> Instruction {
     let (bank_pda, _) = derive_bank_pda(&program_id);
     let (config_pda, _) = derive_config_pda(&program_id);
@@ -452,6 +477,10 @@ pub fn build_refund_payment_instruction(
     let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
 
     let is_sol = mint == Pubkey::default();
+    let ext_pair = is_extended.then(|| {
+        let (ext_pda, _) = derive_payment_ext_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+        (ext_pda, buyer)
+    });
 
     let data = vec![SLAEscrowInstruction::RefundPayment as u8];
 
@@ -473,6 +502,10 @@ pub fn build_refund_payment_instruction(
         accounts.push(AccountMeta::new(sol_storage_pda, false));
         accounts.push(AccountMeta::new(buyer, false));
         accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        if let Some((ext_pda, rent)) = ext_pair {
+            accounts.push(AccountMeta::new(ext_pda, false));
+            accounts.push(AccountMeta::new(rent, false));
+        }
         if let Some(oracle) = oracle_authority {
             accounts.push(AccountMeta::new(oracle, false));
         }
@@ -487,6 +520,10 @@ pub fn build_refund_payment_instruction(
         accounts.push(AccountMeta::new(escrow_tokens, false));
         accounts.push(AccountMeta::new(buyer_tokens, false));
         accounts.push(AccountMeta::new_readonly(SPL_TOKEN_PROGRAM_ID, false));
+        if let Some((ext_pda, rent)) = ext_pair {
+            accounts.push(AccountMeta::new(ext_pda, false));
+            accounts.push(AccountMeta::new(rent, false));
+        }
         if let Some(oracle) = oracle_authority {
             let oracle_tokens =
                 associated_token_address_with_program(&oracle, &mint, &SPL_TOKEN_PROGRAM_ID);
@@ -536,6 +573,376 @@ pub fn build_close_payment_instruction(
     }
 }
 
+// ----------------------------------------------------------------------------
+// v0.5 extended-payment builders (additive; PaymentExt companion PDA).
+// Account orders mirror `sla_escrow_api::sdk::EscrowSdk` for ix 7-12, with PDAs
+// resolved from the caller-supplied `program_id` (devnet/mainnet).
+// ----------------------------------------------------------------------------
+
+/// PaymentExt companion PDA: `[b"payment_ext", payment_uid, bank]`.
+pub fn derive_payment_ext_pda_from_bytes(
+    program_id: &Pubkey,
+    bank_pda: &Pubkey,
+    payment_uid: &[u8; 32],
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[b"payment_ext", payment_uid, bank_pda.as_ref()],
+        program_id,
+    )
+}
+
+/// Shared account list for the mutual-action pair + DisputePayment:
+/// `[party(signer), bank, config, escrow, payment, payment_ext]`.
+fn mutual_action_accounts(
+    program_id: &Pubkey,
+    party: Pubkey,
+    payment_uid: &[u8; 32],
+) -> Vec<AccountMeta> {
+    let (bank_pda, _) = derive_bank_pda(program_id);
+    let (config_pda, _) = derive_config_pda(program_id);
+    // escrow PDA is per-mint; mutual/dispute don't move tokens, but the on-chain
+    // handler loads it by seeds via the recorded mint, so callers pass the mint
+    // through the escrow derivation. Here we derive with the recorded payment's
+    // escrow — but those handlers only read `payment`/`ext`, so the escrow account
+    // must still be the correct per-mint PDA (validated on-chain).
+    let (payment_pda, _) = derive_payment_pda_from_bytes(program_id, &bank_pda, payment_uid);
+    let (ext_pda, _) = derive_payment_ext_pda_from_bytes(program_id, &bank_pda, payment_uid);
+    vec![
+        AccountMeta::new(party, true),
+        AccountMeta::new_readonly(bank_pda, false),
+        AccountMeta::new_readonly(config_pda, false),
+        // escrow filled by the specific builder (needs the mint).
+        AccountMeta::new_readonly(Pubkey::default(), false),
+        AccountMeta::new(payment_pda, false),
+        AccountMeta::new(ext_pda, false),
+    ]
+}
+
+/// `FundPaymentV2` instruction data (216 bytes; V1 args + per-payment policy).
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct FundPaymentV2Data {
+    pub seller: Pubkey,
+    pub mint: Pubkey,
+    pub oracle_authority: Pubkey,
+    pub payment_uid: [u8; 32],
+    pub sla_hash: [u8; 32],
+    pub amount: [u8; 8],
+    pub ttl_seconds: [u8; 8],
+    pub closure_delay_override: [u8; 8],
+    pub refund_cooldown_override: [u8; 8],
+    pub delivery_cutoff_override: [u8; 8],
+    pub arbitration_window_seconds: [u8; 8],
+    pub min_oracle_tip: [u8; 8],
+}
+
+impl FundPaymentV2Data {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut b = Vec::with_capacity(216);
+        b.extend_from_slice(&self.seller.to_bytes());
+        b.extend_from_slice(&self.mint.to_bytes());
+        b.extend_from_slice(&self.oracle_authority.to_bytes());
+        b.extend_from_slice(&self.payment_uid);
+        b.extend_from_slice(&self.sla_hash);
+        b.extend_from_slice(&self.amount);
+        b.extend_from_slice(&self.ttl_seconds);
+        b.extend_from_slice(&self.closure_delay_override);
+        b.extend_from_slice(&self.refund_cooldown_override);
+        b.extend_from_slice(&self.delivery_cutoff_override);
+        b.extend_from_slice(&self.arbitration_window_seconds);
+        b.extend_from_slice(&self.min_oracle_tip);
+        b
+    }
+}
+
+/// Build `FundPaymentV2` (ix 8): V1 account layout + trailing `payment_ext` PDA.
+/// Overrides use `-1` to inherit the config snapshot; `0` = disabled where allowed.
+#[allow(clippy::too_many_arguments)]
+pub fn build_fund_payment_v2_instruction_from_uid_bytes(
+    program_id: Pubkey,
+    buyer: Pubkey,
+    seller: Pubkey,
+    mint: Pubkey,
+    amount: u64,
+    ttl_seconds: i64,
+    payment_uid: &[u8; 32],
+    sla_hash: [u8; 32],
+    oracle_authority: Pubkey,
+    token_program: Pubkey,
+    closure_delay_override: i64,
+    refund_cooldown_override: i64,
+    delivery_cutoff_override: i64,
+    arbitration_window_seconds: i64,
+    min_oracle_tip: u64,
+) -> Instruction {
+    // Reuse the V1 account assembly, then append the ext PDA and swap the data.
+    let mut ix = build_fund_payment_instruction_from_uid_bytes(
+        program_id,
+        buyer,
+        seller,
+        mint,
+        amount,
+        ttl_seconds,
+        payment_uid,
+        sla_hash,
+        oracle_authority,
+        token_program,
+    );
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (ext_pda, _) = derive_payment_ext_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+    ix.accounts.push(AccountMeta::new(ext_pda, false));
+
+    let data = FundPaymentV2Data {
+        seller,
+        mint,
+        oracle_authority,
+        payment_uid: *payment_uid,
+        sla_hash,
+        amount: amount.to_le_bytes(),
+        ttl_seconds: ttl_seconds.to_le_bytes(),
+        closure_delay_override: closure_delay_override.to_le_bytes(),
+        refund_cooldown_override: refund_cooldown_override.to_le_bytes(),
+        delivery_cutoff_override: delivery_cutoff_override.to_le_bytes(),
+        arbitration_window_seconds: arbitration_window_seconds.to_le_bytes(),
+        min_oracle_tip: min_oracle_tip.to_le_bytes(),
+    };
+    let mut instruction_data = Vec::with_capacity(217);
+    instruction_data.push(SLAEscrowInstruction::FundPaymentV2 as u8);
+    instruction_data.extend_from_slice(&data.to_bytes());
+    ix.data = instruction_data;
+    ix
+}
+
+/// Build `SubmitDelivery` (ix 5): the seller commits the delivery hash on-chain.
+/// Accounts `[seller(signer), bank, config, escrow, payment]` — identical to
+/// `ApproveDelivery`/`ConfirmOracle`; the caller must be the recorded `payment.seller`.
+/// Works for both legacy (v0.4) and extended (v0.5) payments (no `PaymentExt` account).
+pub fn build_submit_delivery_instruction_from_uid_bytes(
+    program_id: Pubkey,
+    seller: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+    delivery_hash: [u8; 32],
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+    let mut data = Vec::with_capacity(33);
+    data.push(SLAEscrowInstruction::SubmitDelivery as u8);
+    data.extend_from_slice(&delivery_hash);
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(seller, true),
+            AccountMeta::new_readonly(bank_pda, false),
+            AccountMeta::new_readonly(config_pda, false),
+            AccountMeta::new_readonly(escrow_pda, false),
+            AccountMeta::new(payment_pda, false),
+        ],
+        data,
+    }
+}
+
+/// Build `ApproveDelivery` (ix 7): buyer renders a final BuyerAccepted verdict.
+/// Accounts `[buyer(signer), bank, config, escrow, payment]` (mirrors ConfirmOracle).
+pub fn build_approve_delivery_instruction_from_uid_bytes(
+    program_id: Pubkey,
+    buyer: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+    delivery_hash: [u8; 32],
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+    let mut data = Vec::with_capacity(33);
+    data.push(SLAEscrowInstruction::ApproveDelivery as u8);
+    data.extend_from_slice(&delivery_hash);
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(buyer, true),
+            AccountMeta::new_readonly(bank_pda, false),
+            AccountMeta::new_readonly(config_pda, false),
+            AccountMeta::new_readonly(escrow_pda, false),
+            AccountMeta::new(payment_pda, false),
+        ],
+        data,
+    }
+}
+
+/// Build `DisputePayment` (ix 11): buyer suspends time-based settlement.
+pub fn build_dispute_payment_instruction_from_uid_bytes(
+    program_id: Pubkey,
+    buyer: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+    dispute_reason_hash: [u8; 32],
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let mut accounts = mutual_action_accounts(&program_id, buyer, payment_uid);
+    accounts[3] = AccountMeta::new_readonly(escrow_pda, false);
+    let mut data = Vec::with_capacity(33);
+    data.push(SLAEscrowInstruction::DisputePayment as u8);
+    data.extend_from_slice(&dispute_reason_hash);
+    Instruction {
+        program_id,
+        accounts,
+        data,
+    }
+}
+
+/// Build `ProposeMutualAction` (ix 9) or `AcceptMutualAction` (ix 10). `action`
+/// is `PROPOSAL_ACTION_*` (1 = rotate adjudicator, 2 = extend TTL); `value` is
+/// the payload (extension seconds), `pubkey` the rotation target.
+#[allow(clippy::too_many_arguments)]
+pub fn build_mutual_action_instruction_from_uid_bytes(
+    program_id: Pubkey,
+    party: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+    accept: bool,
+    action: u8,
+    value: i64,
+    pubkey: Pubkey,
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let mut accounts = mutual_action_accounts(&program_id, party, payment_uid);
+    accounts[3] = AccountMeta::new_readonly(escrow_pda, false);
+    // Data (48 bytes): action u8, _pad[7], value i64 LE, pubkey. Same layout for
+    // Propose and Accept (the on-chain structs are field-identical).
+    let mut data = Vec::with_capacity(49);
+    data.push(if accept {
+        SLAEscrowInstruction::AcceptMutualAction as u8
+    } else {
+        SLAEscrowInstruction::ProposeMutualAction as u8
+    });
+    data.push(action);
+    data.extend_from_slice(&[0u8; 7]);
+    data.extend_from_slice(&value.to_le_bytes());
+    data.extend_from_slice(&pubkey.to_bytes());
+    Instruction {
+        program_id,
+        accounts,
+        data,
+    }
+}
+
+const ASSOCIATED_TOKEN_PROGRAM_ID: Pubkey = pubkey!("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
+/// `ResolveWithSplit` instruction data (72 bytes). `expected_delivery_hash` binds
+/// the award to the reviewed delivery version (H-06).
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct ResolveWithSplitData {
+    pub seller_bps: [u8; 2],
+    pub resolution_reason: [u8; 2],
+    pub _pad: [u8; 4],
+    pub resolution_hash: [u8; 32],
+    pub expected_delivery_hash: [u8; 32],
+}
+
+impl ResolveWithSplitData {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut b = Vec::with_capacity(72);
+        b.extend_from_slice(&self.seller_bps);
+        b.extend_from_slice(&self.resolution_reason);
+        b.extend_from_slice(&self._pad);
+        b.extend_from_slice(&self.resolution_hash);
+        b.extend_from_slice(&self.expected_delivery_hash);
+        b
+    }
+}
+
+/// Build `ResolveWithSplit` (ix 12): the adjudicator (recorded `oracle_authority`,
+/// possibly rotated) renders a bps partial award and settles atomically.
+/// `seller`/`buyer` are the recorded wallets; for SPL, `*_tokens` are their ATAs
+/// (JIT-created on-chain if missing). The oracle-tip token account is always
+/// appended for SPL (harmless if the tip is zero).
+#[allow(clippy::too_many_arguments)]
+pub fn build_resolve_with_split_instruction_from_uid_bytes(
+    program_id: Pubkey,
+    adjudicator: Pubkey,
+    mint: Pubkey,
+    payment_uid: &[u8; 32],
+    seller_bps: u16,
+    resolution_reason: u16,
+    resolution_hash: [u8; 32],
+    expected_delivery_hash: [u8; 32],
+    seller: Pubkey,
+    buyer: Pubkey,
+    token_program: Pubkey,
+) -> Instruction {
+    let (bank_pda, _) = derive_bank_pda(&program_id);
+    let (config_pda, _) = derive_config_pda(&program_id);
+    let (escrow_pda, _) = derive_escrow_pda(&program_id, &bank_pda, &mint);
+    let (payment_pda, _) = derive_payment_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+    let (ext_pda, _) = derive_payment_ext_pda_from_bytes(&program_id, &bank_pda, payment_uid);
+    let is_sol = mint == Pubkey::default();
+
+    let data = ResolveWithSplitData {
+        seller_bps: seller_bps.to_le_bytes(),
+        resolution_reason: resolution_reason.to_le_bytes(),
+        _pad: [0; 4],
+        resolution_hash,
+        expected_delivery_hash,
+    };
+    let mut instruction_data = Vec::with_capacity(73);
+    instruction_data.push(SLAEscrowInstruction::ResolveWithSplit as u8);
+    instruction_data.extend_from_slice(&data.to_bytes());
+
+    let mut accounts = vec![
+        AccountMeta::new(adjudicator, true),
+        AccountMeta::new_readonly(bank_pda, false),
+        AccountMeta::new_readonly(config_pda, false),
+        AccountMeta::new(escrow_pda, false),
+        AccountMeta::new(payment_pda, false),
+        AccountMeta::new_readonly(mint, false),
+    ];
+
+    if is_sol {
+        let (sol_storage_pda, _) =
+            derive_sol_storage_pda(&program_id, &bank_pda, &mint, &escrow_pda);
+        accounts.push(AccountMeta::new(sol_storage_pda, false));
+        accounts.push(AccountMeta::new(seller, false));
+        accounts.push(AccountMeta::new(buyer, false));
+        accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        accounts.push(AccountMeta::new(ext_pda, false));
+        accounts.push(AccountMeta::new(buyer, false)); // ext rent recipient
+    } else {
+        let escrow_tokens =
+            associated_token_address_with_program(&escrow_pda, &mint, &token_program);
+        let seller_tokens = associated_token_address_with_program(&seller, &mint, &token_program);
+        let buyer_tokens = associated_token_address_with_program(&buyer, &mint, &token_program);
+        let oracle_tokens =
+            associated_token_address_with_program(&adjudicator, &mint, &token_program);
+        accounts.push(AccountMeta::new(escrow_tokens, false));
+        accounts.push(AccountMeta::new(seller_tokens, false));
+        accounts.push(AccountMeta::new(seller, false));
+        accounts.push(AccountMeta::new(buyer_tokens, false));
+        accounts.push(AccountMeta::new(buyer, false));
+        accounts.push(AccountMeta::new_readonly(token_program, false));
+        accounts.push(AccountMeta::new_readonly(
+            ASSOCIATED_TOKEN_PROGRAM_ID,
+            false,
+        ));
+        accounts.push(AccountMeta::new_readonly(SYSTEM_PROGRAM_ID, false));
+        accounts.push(AccountMeta::new(ext_pda, false));
+        accounts.push(AccountMeta::new(buyer, false)); // ext rent recipient
+        accounts.push(AccountMeta::new(oracle_tokens, false)); // tip (optional on-chain)
+    }
+
+    Instruction {
+        program_id,
+        accounts,
+        data: instruction_data,
+    }
+}
+
 #[cfg(test)]
 mod tests_settlement {
     use super::*;
@@ -547,10 +954,30 @@ mod tests_settlement {
         let seller = Pubkey::new_unique();
         let mint = Pubkey::default();
         let uid = [1u8; 32];
-        let ix = build_release_payment_instruction(pid, caller, seller, mint, &uid, None);
+        let ix = build_release_payment_instruction(pid, caller, seller, mint, &uid, None, None);
         // SOL path: 9 accounts + 0 optional = 9
         assert_eq!(ix.accounts.len(), 9);
         assert_eq!(ix.data, vec![SLAEscrowInstruction::ReleasePayment as u8]);
+    }
+
+    #[test]
+    fn submit_delivery_layout() {
+        let pid = Pubkey::new_unique();
+        let seller = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let uid = [3u8; 32];
+        let dh = [7u8; 32];
+        let ix = build_submit_delivery_instruction_from_uid_bytes(pid, seller, mint, &uid, dh);
+        // 5 accounts: [seller(signer,w), bank(ro), config(ro), escrow(ro), payment(w)]
+        assert_eq!(ix.accounts.len(), 5);
+        assert_eq!(ix.accounts[0].pubkey, seller);
+        assert!(ix.accounts[0].is_signer && ix.accounts[0].is_writable);
+        assert!(!ix.accounts[3].is_writable); // escrow read-only
+        assert!(ix.accounts[4].is_writable); // payment writable
+                                             // data = [5u8] || delivery_hash (33 bytes)
+        assert_eq!(ix.data.len(), 33);
+        assert_eq!(ix.data[0], SLAEscrowInstruction::SubmitDelivery as u8);
+        assert_eq!(&ix.data[1..], &dh);
     }
 
     #[test]
@@ -566,6 +993,7 @@ mod tests_settlement {
             Pubkey::default(),
             &[1u8; 32],
             Some(oracle),
+            None,
         );
         // SOL path: 9 + 1 oracle = 10
         assert_eq!(ix.accounts.len(), 10);
@@ -577,7 +1005,8 @@ mod tests_settlement {
         let caller = Pubkey::new_unique();
         let buyer = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
-        let ix = build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], None);
+        let ix =
+            build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], None, false);
         // SPL path: 9 accounts + 0 optional = 9
         assert_eq!(ix.accounts.len(), 9);
         assert_eq!(ix.data, vec![SLAEscrowInstruction::RefundPayment as u8]);
@@ -590,8 +1019,15 @@ mod tests_settlement {
         let buyer = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
         let oracle = Pubkey::new_unique();
-        let ix =
-            build_refund_payment_instruction(pid, caller, buyer, mint, &[2u8; 32], Some(oracle));
+        let ix = build_refund_payment_instruction(
+            pid,
+            caller,
+            buyer,
+            mint,
+            &[2u8; 32],
+            Some(oracle),
+            false,
+        );
         // SPL path: 9 + 4 (oracle_tokens, oracle_authority, ata_program, system_program) = 13
         assert_eq!(ix.accounts.len(), 13);
     }

@@ -422,6 +422,54 @@
         "POST",
         "OPTIONS"
       ]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-payment-v2-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-submit-delivery-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-approve-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-dispute-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-mutual-action-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
+    },
+    {
+      "src": "/api/v1/facilitator/build-sla-escrow-resolve-split-tx",
+      "dest": "/src/bin/facilitator",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ]
     }
   ],
   "crons": [
