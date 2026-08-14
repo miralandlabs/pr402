@@ -74,11 +74,13 @@ Separate from merchant `POST /sellers/{wallet}/register`:
 
 | Method | Path |
 |--------|------|
-| GET | `/api/v1/facilitator/resources/register/challenge?wallet=` |
+| GET | `/api/v1/facilitator/resources/register/challenge?wallet=&action=<ACTION>` |
 | POST | `/api/v1/facilitator/resources/register` |
 | POST | `/api/v1/facilitator/resources/retire` |
 | GET/POST | `/api/v1/facilitator/sellers/{wallet}/resources` (signed) |
 | POST | `/api/v1/facilitator/resources/probe` (signed) |
+
+`<ACTION>` is `resource:register`, `resource:retire`, or `resource:probe`. Each administrative request needs a fresh, one-time challenge. Owner listing uses `/sellers/{wallet}/challenge?action=resource:list`.
 
 UI entry: [ipay.sh/resources](https://ipay.sh/resources) — step 5 of 6 in the seller go-live path.
 

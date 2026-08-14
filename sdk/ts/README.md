@@ -68,7 +68,9 @@ import * as fs from "node:fs";
 
 const bytes = JSON.parse(fs.readFileSync("/path/to/keypair.json", "utf8"));
 const wallet = Keypair.fromSecretKey(new Uint8Array(bytes));
-const client = new X402AgentClient(wallet);
+const client = new X402AgentClient(wallet, {
+  maxPaymentAmount: "1000000", // 1 USDC, in atomic units
+});
 
 try {
   const res = await client.fetchWithAutoPay(
@@ -87,6 +89,19 @@ try {
 ```
 
 The method returns a standard `Response` so you can inspect headers (`PAYMENT-RESPONSE`, correlation ids, caches) before reading the body.
+
+### Buyer safety
+
+The client trusts only the four official pr402 origins by default and rejects a 402 that points transaction construction elsewhere. For a self-hosted facilitator, replace the allowlist explicitly:
+
+```ts
+const client = new X402AgentClient(wallet, {
+  trustedFacilitatorOrigins: ["https://facilitator.example.com"],
+  maxPaymentAmount: "1000000",
+});
+```
+
+`maxPaymentAmount` is optional and uses the selected mint's atomic units. The client also rejects non-Solana/non-`exact` rails, changed build terms, and transactions whose payer signature slot does not belong to the buyer wallet.
 
 ## What this does under the hood
 
@@ -109,6 +124,9 @@ All protocol-level errors come as `X402Error` with a typed `code` field:
 | `BUILD_FAILED` | Facilitator rejected the build request. `e.httpStatus` + the message carry the reason. |
 | `MISSING_CAPABILITIES_URL` | Seller didn't integrate with a facilitator; contact them. |
 | `MISSING_ACCEPTS` / `MISSING_VERIFY_TEMPLATE` / `MISSING_TRANSACTION` | Seller or facilitator configuration issue. |
+| `UNTRUSTED_FACILITATOR` | The 402 points to a facilitator origin outside the configured allowlist. |
+| `PAYMENT_LIMIT_EXCEEDED` | The requested atomic-unit amount exceeds `maxPaymentAmount`. |
+| `INCONSISTENT_BUILD` / `INVALID_TRANSACTION` | The facilitator changed payment terms or returned a transaction the buyer cannot safely sign. |
 | `UNEXPECTED_STATUS` | Seller returned something other than 200 or 402. |
 | `TRANSPORT` | Network or serialization error. |
 

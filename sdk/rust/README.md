@@ -61,7 +61,8 @@ use solana_sdk::{signature::read_keypair_file, signer::Signer};
 async fn main() -> anyhow::Result<()> {
     let wallet = read_keypair_file("~/.config/solana/buyer.json")
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let client = X402AgentClient::new(wallet);
+    let client = X402AgentClient::new(wallet)
+        .with_max_payment_amount(1_000_000); // 1 USDC, in atomic units
 
     let resp = client
         .fetch_with_auto_pay(
@@ -76,6 +77,18 @@ async fn main() -> anyhow::Result<()> {
 ```
 
 The library returns a `reqwest::Response` on success so your code can inspect headers (`PAYMENT-RESPONSE`, correlation IDs, cache hints) before reading the body.
+
+### Buyer safety
+
+The client trusts only the four official pr402 origins by default and rejects a 402 that points transaction construction elsewhere. For a self-hosted facilitator, replace the allowlist explicitly:
+
+```rust
+let client = X402AgentClient::new(wallet)
+    .with_trusted_facilitator_origins(["https://facilitator.example.com"])
+    .with_max_payment_amount(1_000_000);
+```
+
+The limit is optional and uses the selected mint's atomic units. The client also rejects non-Solana/non-`exact` rails, changed build terms, and transactions whose payer signature slot does not belong to the buyer wallet.
 
 ## What this does under the hood
 
@@ -101,6 +114,9 @@ The library surfaces actionable errors as `X402Error` variants:
 | `BlockhashExpired` | Build response is too old | Retry; the next build gets a fresh blockhash |
 | `RateLimited` | Facilitator 429 | Wait `retry_after_secs` seconds |
 | `BuildFailed` | Facilitator 4xx/5xx on build | Inspect `status` + `detail`; usually a config mismatch |
+| `UntrustedFacilitator` | The 402 points outside the configured origin allowlist | Add only a facilitator origin you operate or trust |
+| `PaymentLimitExceeded` | The requested atomic-unit amount exceeds the configured ceiling | Reject it or raise the limit deliberately |
+| `InconsistentBuild` / `SignerNotInTransaction` | Build terms changed or the wallet cannot safely sign the returned transaction | Reject the payment and inspect the facilitator |
 | `UnexpectedStatus` | Seller returned something other than 200 or 402 | Seller error; not a payment issue |
 
 The CLI exits with code 1 and prints the chained error to stderr on any of these.

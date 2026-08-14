@@ -148,7 +148,15 @@ async function harvestManifests() {
           ],
         );
 
-        const probe = await probeResource(r.resourceUrl, r.method || "GET");
+        const resourceMethod = (r.method || "GET").toUpperCase();
+        if (resourceMethod !== "GET") {
+          console.warn(
+            `skip automated ${resourceMethod} probe for ${r.resourceUrl}; preserve the seller-authorized manual probe result`,
+          );
+          continue;
+        }
+
+        const probe = await probeResource(r.resourceUrl, resourceMethod);
         await pool.query(
           `UPDATE payable_resources SET
             last_probe_at = NOW(),

@@ -3546,7 +3546,8 @@
                         try {
                             // Step 1: fetch challenge
                             var chRes = await fetch(
-                                sellerApiPath(connected, "/challenge"),
+                                sellerApiPath(connected, "/challenge") +
+                                    "?action=seller%3Aregister",
                             );
                             var chTxt = await chRes.text();
                             if (!chRes.ok)
@@ -3700,7 +3701,8 @@
                         setStatus("Requesting signed challenge…");
                         try {
                             var chRes = await fetch(
-                                sellerApiPath(connected, "/challenge"),
+                                sellerApiPath(connected, "/challenge") +
+                                    "?action=seller%3Aretire",
                             );
                             var chTxt = await chRes.text();
                             if (!chRes.ok)

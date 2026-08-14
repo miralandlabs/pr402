@@ -56,11 +56,13 @@ Separate from merchant `POST /sellers/{wallet}/register`:
 
 | Method | Path |
 |--------|------|
-| GET | `/api/v1/facilitator/resources/register/challenge?wallet=` |
+| GET | `/api/v1/facilitator/resources/register/challenge?wallet=&action=<ACTION>` |
 | POST | `/api/v1/facilitator/resources/register` |
 | POST | `/api/v1/facilitator/resources/retire` |
 | GET/POST | `/api/v1/facilitator/sellers/{wallet}/resources` (signed) |
 | POST | `/api/v1/facilitator/resources/probe` (signed) |
+
+`<ACTION>` is `resource:register`, `resource:retire`, or `resource:probe`. Each administrative request needs a fresh, one-time challenge. Owner listing uses `/sellers/{wallet}/challenge?action=resource:list`.
 
 UI entry: [`/resources`](../public/resources/index.html) — **step 5 of 6** in the seller go-live path (steps 2–3 on the home page).
 
@@ -74,7 +76,7 @@ Seller-owned catalog at `{origin}/.well-known/x402-resources.json`. See [SRM.md]
 
 ## Scheduling
 
-[`.github/workflows/discovery-indexer-cron.yml`](../.github/workflows/discovery-indexer-cron.yml) runs the indexer hourly against preview then production (gated behind preview to stagger load). The `--harvest` pass re-probes every listed `resourceUrl` and writes `last_probe_ok` to Postgres, so liveness in `GET /resources` stays fresh between deploys. Requires `PR402_PREVIEW_DATABASE_URL` / `PR402_DATABASE_URL` secrets (alongside the existing `PR402_PREVIEW_BASE_URL` / `PR402_BASE_URL`); jobs skip cleanly until those are set.
+[`.github/workflows/discovery-indexer-cron.yml`](../.github/workflows/discovery-indexer-cron.yml) runs the indexer hourly against preview then production (gated behind preview to stagger load). The `--harvest` pass re-probes listed `GET` resources and writes `last_probe_ok` to Postgres, so liveness in `GET /resources` stays fresh between deploys. It never replays mutating methods; POST/PUT/PATCH/DELETE resources retain their seller-authorized manual probe result. Requires `PR402_PREVIEW_DATABASE_URL` / `PR402_DATABASE_URL` secrets (alongside the existing `PR402_PREVIEW_BASE_URL` / `PR402_BASE_URL`); jobs skip cleanly until those are set.
 
 ## Agent manifest (`GET /capabilities`)
 

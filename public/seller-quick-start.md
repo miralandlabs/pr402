@@ -34,7 +34,7 @@ Buyer Agent              Your API Server              pr402 Facilitator
      |   (sign locally)        |                              |
      |                         |                              |
      |--- GET /api/premium --->|                              |
-     |   PAYMENT-SIGNATURE: {…}|                              |
+     | PAYMENT-SIGNATURE: <base64 JSON>                       |
      |                         |--- POST /settle ------------>|
      |                         |   (verify + execute on-chain)|
      |                         |<-- 200 OK (settled) ---------|
@@ -43,13 +43,13 @@ Buyer Agent              Your API Server              pr402 Facilitator
 ```
 
 > `/settle` performs verification internally — calling it alone is the simplest integration.
-> For audit linkage, optionally call `/verify` first to obtain a `correlationId`.
+> For audit linkage, send your own `X-Correlation-ID` directly to `/settle`.
 
 **Key insight**: Your server never touches Solana directly. You return a 402, extract the payment proof header, and forward it to the facilitator. That's it.
 
 > **pr402 settlement model (Solana-specific)**: The standard x402 flow is: `/verify` → deliver resource → `/settle`. On Solana, signed transactions contain a blockhash that expires in ~60 seconds. If resource delivery takes any real time between verify and settle, the blockhash expires and settlement fails. In pr402, `**/settle` already performs verification internally** before executing on-chain — so calling `/settle` alone is sufficient and safe. It is also idempotent: if the transaction is already confirmed on-chain, it returns success.
 >
-> **When is `/verify` still useful?** As a **pre-flight dry-run**: it validates the proof (signature, amounts, recipient, mint) without spending any Solana fees. Useful for diagnostics, or if your seller-side logic needs to confirm validity before committing business logic. The `x402-seller-starter` reference implementation calls both (`/verify` → `/settle`) to obtain a `correlationId` for audit linkage before settling.
+> **When is `/verify` still useful?** Only as a diagnostic pre-flight. Its success is temporary and does not prove payment. Production sellers should call `/settle` immediately; pass their own `X-Correlation-ID` when audit linkage is needed.
 
 ---
 
@@ -99,7 +99,7 @@ curl -sS "$BASE/api/v1/facilitator/sellers/YOUR_PUBKEY/rails/exact" | jq .
 
 ### Change 2: Extract `PAYMENT-SIGNATURE` and Settle via Facilitator
 
-When the buyer retries with proof, extract the header and POST it to the facilitator. pr402's `/settle` performs full verification internally before executing on-chain, so calling `/settle` alone is the simplest path. For audit linkage, you can optionally call `/verify` first to obtain a `correlationId`, then pass it to `/settle`.
+When the buyer retries with proof, decode the header and POST it to the facilitator. pr402's `/settle` performs full verification internally before executing on-chain, so calling `/settle` alone is the production path. Send your own `X-Correlation-ID` header when audit linkage is needed.
 
 **Pseudocode — simple path (any language):**
 
@@ -110,7 +110,9 @@ function handle_paid_request(request):
     if proof is empty:
         return http_402(accepts_json)
 
-    payment_body = json_decode(proof)
+    # Official clients emit base64 JSON; raw JSON remains accepted for compatibility.
+    payment_body = json_decode(base64_decode(proof))
+        or_else json_decode(proof)
 
     # /settle verifies internally then executes on-chain.
     # Idempotent: already-confirmed transactions return success.
@@ -127,7 +129,7 @@ function handle_paid_request(request):
     return http_200(premium_content)
 ```
 
-**Optional — verify-then-settle path (for audit linkage):**
+**Diagnostic only — standalone `/verify`:**
 
 ```
 function handle_paid_request(request):
@@ -137,11 +139,7 @@ function handle_paid_request(request):
     if verify_result.status != 200:
         return http_402(accepts_json)
 
-    # Step 2: carry correlationId into settle for DB audit trail
-    if verify_result.body.correlationId:
-        payment_body.correlationId = verify_result.body.correlationId
-
-    # Step 3: settle (verifies again internally + executes on-chain)
+    # Do not deliver here. If continuing, settle immediately with the same proof.
     settle_result = http_post(".../settle", body: payment_body)
     ...
 ```
@@ -180,11 +178,18 @@ function handle_paid_request(request):
 See the complete working example in [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter):
 
 ```rust
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+
 let proof = extract_payment_header_value(&headers);
 match proof {
     Some(value) => {
-        let body: serde_json::Value = serde_json::from_str(&value)?;
-        let result = facilitator.verify_and_settle(&body).await?;
+        let decoded = STANDARD.decode(&value).ok().and_then(|v| String::from_utf8(v).ok());
+        let body: serde_json::Value = serde_json::from_str(decoded.as_deref().unwrap_or(&value))?;
+        let result = http_client
+            .post(format!("{FACILITATOR_URL}/api/v1/facilitator/settle"))
+            .json(&body)
+            .send()
+            .await?;
         // Return 200 with PAYMENT-RESPONSE header
     }
     None => {
@@ -196,13 +201,21 @@ match proof {
 ### Python (Flask / FastAPI)
 
 ```python
+import base64
+import json
+
 proof = request.headers.get("PAYMENT-SIGNATURE")
 if not proof:
     return JSONResponse(status_code=402, content=accepts_body)
 
+try:
+    payment_body = json.loads(base64.b64decode(proof, validate=True))
+except (ValueError, json.JSONDecodeError):
+    payment_body = json.loads(proof)
+
 import httpx
 result = httpx.post(f"{FACILITATOR_URL}/api/v1/facilitator/settle",
-                    json=json.loads(proof))
+                    json=payment_body)
 if result.status_code != 200:
     return JSONResponse(status_code=402, content=accepts_body)
 
@@ -220,10 +233,17 @@ if (!proof) {
   return res.status(402).json(acceptsBody);
 }
 
+let paymentBody;
+try {
+  paymentBody = JSON.parse(Buffer.from(proof, 'base64').toString('utf8'));
+} catch {
+  paymentBody = JSON.parse(proof);
+}
+
 const result = await fetch(`${FACILITATOR_URL}/api/v1/facilitator/settle`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: proof,
+  body: JSON.stringify(paymentBody),
 });
 if (!result.ok) {
   return res.status(402).json(acceptsBody);
@@ -244,8 +264,17 @@ if proof == "" {
     return
 }
 
+paymentBody, err := base64.StdEncoding.DecodeString(proof)
+if err != nil || !json.Valid(paymentBody) {
+    paymentBody = []byte(proof)
+}
+if !json.Valid(paymentBody) {
+    http.Error(w, "invalid PAYMENT-SIGNATURE", http.StatusBadRequest)
+    return
+}
+
 resp, err := http.Post(facilitatorURL+"/api/v1/facilitator/settle",
-    "application/json", strings.NewReader(proof))
+    "application/json", bytes.NewReader(paymentBody))
 if err != nil || resp.StatusCode != 200 {
     w.WriteHeader(http.StatusPaymentRequired)
     json.NewEncoder(w).Encode(acceptsBody)
@@ -292,13 +321,13 @@ Cache the result and return it as your 402 response.
 | Discover your `payTo` PDA     | `/api/v1/facilitator/sellers/X/rails/exact` | GET      |                                                                                         |
 | Full onboard preview          | `/api/v1/facilitator/sellers/{X}/preview`              | GET      |                                                                                         |
 | Upgrade naive 402             | `/api/v1/facilitator/payment-required/enrich`                         | POST     |                                                                                         |
-| **Settle (verify + execute)** | `**/api/v1/facilitator/settle`**                      | **POST** | Verifies internally, then executes on-chain. Idempotent.                                |
-| Verify (dry-run only)         | `/api/v1/facilitator/verify`                          | POST     | Optional pre-flight check. No on-chain cost. Returns `correlationId` for audit linkage. |
+| **Settle (verify + execute)** | `/api/v1/facilitator/settle`                          | **POST** | Verifies internally, then executes on-chain. Idempotent.                                |
+| Verify (dry-run only)         | `/api/v1/facilitator/verify`                          | POST     | Diagnostic pre-flight only; success is not payment.                                    |
 | Supported schemes/rails       | `/api/v1/facilitator/supported`                       | GET      |                                                                                         |
 | Full discovery bundle         | `/api/v1/facilitator/capabilities`                    | GET      |                                                                                         |
 
 
-> **pr402 vs standard x402 settle model**: In the generic x402 spec, `/verify` and `/settle` are separate steps with resource delivery in between. On Solana, blockhashes expire in ~60 seconds, making that gap risky. pr402's `/settle` runs verification internally before executing — so calling `/settle` alone is safe and sufficient. `/verify` remains useful as a zero-cost pre-flight check or to obtain a `correlationId` for DB audit trails.
+> **pr402 vs standard x402 settle model**: In the generic x402 spec, `/verify` and `/settle` are separate steps with resource delivery in between. On Solana, blockhashes expire quickly, making that gap risky. pr402's `/settle` verifies, submits, and confirms in one call. Deliver only after it succeeds. `/verify` is diagnostic only; send `X-Correlation-ID` directly to `/settle` for audit linkage.
 
 **Canonical API spec**: `GET /openapi.json` on your facilitator deployment.
 **Full integration runbook**: `GET /agent-integration.md` on your facilitator deployment.

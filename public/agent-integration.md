@@ -193,7 +193,7 @@ Default path when calling an HTTP 402 seller (matches `@pr402/client`, MCP, x402
 4. **Build** — `POST /build-exact-payment-tx` or `/build-sla-escrow-payment-tx` with `payer`, `accepted`, and scheme fields per OpenAPI.
 5. **Sign** — sign `transaction` at **`payerSignatureIndex`**. **Do not** add address lookup tables.
 6. **Fill template** — put signed tx into **`verifyBodyTemplate.paymentPayload.payload.transaction`**. Keep **`paymentPayload.accepted`** and **`paymentRequirements`** identical.
-7. **Retry seller** — header **`PAYMENT-SIGNATURE`** (raw JSON preferred; base64 accepted).
+7. **Retry seller** — header **`PAYMENT-SIGNATURE`** (base64 JSON preferred; raw JSON accepted for compatibility).
 8. **Seller settles** — seller calls facilitator **`/settle`**. Read **`PAYMENT-RESPONSE`** on **200** for on-chain proof.
 
 **Blockhash expiry:** rebuild from step 4 and re-sign.

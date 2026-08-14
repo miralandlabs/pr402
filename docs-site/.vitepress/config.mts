@@ -11,19 +11,36 @@ export default defineConfig({
     logo: '/pr402.png',
 
     nav: [
-      { text: 'Home', link: '/' },
       { text: 'Start here', link: '/start-here' },
-      { text: 'Integrate (sellers)', link: '/seller-quick-start' },
-      { text: 'Buyer Quickstart', link: '/quickstart-buyer' },
-      { text: 'Connect Cursor', link: '/connect-cursor-to-pr402' },
-      { text: 'Why pr402?', link: '/pr402-vs-alternatives' },
-      { text: 'Agent Integration', link: '/agent-integration' },
-      { text: 'API Reference', link: '/api-reference' },
       {
-        text: 'OpenAPI JSON',
-        link: 'https://ipay.sh/openapi.json',
-        target: '_blank',
-        rel: 'noopener noreferrer',
+        text: 'Sellers',
+        items: [
+          { text: 'Integrate your API', link: '/seller-quick-start' },
+          { text: 'Hands-on lab', link: '/seller-lab' },
+          { text: 'Quick reference', link: '/quickstart-seller' },
+        ],
+      },
+      {
+        text: 'Buyers',
+        items: [
+          { text: 'Buyer quickstart', link: '/quickstart-buyer' },
+          { text: 'Connect Cursor', link: '/connect-cursor-to-pr402' },
+        ],
+      },
+      { text: 'Why pr402?', link: '/pr402-vs-alternatives' },
+      {
+        text: 'Reference',
+        items: [
+          { text: 'API overview', link: '/api-reference' },
+          { text: 'Agent integration', link: '/agent-integration' },
+          { text: 'Resource discovery', link: '/discovery' },
+          {
+            text: 'OpenAPI JSON',
+            link: 'https://ipay.sh/openapi.json',
+            target: '_blank',
+            rel: 'noopener noreferrer',
+          },
+        ],
       },
     ],
 
@@ -68,6 +85,8 @@ export default defineConfig({
 
     socialLinks: [
       { icon: 'github', link: 'https://github.com/miraland-labs/x402' },
+      { icon: 'discord', link: 'https://discord.gg/VmBfyeM4YB' },
+      { icon: 'x', link: 'https://x.com/hashspace_mi' },
     ],
 
     footer: {

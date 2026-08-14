@@ -729,7 +729,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         && p.len() > seller_api::SELLERS_PREFIX.len() + "/challenge".len() =>
                 {
                     if let Some(w) = seller_api::parse_sellers_wallet_suffix(p, "/challenge") {
-                        handle_onboard_challenge(&seller_api::challenge_query(&w)).await
+                        let action = query_param(&query, "action");
+                        handle_onboard_challenge(&seller_api::challenge_query(
+                            &w,
+                            if action.is_empty() { None } else { Some(&action) },
+                        ))
+                        .await
                     } else {
                         facilitator_response!()
                             .status(StatusCode::NOT_FOUND)
@@ -1022,6 +1027,54 @@ fn error_response(status: StatusCode, message: &str) -> Response<Body> {
     error_response_with_optional_correlation(status, message, None, None)
 }
 
+fn classify_payment_failure(
+    error: &pr402::facilitator::FacilitatorLocalError,
+) -> (StatusCode, &'static str) {
+    use pr402::chain::solana::SolanaChainProviderError;
+    use pr402::facilitator::FacilitatorLocalError;
+    use pr402::proto::PaymentVerificationError;
+    use pr402::scheme::X402SchemeFacilitatorError;
+
+    let scheme_error = match error {
+        FacilitatorLocalError::Verification(error)
+        | FacilitatorLocalError::Settlement(error)
+        | FacilitatorLocalError::Upgrade(error)
+        | FacilitatorLocalError::Onboard(error)
+        | FacilitatorLocalError::Discovery(error) => error,
+    };
+
+    match scheme_error {
+        X402SchemeFacilitatorError::InvalidPayload(_) => {
+            (StatusCode::BAD_REQUEST, "PAYMENT_INVALID")
+        }
+        X402SchemeFacilitatorError::PaymentVerification(
+            PaymentVerificationError::TransactionSimulation(message),
+        ) if message.starts_with("RPC simulation failed:") => {
+            (StatusCode::BAD_GATEWAY, "FACILITATOR_UPSTREAM")
+        }
+        X402SchemeFacilitatorError::PaymentVerification(_) => {
+            (StatusCode::BAD_REQUEST, "PAYMENT_INVALID")
+        }
+        X402SchemeFacilitatorError::SolanaChain(SolanaChainProviderError::Transport(message))
+            if message.to_ascii_lowercase().contains("blockhash") =>
+        {
+            (StatusCode::BAD_REQUEST, "BLOCKHASH_EXPIRED")
+        }
+        X402SchemeFacilitatorError::SolanaChain(SolanaChainProviderError::Transport(_)) => {
+            (StatusCode::BAD_GATEWAY, "FACILITATOR_UPSTREAM")
+        }
+        X402SchemeFacilitatorError::SolanaChain(_) => (StatusCode::BAD_REQUEST, "PAYMENT_INVALID"),
+        X402SchemeFacilitatorError::OnchainFailure(message)
+            if message.to_ascii_lowercase().contains("blockhash") =>
+        {
+            (StatusCode::BAD_REQUEST, "BLOCKHASH_EXPIRED")
+        }
+        X402SchemeFacilitatorError::OnchainFailure(_) => {
+            (StatusCode::BAD_GATEWAY, "FACILITATOR_UPSTREAM")
+        }
+    }
+}
+
 fn error_response_with_optional_correlation(
     status: StatusCode,
     message: &str,
@@ -1073,4 +1126,47 @@ fn error_response_with_optional_correlation(
     }
 
     res.body(Body::Text(json.to_string())).unwrap()
+}
+
+#[cfg(test)]
+mod payment_failure_tests {
+    use super::*;
+    use pr402::chain::solana::SolanaChainProviderError;
+    use pr402::facilitator::FacilitatorLocalError;
+    use pr402::proto::PaymentVerificationError;
+    use pr402::scheme::X402SchemeFacilitatorError;
+
+    #[test]
+    fn malformed_payment_stays_400() {
+        let error =
+            FacilitatorLocalError::Verification(X402SchemeFacilitatorError::PaymentVerification(
+                PaymentVerificationError::InvalidSignature("bad signature".into()),
+            ));
+        assert_eq!(
+            classify_payment_failure(&error),
+            (StatusCode::BAD_REQUEST, "PAYMENT_INVALID")
+        );
+    }
+
+    #[test]
+    fn rpc_transport_is_502() {
+        let error = FacilitatorLocalError::Settlement(X402SchemeFacilitatorError::SolanaChain(
+            SolanaChainProviderError::Transport("RPC unavailable".into()),
+        ));
+        assert_eq!(
+            classify_payment_failure(&error),
+            (StatusCode::BAD_GATEWAY, "FACILITATOR_UPSTREAM")
+        );
+    }
+
+    #[test]
+    fn expired_blockhash_is_actionable_400() {
+        let error = FacilitatorLocalError::Settlement(X402SchemeFacilitatorError::SolanaChain(
+            SolanaChainProviderError::Transport("retry build: blockhash expired".into()),
+        ));
+        assert_eq!(
+            classify_payment_failure(&error),
+            (StatusCode::BAD_REQUEST, "BLOCKHASH_EXPIRED")
+        );
+    }
 }

@@ -215,7 +215,6 @@
                 var wallet = "";
                 var lastId = null;
                 var shopReady = false;
-                var authCache = null;
                 var statusEl = document.getElementById("status");
                 var listOut = document.getElementById("list-out");
                 var formOut = document.getElementById("form-out");
@@ -267,10 +266,6 @@
                     } catch (_) {}
                 }
 
-                function clearAuthCache() {
-                    authCache = null;
-                }
-
                 /** Must match the wallet adapter's signing key (same as home page). */
                 function connectedWallet() {
                     return window.__PR402_CONNECTED_PUBKEY__ || wallet || "";
@@ -281,32 +276,25 @@
                     if (!connected) return "";
                     if (wallet !== connected) {
                         wallet = connected;
-                        clearAuthCache();
                         paintConnect();
                     }
                     return connected;
                 }
 
-                async function getAuth(forceNew) {
+                async function getAuth(action) {
                     var who = syncWalletFromAdapter();
                     if (!who) throw new Error("Connect wallet first.");
-                    var now = Math.floor(Date.now() / 1000);
-                    if (
-                        !forceNew &&
-                        authCache &&
-                        authCache.wallet === who &&
-                        authCache.expiresUnix > now + 15
-                    ) {
-                        return {
-                            message: authCache.message,
-                            signature: authCache.signature,
-                        };
-                    }
-                    var chRes = await fetch(
-                        "/api/v1/facilitator/sellers/" +
-                            encodeURIComponent(who) +
-                            "/challenge",
-                    );
+                    var challengeUrl =
+                        action === "resource:list"
+                            ? "/api/v1/facilitator/sellers/" +
+                              encodeURIComponent(who) +
+                              "/challenge?action=" +
+                              encodeURIComponent(action)
+                            : "/api/v1/facilitator/resources/register/challenge?wallet=" +
+                              encodeURIComponent(who) +
+                              "&action=" +
+                              encodeURIComponent(action);
+                    var chRes = await fetch(challengeUrl);
                     var ch = await chRes.json();
                     if (!chRes.ok) throw new Error(ch.error || chRes.status);
                     if (!ch.message) throw new Error("Challenge missing message.");
@@ -314,17 +302,9 @@
                     if (!sigB64) {
                         throw new Error("Wallet returned an empty signature.");
                     }
-                    authCache = {
-                        wallet: who,
+                    return {
                         message: ch.message,
                         signature: sigB64,
-                        expiresUnix:
-                            ch.expiresUnix ||
-                            now + (ch.ttlSeconds || 300),
-                    };
-                    return {
-                        message: authCache.message,
-                        signature: authCache.signature,
                     };
                 }
 
@@ -500,10 +480,10 @@
                     return true;
                 }
 
-                async function refreshList(auth) {
+                async function refreshList() {
                     var who = syncWalletFromAdapter();
                     if (!who) return;
-                    if (!auth) auth = await getAuth(false);
+                    var auth = await getAuth("resource:list");
                     var res = await fetch(
                         "/api/v1/facilitator/sellers/" +
                             encodeURIComponent(who) +
@@ -516,7 +496,6 @@
                     );
                     var txt = await res.text();
                     if (res.status === 401) {
-                        clearAuthCache();
                         listOut.textContent =
                             "Signature rejected — click Show my APIs again and sign with the same wallet shown above (" +
                             who.slice(0, 4) +
@@ -538,8 +517,8 @@
                     }
                 }
 
-                async function runProbe(id, auth) {
-                    if (!auth) auth = await getAuth(false);
+                async function runProbe(id) {
+                    var auth = await getAuth("resource:probe");
                     var res = await fetch("/api/v1/facilitator/resources/probe", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -572,7 +551,6 @@
                         wallet = "";
                     }
                     setStatus(wallet ? "Wallet: " + wallet : "");
-                    clearAuthCache();
                     paintConnect();
                     checkShopReady();
                 });
@@ -582,7 +560,6 @@
                         if (wallet) {
                             wallet = "";
                             shopReady = false;
-                            clearAuthCache();
                             paintConnect();
                             if (window.MiracleWalletDisconnecter) {
                                 try {
@@ -604,11 +581,9 @@
                         if (!requireWalletForSign()) return;
                         try {
                             listOut.textContent = "Sign the challenge in your wallet…";
-                            var auth = await getAuth(true);
                             listOut.textContent = "Loading…";
-                            await refreshList(auth);
+                            await refreshList();
                         } catch (e) {
-                            clearAuthCache();
                             listOut.textContent = String(e.message || e);
                         }
                     });
@@ -620,8 +595,7 @@
                         document.getElementById("listingOptIn").checked;
                     try {
                         setFormResult("Registering your API…");
-                        clearAuthCache();
-                        var auth = await getAuth(true);
+                        var auth = await getAuth("resource:register");
                         var body = {
                             wallet: wallet,
                             message: auth.message,
@@ -675,10 +649,10 @@
                                 "<strong>API registered.</strong> Running step 6 — checking your 402…",
                             );
                             try {
-                                var probe = await runProbe(lastId, auth);
+                                var probe = await runProbe(lastId);
                                 markGoLiveProgress(probe.ok);
                                 setFormResult(probePlainEnglish(probe), !probe.ok);
-                                await refreshList(auth);
+                                await refreshList();
                             } catch (pe) {
                                 setFormResult(
                                     "API registered, but step 6 check failed: " +
@@ -691,7 +665,7 @@
                             setFormResult(
                                 "<strong>API registered.</strong> Turn on “Show in public directory” to run step 6 automatically.",
                             );
-                            await refreshList(auth);
+                            await refreshList();
                         }
                     } catch (e) {
                         setFormResult(String(e.message || e), true);

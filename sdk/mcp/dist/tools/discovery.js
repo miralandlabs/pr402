@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerDiscoveryTools = registerDiscoveryTools;
-const discovery_1 = require("@pr402/discovery");
+const discovery_client_1 = require("../discovery-client");
 const zod_1 = require("zod");
 const config_1 = require("../config");
 const register_tool_1 = require("../register-tool");
@@ -16,7 +16,7 @@ function registerDiscoveryTools(server) {
             limit: zod_1.z.number().optional(),
         },
     }, async (args) => {
-        const data = await (0, discovery_1.searchResources)((0, config_1.facilitatorBase)(), {
+        const data = await (0, discovery_client_1.searchResources)((0, config_1.facilitatorBase)(), {
             q: args.q,
             category: args.category,
             scheme: args.scheme,
@@ -34,7 +34,7 @@ function registerDiscoveryTools(server) {
             httpMethod: zod_1.z.string().optional().describe('Default GET'),
         },
     }, async (args) => {
-        const result = await (0, discovery_1.probeResource)(String(args.resourceUrl), args.httpMethod ? String(args.httpMethod) : 'GET');
+        const result = await (0, discovery_client_1.probeResource)(String(args.resourceUrl), args.httpMethod ? String(args.httpMethod) : 'GET');
         return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };

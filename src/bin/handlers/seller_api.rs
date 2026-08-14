@@ -47,6 +47,9 @@ pub fn preview_query(wallet: &str) -> String {
     format!("wallet={wallet}")
 }
 
-pub fn challenge_query(wallet: &str) -> String {
-    preview_query(wallet)
+pub fn challenge_query(wallet: &str, action: Option<&str>) -> String {
+    match action.filter(|value| !value.is_empty()) {
+        Some(action) => format!("wallet={wallet}&action={action}"),
+        None => preview_query(wallet),
+    }
 }

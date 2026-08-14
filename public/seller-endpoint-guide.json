@@ -38,9 +38,10 @@
     "goal": "Registry challenge (Verify step)",
     "method": "GET",
     "path": "/api/v1/facilitator/sellers/{wallet}/challenge",
+    "query": "action (optional; omit for backward-compatible seller:any, or use the exact administrative action for least privilege)",
     "sideEffect": "read-only",
-    "returns": "message to sign",
-    "when": "Optional public directory listing"
+    "returns": "one-time, action-bound message to sign",
+    "when": "Immediately before one matching administrative request"
   },
   {
     "goal": "Registry submit (Verify step)",
@@ -58,6 +59,6 @@
     "body": "{ wallet, message, signature }",
     "sideEffect": "DB write — marks retired_at",
     "returns": "OnboardRetireResponse",
-    "when": "Remove wallet from public directory"
+    "when": "After signing a fresh challenge with action=seller:retire"
   }
 ]

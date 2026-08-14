@@ -93,6 +93,19 @@ pub async fn handle_onboard_challenge(query: &str) -> Response<Body> {
     if wallet.is_empty() {
         return error_response(StatusCode::BAD_REQUEST, "Missing wallet parameter");
     }
+    let action = match query_param(query, "action").as_str() {
+        "" | "seller:any" => "seller:any",
+        "seller:register" => "seller:register",
+        "seller:retire" => "seller:retire",
+        "seller:payments" => "seller:payments",
+        "resource:list" => "resource:list",
+        _ => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "Unsupported action. Use seller:register, seller:retire, seller:payments, or resource:list.",
+            );
+        }
+    };
     let cfg = match Config::from_env() {
         Ok(c) => c,
         Err(e) => {
@@ -114,13 +127,18 @@ pub async fn handle_onboard_challenge(query: &str) -> Response<Body> {
     )
     .await
     .clamp(1, 3600);
-    let (message, expires) =
-        match pr402::onboard_auth::build_signed_onboard_message(secret.as_bytes(), &wallet, ttl) {
-            Ok(x) => x,
-            Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
-        };
+    let (message, expires) = match pr402::onboard_auth::build_signed_onboard_message_for_action(
+        secret.as_bytes(),
+        &wallet,
+        action,
+        ttl,
+    ) {
+        Ok(x) => x,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
+    };
     let body = serde_json::json!({
         "wallet": wallet,
+        "action": action,
         "message": message,
         "expiresUnix": expires,
         "ttlSeconds": ttl,
@@ -280,13 +298,22 @@ pub async fn handle_onboard_submit(
         asset: parsed.asset,
         discovery: parsed.discovery,
     };
-    if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
+    if let Err(e) = pr402::onboard_auth::verify_and_consume_onboard_submission_for_action(
+        pr402_db(),
         secret.as_bytes(),
         &submit.wallet,
         &submit.message,
         &submit.signature,
-    ) {
+        "seller:register",
+    )
+    .await
+    {
         return error_response(StatusCode::UNAUTHORIZED, &e);
+    }
+    if let Some(discovery) = &submit.discovery {
+        if let Err(message) = validate_discovery(discovery) {
+            return error_response(StatusCode::BAD_REQUEST, &message);
+        }
     }
 
     let devnet = CHAIN_PROVIDER
@@ -371,13 +398,21 @@ pub async fn handle_onboard_submit(
                         );
                     }
 
+                    let discovery = submit.discovery.as_ref();
                     match db
-                        .upsert_resource_provider_vaults_verified(
+                        .register_resource_provider_verified(
                             &submit.wallet,
                             reg_mode,
                             reg_mint_owned.as_deref(),
                             &info.vault_pda,
                             &info.sol_storage_pda,
+                            discovery.is_some(),
+                            discovery.and_then(|value| value.service_url.as_deref()),
+                            discovery.and_then(|value| value.display_name.as_deref()),
+                            discovery.and_then(|value| value.description.as_deref()),
+                            discovery.and_then(|value| value.tags.as_deref()),
+                            discovery.and_then(|value| value.service_metadata.as_ref()),
+                            discovery.and_then(|value| value.listing_opt_in),
                         )
                         .await
                     {
@@ -388,59 +423,11 @@ pub async fn handle_onboard_submit(
                             return error_response(StatusCode::BAD_REQUEST, &msg);
                         }
                         Err(e) => {
-                            warn!(target: LOG_SERVER_LOG, error = %e, "persist verified onboard vaults skipped");
-                        }
-                    }
-
-                    // Optional discovery payload: validated first so we surface shape
-                    // errors as 400s before touching the DB. Writing happens in its own
-                    // UPDATE against the same wallet so the verified row(s) and their
-                    // public metadata stay in lockstep.
-                    if let Some(discovery) = &submit.discovery {
-                        if let Err(msg) = validate_discovery(discovery) {
-                            return error_response(StatusCode::BAD_REQUEST, &msg);
-                        }
-                        match db
-                            .apply_seller_discovery(
-                                &submit.wallet,
-                                discovery.service_url.as_deref(),
-                                discovery.display_name.as_deref(),
-                                discovery.description.as_deref(),
-                                discovery.tags.as_deref(),
-                                discovery.service_metadata.as_ref(),
-                                discovery.listing_opt_in,
-                            )
-                            .await
-                        {
-                            Ok(0) => {
-                                // UPDATE matched zero rows despite a payload being submitted.
-                                // This almost always means the row is still retired (stale binary
-                                // without the retirement-clearing upsert fix), or the row was
-                                // deleted between upsert and this update. Loud warning so the
-                                // silent-success trap stops biting operators.
-                                warn!(
-                                    target: LOG_SERVER_LOG,
-                                    wallet = %submit.wallet,
-                                    "apply_seller_discovery: 0 rows updated (discovery payload ignored). \
-                                     Likely cause: row is still retired or missing. \
-                                     Confirm upsert cleared retired_at/inactive."
-                                );
-                            }
-                            Ok(n) => {
-                                info!(
-                                    target: LOG_SERVER_LOG,
-                                    wallet = %submit.wallet,
-                                    rows = n,
-                                    "apply_seller_discovery: discovery payload applied"
-                                );
-                            }
-                            Err(e) => {
-                                warn!(
-                                    target: LOG_SERVER_LOG,
-                                    error = %e,
-                                    "apply_seller_discovery failed; onboard write succeeded but discovery fields not persisted"
-                                );
-                            }
+                            warn!(target: LOG_SERVER_LOG, error = %e, "persist verified onboard registration failed");
+                            return error_response(
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                "Seller registration could not be persisted; no registry changes were committed.",
+                            );
                         }
                     }
                 }
@@ -523,12 +510,16 @@ pub async fn handle_onboard_retire(path_wallet: &str, body: Body) -> Response<Bo
         }
         _ => path_wallet.to_string(),
     };
-    if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
+    if let Err(e) = pr402::onboard_auth::verify_and_consume_onboard_submission_for_action(
+        pr402_db(),
         secret.as_bytes(),
         &wallet,
         &parsed.message,
         &parsed.signature,
-    ) {
+        "seller:retire",
+    )
+    .await
+    {
         return error_response(StatusCode::UNAUTHORIZED, &e);
     }
 
@@ -715,12 +706,16 @@ pub async fn handle_seller_payments_list(query: &str, body: Body) -> Response<Bo
         );
     }
 
-    if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
+    if let Err(e) = pr402::onboard_auth::verify_and_consume_onboard_submission_for_action(
+        pr402_db(),
         secret.as_bytes(),
         &wallet,
         &message,
         &signature,
-    ) {
+        "seller:payments",
+    )
+    .await
+    {
         return error_response(StatusCode::UNAUTHORIZED, &e);
     }
 

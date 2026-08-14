@@ -1,15 +1,6 @@
 
--- Drop all existing tables (clean slate)
-DROP TABLE IF EXISTS parameters CASCADE;
-DROP TABLE IF EXISTS escrow_lifecycle_events CASCADE;
-DROP TABLE IF EXISTS escrow_details CASCADE;
-DROP TABLE IF EXISTS payment_attempts CASCADE;
-DROP TABLE IF EXISTS payable_resources CASCADE;
-DROP TABLE IF EXISTS resource_providers CASCADE;
-
-
 -- pr402 facilitator: consolidated PostgreSQL bootstrap (PostgreSQL 15+; NULLS NOT DISTINCT).
--- Run once: psql "$DATABASE_URL" -f migrations/init.sql
+-- Safe to re-run: psql "$DATABASE_URL" -f migrations/init.sql
 -- Idempotent: CREATE IF NOT EXISTS + parameter seeds use ON CONFLICT DO UPDATE.
 --
 -- registration_verified_at: set when POST /api/v1/facilitator/sellers/{wallet}/register succeeds (wallet-signed challenge).
@@ -49,6 +40,17 @@ CREATE TABLE IF NOT EXISTS resource_providers (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS onboard_challenge_uses (
+    challenge_sha256    TEXT PRIMARY KEY,
+    wallet_pubkey       TEXT NOT NULL,
+    used_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE onboard_challenge_uses ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_onboard_challenge_uses_used_at
+    ON onboard_challenge_uses (used_at);
 
 ALTER TABLE resource_providers ENABLE ROW LEVEL SECURITY;
 
@@ -383,4 +385,3 @@ ON CONFLICT (param_name) DO UPDATE SET
 --   SET param_value = EXCLUDED.param_value, updated_at = NOW();
 
 -- =============================================================================
-
