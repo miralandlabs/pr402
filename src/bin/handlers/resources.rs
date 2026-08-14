@@ -18,6 +18,18 @@ pub async fn handle_resource_register_challenge(query: &str) -> Response<Body> {
     if wallet.is_empty() {
         return error_response(StatusCode::BAD_REQUEST, "Missing wallet parameter");
     }
+    let action = match query_param(query, "action").as_str() {
+        "" | "resource:any" => "resource:any",
+        "resource:register" => "resource:register",
+        "resource:retire" => "resource:retire",
+        "resource:probe" => "resource:probe",
+        _ => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "Unsupported action. Use resource:register, resource:retire, or resource:probe.",
+            );
+        }
+    };
     let cfg = match Config::from_env() {
         Ok(c) => c,
         Err(e) => {
@@ -39,13 +51,18 @@ pub async fn handle_resource_register_challenge(query: &str) -> Response<Body> {
     )
     .await
     .clamp(1, 3600);
-    let (message, expires) =
-        match pr402::onboard_auth::build_signed_onboard_message(secret.as_bytes(), &wallet, ttl) {
-            Ok(x) => x,
-            Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
-        };
+    let (message, expires) = match pr402::onboard_auth::build_signed_onboard_message_for_action(
+        secret.as_bytes(),
+        &wallet,
+        action,
+        ttl,
+    ) {
+        Ok(x) => x,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
+    };
     let body = serde_json::json!({
         "wallet": wallet,
+        "action": action,
         "message": message,
         "expiresUnix": expires,
         "ttlSeconds": ttl,
@@ -122,12 +139,16 @@ pub async fn handle_resource_register(body: Body) -> Response<Body> {
         Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
     };
 
-    if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
+    if let Err(e) = pr402::onboard_auth::verify_and_consume_onboard_submission_for_action(
+        pr402_db(),
         secret.as_bytes(),
         &parsed.wallet,
         &parsed.message,
         &parsed.signature,
-    ) {
+        "resource:register",
+    )
+    .await
+    {
         return error_response(StatusCode::UNAUTHORIZED, &e);
     }
 
@@ -285,12 +306,16 @@ pub async fn handle_resource_retire(body: Body) -> Response<Body> {
         return error_response(StatusCode::BAD_REQUEST, "Provide id or resourceUrl");
     }
 
-    if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
+    if let Err(e) = pr402::onboard_auth::verify_and_consume_onboard_submission_for_action(
+        pr402_db(),
         secret.as_bytes(),
         &parsed.wallet,
         &parsed.message,
         &parsed.signature,
-    ) {
+        "resource:retire",
+    )
+    .await
+    {
         return error_response(StatusCode::UNAUTHORIZED, &e);
     }
 
@@ -354,16 +379,20 @@ pub async fn handle_owner_resources(path_wallet: &str, query: &str, body: Body) 
     if message.is_empty() || signature.is_empty() {
         return error_response(
             StatusCode::BAD_REQUEST,
-            "Required: message, signature (signed challenge from /resources/register/challenge)",
+            "Required: message, signature (fresh resource:list challenge from /sellers/{wallet}/challenge?action=resource:list)",
         );
     }
 
-    if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
+    if let Err(e) = pr402::onboard_auth::verify_and_consume_onboard_submission_for_action(
+        pr402_db(),
         secret.as_bytes(),
         path_wallet,
         &message,
         &signature,
-    ) {
+        "resource:list",
+    )
+    .await
+    {
         return error_response(StatusCode::UNAUTHORIZED, &e);
     }
 
@@ -536,12 +565,16 @@ pub async fn handle_resource_probe(body: Body) -> Response<Body> {
         Err(e) => return error_response(StatusCode::BAD_REQUEST, &format!("Invalid JSON: {}", e)),
     };
 
-    if let Err(e) = pr402::onboard_auth::verify_onboard_submission(
+    if let Err(e) = pr402::onboard_auth::verify_and_consume_onboard_submission_for_action(
+        pr402_db(),
         secret.as_bytes(),
         &parsed.wallet,
         &parsed.message,
         &parsed.signature,
-    ) {
+        "resource:probe",
+    )
+    .await
+    {
         return error_response(StatusCode::UNAUTHORIZED, &e);
     }
 

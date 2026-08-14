@@ -432,6 +432,56 @@ pub struct SlaEscrowSettleCandidate {
 }
 
 impl Pr402Db {
+    /// Consume an action-bound onboarding challenge exactly once.
+    /// Returns `false` when the same signed message was already used.
+    pub async fn consume_onboard_challenge(
+        &self,
+        challenge_sha256: &str,
+        wallet_pubkey: &str,
+    ) -> Result<bool, DbError> {
+        const CLEANUP_SQL: &str =
+            "DELETE FROM onboard_challenge_uses WHERE used_at < NOW() - INTERVAL '24 hours'";
+        const INSERT_SQL: &str = r#"
+            INSERT INTO onboard_challenge_uses (challenge_sha256, wallet_pubkey)
+            VALUES ($1, $2)
+            ON CONFLICT (challenge_sha256) DO NOTHING
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = async {
+            timeout(Self::QUERY_TIMEOUT, tx.execute(CLEANUP_SQL, &[]))
+                .await
+                .map_err(|_| DbError::Timeout)?
+                .map_err(|e| DbError::Query(format_err_chain(&e)))?;
+            let inserted = timeout(
+                Self::QUERY_TIMEOUT,
+                tx.execute(INSERT_SQL, &[&challenge_sha256, &wallet_pubkey]),
+            )
+            .await
+            .map_err(|_| DbError::Timeout)?
+            .map_err(|e| DbError::Query(format_err_chain(&e)))?;
+            Ok::<bool, DbError>(inserted == 1)
+        }
+        .await;
+
+        match result {
+            Ok(inserted) => {
+                tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+                Ok(inserted)
+            }
+            Err(error) => {
+                let _ = tx.rollback().await;
+                Err(error)
+            }
+        }
+    }
+
     const WAIT: Duration = Duration::from_secs(15);
     const CREATE: Duration = Duration::from_secs(10);
     const RECYCLE: Duration = Duration::from_secs(30);
@@ -1325,6 +1375,152 @@ impl Pr402Db {
                     DbError::TransactionFailed
                 })?;
                 Err(e)
+            }
+        }
+    }
+
+    /// Atomically register verified vaults and apply the optional seller directory payload.
+    /// The wallet-scoped advisory lock closes the race between policy validation and insert.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn register_resource_provider_verified(
+        &self,
+        wallet_pubkey: &str,
+        settlement_mode: &str,
+        spl_mint: Option<&str>,
+        split_vault_pda: &str,
+        vault_sol_storage_pda: &str,
+        apply_discovery: bool,
+        service_url: Option<&str>,
+        display_name: Option<&str>,
+        description: Option<&str>,
+        tags: Option<&[String]>,
+        service_metadata: Option<&serde_json::Value>,
+        listing_opt_in: Option<bool>,
+    ) -> Result<i64, DbError> {
+        const LOCK_SQL: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
+        const RAILS_SQL: &str = r#"
+            SELECT DISTINCT settlement_mode, spl_mint
+            FROM resource_providers
+            WHERE wallet_pubkey = $1 AND inactive = false
+        "#;
+        const UPSERT_SQL: &str = r#"
+            INSERT INTO resource_providers (
+                wallet_pubkey, settlement_mode, spl_mint,
+                split_vault_pda, vault_sol_storage_pda, updated_at, registration_verified_at
+            )
+            VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+            ON CONFLICT (wallet_pubkey, settlement_mode, spl_mint) DO UPDATE SET
+                split_vault_pda = EXCLUDED.split_vault_pda,
+                vault_sol_storage_pda = EXCLUDED.vault_sol_storage_pda,
+                updated_at = NOW(),
+                registration_verified_at = NOW(),
+                retired_at = NULL,
+                inactive = FALSE
+            RETURNING id
+        "#;
+        const DISCOVERY_SQL: &str = r#"
+            UPDATE resource_providers SET
+                service_url      = COALESCE($2, service_url),
+                display_name     = COALESCE($3, display_name),
+                description      = COALESCE($4, description),
+                tags             = COALESCE($5, tags),
+                service_metadata = COALESCE($6, service_metadata),
+                listing_opt_in   = COALESCE($7, listing_opt_in),
+                updated_at       = NOW()
+            WHERE wallet_pubkey = $1 AND retired_at IS NULL
+        "#;
+
+        let mut client = self.conn().await?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| DbError::TransactionFailed)?;
+        Self::deallocate_all_signer_style(&tx).await;
+
+        let result = async {
+            timeout(Self::QUERY_TIMEOUT, tx.execute(LOCK_SQL, &[&wallet_pubkey]))
+                .await
+                .map_err(|_| DbError::Timeout)?
+                .map_err(|e| DbError::Query(format_err_chain(&e)))?;
+
+            let rows = timeout(Self::QUERY_TIMEOUT, tx.query(RAILS_SQL, &[&wallet_pubkey]))
+                .await
+                .map_err(|_| DbError::Timeout)?
+                .map_err(|e| DbError::Query(format_err_chain(&e)))?;
+            for row in rows {
+                let existing_mode: String = row.get("settlement_mode");
+                let existing_mint: Option<String> = row.get("spl_mint");
+                if existing_mode != settlement_mode {
+                    return Err(DbError::FacilitatorPolicy(format!(
+                        "Inconsistent settlement mode: existing={existing_mode}, requested={settlement_mode}"
+                    )));
+                }
+                if let (Some(existing), Some(requested)) = (existing_mint.as_deref(), spl_mint) {
+                    if existing != requested {
+                        return Err(DbError::FacilitatorPolicy(format!(
+                            "This merchant wallet is already registered with SPL token {existing}. Use that asset in accepts[], or use a different seller wallet (one SPL asset per wallet policy)."
+                        )));
+                    }
+                }
+            }
+
+            let row = timeout(
+                Self::QUERY_TIMEOUT,
+                tx.query_one(
+                    UPSERT_SQL,
+                    &[
+                        &wallet_pubkey,
+                        &settlement_mode,
+                        &spl_mint,
+                        &split_vault_pda,
+                        &vault_sol_storage_pda,
+                    ],
+                ),
+            )
+            .await
+            .map_err(|_| DbError::Timeout)?
+            .map_err(|e| DbError::Query(format_err_chain(&e)))?;
+
+            if apply_discovery {
+                let tags_owned = tags.map(|value| value.to_vec());
+                let metadata_json = service_metadata.map(Json);
+                let updated = timeout(
+                    Self::QUERY_TIMEOUT,
+                    tx.execute(
+                        DISCOVERY_SQL,
+                        &[
+                            &wallet_pubkey,
+                            &service_url,
+                            &display_name,
+                            &description,
+                            &tags_owned,
+                            &metadata_json,
+                            &listing_opt_in,
+                        ],
+                    ),
+                )
+                .await
+                .map_err(|_| DbError::Timeout)?
+                .map_err(|e| DbError::Query(format_err_chain(&e)))?;
+                if updated == 0 {
+                    return Err(DbError::Query(
+                        "registered seller row disappeared before discovery update".into(),
+                    ));
+                }
+            }
+
+            Ok::<i64, DbError>(row.get("id"))
+        }
+        .await;
+
+        match result {
+            Ok(id) => {
+                tx.commit().await.map_err(|_| DbError::TransactionFailed)?;
+                Ok(id)
+            }
+            Err(error) => {
+                let _ = tx.rollback().await;
+                Err(error)
             }
         }
     }

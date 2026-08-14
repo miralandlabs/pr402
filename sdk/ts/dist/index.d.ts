@@ -11,7 +11,7 @@ import { Keypair } from '@solana/web3.js';
  * }
  * ```
  */
-export type X402ErrorCode = 'UNEXPECTED_STATUS' | 'MISSING_ACCEPTS' | 'MINT_NOT_ACCEPTED' | 'MISSING_CAPABILITIES_URL' | 'BUILD_FAILED' | 'MISSING_VERIFY_TEMPLATE' | 'MISSING_TRANSACTION' | 'BLOCKHASH_EXPIRED' | 'RATE_LIMITED' | 'TRANSPORT';
+export type X402ErrorCode = 'UNEXPECTED_STATUS' | 'MISSING_ACCEPTS' | 'MINT_NOT_ACCEPTED' | 'MISSING_CAPABILITIES_URL' | 'BUILD_FAILED' | 'MISSING_VERIFY_TEMPLATE' | 'MISSING_TRANSACTION' | 'UNTRUSTED_FACILITATOR' | 'PAYMENT_LIMIT_EXCEEDED' | 'INCONSISTENT_BUILD' | 'INVALID_TRANSACTION' | 'BLOCKHASH_EXPIRED' | 'RATE_LIMITED' | 'TRANSPORT';
 export declare class X402Error extends Error {
     readonly code: X402ErrorCode;
     /** Mints accepted by the resource (only for MINT_NOT_ACCEPTED). */
@@ -33,6 +33,13 @@ export interface FetchAutoPayOptions extends RequestInit {
     /** If true, the facilitator SDK build step will inject wSOL wrapping instructions automatically. */
     autoWrapSol?: boolean;
 }
+export interface X402AgentClientOptions {
+    /** Facilitator origins this wallet may trust with transaction construction. */
+    trustedFacilitatorOrigins?: readonly string[];
+    /** Optional maximum accepted.amount, in the mint's atomic units. */
+    maxPaymentAmount?: string;
+}
+export declare const DEFAULT_TRUSTED_FACILITATOR_ORIGINS: readonly ["https://ipay.sh", "https://agent.pay402.me", "https://preview.ipay.sh", "https://preview.agent.pay402.me"];
 /**
  * Lightweight pr402 agent client.
  *
@@ -49,7 +56,9 @@ export interface FetchAutoPayOptions extends RequestInit {
  */
 export declare class X402AgentClient {
     private wallet;
-    constructor(wallet: Keypair);
+    private trustedFacilitatorOrigins;
+    private maxPaymentAmount?;
+    constructor(wallet: Keypair, options?: X402AgentClientOptions);
     /**
      * GET a 402-gated resource. If challenged, automatically build, sign, and settle.
      *

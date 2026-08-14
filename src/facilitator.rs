@@ -242,7 +242,7 @@ impl Facilitator for FacilitatorLocal {
             .unwrap_or("exact");
 
         let handler = self.scheme_handlers.get(scheme).ok_or_else(|| {
-            FacilitatorLocalError::Verification(X402SchemeFacilitatorError::OnchainFailure(
+            FacilitatorLocalError::Verification(X402SchemeFacilitatorError::InvalidPayload(
                 format!("Unsupported scheme: {}", scheme),
             ))
         })?;
@@ -266,7 +266,7 @@ impl Facilitator for FacilitatorLocal {
             .unwrap_or("exact");
 
         let handler = self.scheme_handlers.get(scheme).ok_or_else(|| {
-            FacilitatorLocalError::Settlement(X402SchemeFacilitatorError::OnchainFailure(format!(
+            FacilitatorLocalError::Settlement(X402SchemeFacilitatorError::InvalidPayload(format!(
                 "Unsupported scheme: {}",
                 scheme
             )))

@@ -20,8 +20,8 @@ use crate::scheme::{
 
 // We reuse some shared Solana verification logic, but we need custom verify for escrow
 use crate::scheme::v2_solana_exact::shared::{
-    settle_transaction, verify_effective_compute_unit_limit, verify_effective_compute_unit_price,
-    TransactionInt, VerifyTransferResult,
+    settle_transaction, verify_client_signatures, verify_effective_compute_unit_limit,
+    verify_effective_compute_unit_price, TransactionInt, VerifyTransferResult,
 };
 use crate::util::{
     decode_versioned_transaction_from_bincode, reject_versioned_tx_with_address_lookup_tables,
@@ -678,6 +678,7 @@ pub async fn verify_transfer(
         .map_err(PaymentVerificationError::InvalidFormat)?;
 
     let fee_payer_pubkey = provider.pubkey();
+    verify_client_signatures(&transaction, fee_payer_pubkey)?;
     let message_fee_payer = transaction
         .message
         .static_account_keys()
@@ -877,7 +878,9 @@ pub async fn verify_transfer(
     let sim_result = provider
         .simulate_transaction_with_config(&signed_tx.inner, cfg)
         .await
-        .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
+        .map_err(|e| {
+            PaymentVerificationError::TransactionSimulation(format!("RPC simulation failed: {e}"))
+        })?;
 
     if let Some(err) = sim_result.value.err {
         return Err(PaymentVerificationError::TransactionSimulation(format!(

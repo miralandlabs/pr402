@@ -79,13 +79,13 @@ Content-Type: application/json
 <your 402 payment body — the JSON object returned by POST .../payment-required/enrich in Step 2>
 ```
 
-## Step 4 — Verify payment on retry
+## Step 4 — Settle immediately on retry
 
-**What you do:** When the buyer retries with a **`PAYMENT-SIGNATURE`** header (their wallet or agent sends payment proof), **`POST`** that proof JSON to **`$BASE/api/v1/facilitator/settle`**. If the response has **`success: true`**, serve your premium response; if not, answer with **`402`** again and the **same 402 payment body** as in Step 3.
+**What you do:** When the buyer retries with a **`PAYMENT-SIGNATURE`** header, decode it as base64 JSON (raw JSON is a compatibility fallback), then **`POST`** the JSON to **`$BASE/api/v1/facilitator/settle`**. Deliver only after the response has **`success: true`**; otherwise answer with **`402`** again and the **same 402 payment body** as in Step 3.
 
 ```bash
 # Example only — replace with however your framework reads the header value.
-PROOF='<paste JSON proof from PAYMENT-SIGNATURE as your stack exposes it>'
+PROOF='<decoded JSON proof; official SDKs send base64 JSON in PAYMENT-SIGNATURE>'
 
 RESULT=$(curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
   -H "Content-Type: application/json" \

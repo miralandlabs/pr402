@@ -774,6 +774,47 @@
         }
       }
     },
+    "/api/v1/facilitator/build-refund-tx": {
+      "post": {
+        "tags": ["pr402 Extension: Tx Build"],
+        "summary": "Build an unsigned SPL refund transaction",
+        "description": "Builds a merchant-signed refund to the original payer. The mint must pass the deployment payment-mint allowlist.",
+        "operationId": "buildRefundTx",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["merchantWallet", "payerWallet", "mint", "amount"],
+                "properties": {
+                  "merchantWallet": { "type": "string" },
+                  "payerWallet": { "type": "string" },
+                  "mint": { "type": "string" },
+                  "amount": {
+                    "oneOf": [
+                      { "type": "string", "pattern": "^[0-9]+$" },
+                      { "type": "integer", "minimum": 1 }
+                    ]
+                  },
+                  "memo": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unsigned refund transaction and signer metadata",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          },
+          "400": { "description": "Invalid request or disallowed mint" },
+          "502": { "description": "Solana RPC failure" }
+        }
+      }
+    },
     "/api/v1/facilitator/build-sla-escrow-payment-tx": {
       "post": {
         "tags": [
@@ -914,7 +955,7 @@
           "pr402 Extension: Seller activate"
         ],
         "summary": "Registry signing challenge",
-        "description": "Returns a message to sign for proof-of-control (wallet ownership). Required for `POST /sellers/{wallet}/register` (DB registration). Requires `PR402_ONBOARD_HMAC_SECRET` on server.",
+        "description": "Returns a one-time message to sign for proof-of-control. Omit `action` for the backward-compatible `seller:any` scope, or request a narrower action for least privilege. Request a fresh challenge for every administrative call. Requires `PR402_ONBOARD_HMAC_SECRET` and registry persistence on the server.",
         "operationId": "facilitatorSellerChallenge",
         "parameters": [
           {
@@ -924,6 +965,22 @@
             "schema": {
               "type": "string",
               "description": "Seller wallet pubkey (base58)"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "seller:any",
+              "enum": [
+                "seller:any",
+                "seller:register",
+                "seller:retire",
+                "seller:payments",
+                "resource:list"
+              ]
             }
           }
         ],
@@ -1151,6 +1208,137 @@
         }
       }
     },
+    "/api/v1/facilitator/resources/register/challenge": {
+      "get": {
+        "tags": ["pr402 Extension: Discovery"],
+        "summary": "Action-bound payable-resource challenge",
+        "operationId": "facilitatorResourceChallenge",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "resource:any",
+              "enum": ["resource:any", "resource:register", "resource:retire", "resource:probe"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One-time challenge payload",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OnboardChallengeResponse" }
+              }
+            }
+          },
+          "400": { "description": "Invalid wallet or action" },
+          "503": { "description": "Challenge service is not configured" }
+        }
+      }
+    },
+    "/api/v1/facilitator/resources/register": {
+      "post": {
+        "tags": ["pr402 Extension: Discovery"],
+        "summary": "Register or update a payable resource",
+        "description": "Requires a fresh `resource:register` challenge and wallet signature.",
+        "operationId": "facilitatorResourceRegister",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["wallet", "message", "signature", "resource"],
+                "properties": {
+                  "wallet": { "type": "string" },
+                  "message": { "type": "string" },
+                  "signature": { "type": "string" },
+                  "resource": { "type": "object" },
+                  "source": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Resource registered" },
+          "400": { "description": "Invalid resource payload" },
+          "401": { "description": "Invalid, mismatched, or reused challenge" },
+          "503": { "description": "Registry unavailable" }
+        }
+      }
+    },
+    "/api/v1/facilitator/resources/retire": {
+      "post": {
+        "tags": ["pr402 Extension: Discovery"],
+        "summary": "Retire a payable resource",
+        "description": "Requires a fresh `resource:retire` challenge and wallet signature.",
+        "operationId": "facilitatorResourceRetire",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["wallet", "message", "signature"],
+                "properties": {
+                  "wallet": { "type": "string" },
+                  "message": { "type": "string" },
+                  "signature": { "type": "string" },
+                  "id": { "type": "integer", "format": "int64" },
+                  "resourceUrl": { "type": "string", "format": "uri" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Retirement result" },
+          "400": { "description": "Missing resource id or URL" },
+          "401": { "description": "Invalid, mismatched, or reused challenge" }
+        }
+      }
+    },
+    "/api/v1/facilitator/resources/probe": {
+      "post": {
+        "tags": ["pr402 Extension: Discovery"],
+        "summary": "Probe a registered payable resource",
+        "description": "Requires a fresh `resource:probe` challenge. Targets are restricted to public HTTP(S) addresses and redirects are not followed.",
+        "operationId": "facilitatorResourceProbe",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["wallet", "message", "signature"],
+                "properties": {
+                  "wallet": { "type": "string" },
+                  "message": { "type": "string" },
+                  "signature": { "type": "string" },
+                  "id": { "type": "integer", "format": "int64" },
+                  "resourceUrl": { "type": "string", "format": "uri" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Probe result" },
+          "401": { "description": "Invalid, mismatched, or reused challenge" },
+          "403": { "description": "Resource belongs to another wallet" }
+        }
+      }
+    },
     "/api/v1/facilitator/resources": {
       "get": {
         "tags": [
@@ -1277,13 +1465,81 @@
         }
       }
     },
+    "/api/v1/facilitator/sellers/{wallet}/resources": {
+      "get": {
+        "tags": ["pr402 Extension: Discovery"],
+        "summary": "List a seller's own resource rows",
+        "description": "Wallet-authenticated owner view. Request and sign a fresh `resource:list` challenge from `/sellers/{wallet}/challenge?action=resource:list`.",
+        "operationId": "facilitatorOwnerResources",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "message",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "signature",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Owner resource rows" },
+          "401": { "description": "Invalid, mismatched, or reused challenge" },
+          "503": { "description": "Registry unavailable" }
+        }
+      },
+      "post": {
+        "tags": ["pr402 Extension: Discovery"],
+        "summary": "List a seller's own resource rows",
+        "description": "POST variant of the wallet-authenticated owner view. Request and sign a fresh `resource:list` challenge from `/sellers/{wallet}/challenge?action=resource:list`.",
+        "operationId": "facilitatorOwnerResourcesPost",
+        "parameters": [
+          {
+            "name": "wallet",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message", "signature"],
+                "properties": {
+                  "message": { "type": "string" },
+                  "signature": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Owner resource rows" },
+          "400": { "description": "Invalid JSON or missing authentication fields" },
+          "401": { "description": "Invalid, mismatched, or reused challenge" },
+          "503": { "description": "Registry unavailable" }
+        }
+      }
+    },
     "/api/v1/facilitator/seller/payments": {
       "post": {
         "tags": [
           "pr402 Extension: Seller Onboarding"
         ],
         "summary": "Wallet-authenticated seller payment history",
-        "description": "Returns recent `payment_attempts` rows for the authenticated seller wallet. Uses the same HMAC challenge + wallet-signed message as `POST /sellers/{wallet}/register` so only the wallet owner can read their own history.",
+        "description": "Returns recent `payment_attempts` rows for the authenticated seller wallet. Request and sign a fresh `seller:payments` challenge for each call.",
         "operationId": "facilitatorSellerPayments",
         "requestBody": {
           "required": true,
@@ -1510,6 +1766,21 @@
       }
     },
     "/api/v1/facilitator/payment-required/enrich": {
+      "get": {
+        "tags": ["pr402 Extension: 402 publishing"],
+        "summary": "Describe the PaymentRequired enrichment endpoint",
+        "operationId": "facilitatorPaymentRequiredEnrichInfo",
+        "responses": {
+          "200": {
+            "description": "Machine-readable method and request-body hint",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object" }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "pr402 Extension: 402 publishing"
@@ -1686,6 +1957,27 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/v1/facilitator/sla-escrow-close-cron": {
+      "get": {
+        "tags": ["pr402 Extension: Operations"],
+        "summary": "Vercel cron SLA-Escrow close execution (private)",
+        "operationId": "facilitatorSlaEscrowCloseCron",
+        "security": [
+          { "sweep_bearer": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Close report",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SlaEscrowCloseResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" }
         }
       }
     },
@@ -2484,9 +2776,14 @@
       },
       "OnboardChallengeResponse": {
         "type": "object",
+        "required": ["wallet", "action", "message", "expiresUnix", "ttlSeconds"],
         "properties": {
           "wallet": {
             "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "description": "Administrative action cryptographically bound into this one-time challenge"
           },
           "message": {
             "type": "string"

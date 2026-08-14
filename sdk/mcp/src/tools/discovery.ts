@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { searchResources, probeResource } from '@pr402/discovery';
+import { searchResources, probeResource } from '../discovery-client';
 import { z } from 'zod';
 import { facilitatorBase } from '../config';
 import { registerToolLoose } from '../register-tool';

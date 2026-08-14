@@ -134,6 +134,7 @@ pub async fn handle_verify(
             .unwrap()
         }
         Err(e) => {
+            let (status, code) = classify_payment_failure(&e);
             if let (Some(db), Some(cid), Some(wallet)) =
                 (pr402_db(), persist_meta.as_deref(), persist_wallet)
             {
@@ -170,9 +171,9 @@ pub async fn handle_verify(
                 }
             }
             error_response_with_optional_correlation(
-                StatusCode::BAD_REQUEST,
+                status,
                 &format!("Verification failed: {}", e),
-                None,
+                Some(code),
                 persist_meta.as_deref(),
             )
         }

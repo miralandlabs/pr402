@@ -4,7 +4,7 @@
 //! Resource providers prove control with their normal Solana keypair signature.
 
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use solana_pubkey::Pubkey;
 use solana_signature::Signature;
 use std::str::FromStr;
@@ -13,7 +13,8 @@ use subtle::ConstantTimeEq;
 
 type HmacSha256 = Hmac<Sha256>;
 
-const DOMAIN: &str = "pr402 facilitator onboard v1";
+const DOMAIN_V1: &str = "pr402 facilitator onboard v1";
+const DOMAIN_V2: &str = "pr402 facilitator onboard v2";
 const HMAC_LINE_PREFIX: &str = "hmac_sha256_hex: ";
 
 fn now_unix() -> u64 {
@@ -25,8 +26,42 @@ fn now_unix() -> u64 {
 
 fn preimage_for_hmac(wallet: &str, issued_unix: u64, expires_unix: u64, nonce_hex: &str) -> String {
     format!(
-        "{DOMAIN}\nwallet: {wallet}\nissued_unix: {issued_unix}\nexpires_unix: {expires_unix}\nnonce: {nonce_hex}\n"
+        "{DOMAIN_V1}\nwallet: {wallet}\nissued_unix: {issued_unix}\nexpires_unix: {expires_unix}\nnonce: {nonce_hex}\n"
     )
+}
+
+fn preimage_for_hmac_v2(
+    wallet: &str,
+    action: &str,
+    issued_unix: u64,
+    expires_unix: u64,
+    nonce_hex: &str,
+) -> String {
+    format!(
+        "{DOMAIN_V2}\nwallet: {wallet}\naction: {action}\nissued_unix: {issued_unix}\nexpires_unix: {expires_unix}\nnonce: {nonce_hex}\n"
+    )
+}
+
+fn valid_action(action: &str) -> bool {
+    !action.is_empty()
+        && action.len() <= 64
+        && action
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, ':' | '-' | '_'))
+}
+
+fn action_authorizes(actual: &str, expected: &str) -> bool {
+    actual == expected
+        || (actual == "seller:any"
+            && matches!(
+                expected,
+                "seller:register" | "seller:retire" | "seller:payments" | "resource:list"
+            ))
+        || (actual == "resource:any"
+            && matches!(
+                expected,
+                "resource:register" | "resource:retire" | "resource:probe"
+            ))
 }
 
 fn compute_hmac_hex(secret: &[u8], preimage: &str) -> Result<String, String> {
@@ -108,6 +143,44 @@ pub fn build_signed_onboard_message(
     Ok((message, expires))
 }
 
+/// Build a v2 challenge bound to one server-side action.
+pub fn build_signed_onboard_message_for_action(
+    hmac_secret: &[u8],
+    wallet_b58: &str,
+    action: &str,
+    ttl_sec: u64,
+) -> Result<(String, u64), String> {
+    if ttl_sec == 0 || ttl_sec > 3600 {
+        return Err("ttl_sec must be 1..=3600".into());
+    }
+    Pubkey::from_str(wallet_b58).map_err(|_| "invalid wallet pubkey")?;
+    if !valid_action(action) {
+        return Err("invalid challenge action".into());
+    }
+
+    let mut nonce = [0u8; 16];
+    getrandom::fill(&mut nonce).map_err(|_| "RNG failure")?;
+    let nonce_hex = hex_lower(&nonce);
+    let issued = now_unix();
+    let expires = issued.saturating_add(ttl_sec);
+    let preimage = preimage_for_hmac_v2(wallet_b58, action, issued, expires, &nonce_hex);
+    let hmac_hex = compute_hmac_hex(hmac_secret, &preimage)?;
+    let message = format!("{preimage}{HMAC_LINE_PREFIX}{hmac_hex}");
+    Ok((message, expires))
+}
+
+fn legacy_challenges_allowed() -> bool {
+    std::env::var("PR402_ALLOW_LEGACY_ONBOARD_CHALLENGES")
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            )
+        })
+        .unwrap_or(false)
+}
+
 /// Verify HMAC + expiry + wallet line, then ed25519(signature, message, pubkey).
 ///
 /// Accepts either **base58** (canonical Solana signature encoding — what
@@ -119,6 +192,64 @@ pub fn verify_onboard_submission(
     wallet_b58: &str,
     message: &str,
     signature_encoded: &str,
+) -> Result<(), String> {
+    verify_onboard_submission_inner(hmac_secret, wallet_b58, message, signature_encoded, None)
+}
+
+/// Verify a v2 challenge and require its signed action to match this handler.
+/// Legacy v1 messages are rejected unless the deployment explicitly enables the
+/// temporary `PR402_ALLOW_LEGACY_ONBOARD_CHALLENGES` compatibility switch.
+pub fn verify_onboard_submission_for_action(
+    hmac_secret: &[u8],
+    wallet_b58: &str,
+    message: &str,
+    signature_encoded: &str,
+    expected_action: &str,
+) -> Result<(), String> {
+    verify_onboard_submission_inner(
+        hmac_secret,
+        wallet_b58,
+        message,
+        signature_encoded,
+        Some(expected_action),
+    )
+}
+
+/// Verify an action-bound challenge and atomically mark it used when persistence is enabled.
+pub async fn verify_and_consume_onboard_submission_for_action(
+    db: Option<&crate::db::Pr402Db>,
+    hmac_secret: &[u8],
+    wallet_b58: &str,
+    message: &str,
+    signature_encoded: &str,
+    expected_action: &str,
+) -> Result<(), String> {
+    verify_onboard_submission_for_action(
+        hmac_secret,
+        wallet_b58,
+        message,
+        signature_encoded,
+        expected_action,
+    )?;
+    if let Some(db) = db {
+        let challenge_sha256 = hex_lower(&Sha256::digest(message.as_bytes()));
+        let inserted = db
+            .consume_onboard_challenge(&challenge_sha256, wallet_b58)
+            .await
+            .map_err(|error| format!("challenge replay check failed: {error}"))?;
+        if !inserted {
+            return Err("challenge already used; request and sign a fresh challenge".into());
+        }
+    }
+    Ok(())
+}
+
+fn verify_onboard_submission_inner(
+    hmac_secret: &[u8],
+    wallet_b58: &str,
+    message: &str,
+    signature_encoded: &str,
+    expected_action: Option<&str>,
 ) -> Result<(), String> {
     let pk = Pubkey::from_str(wallet_b58).map_err(|_| "invalid wallet pubkey")?;
     let sig = decode_signature_flexible(signature_encoded)?;
@@ -143,30 +274,51 @@ pub fn verify_onboard_submission(
     }
 
     let lines: Vec<&str> = body.lines().collect();
-    if lines.len() != 5 {
-        return Err("unexpected message line count".into());
-    }
-    if lines[0] != DOMAIN {
-        return Err("invalid domain".into());
-    }
-    let Some(rest) = lines[1].strip_prefix("wallet: ") else {
+    let (wallet_index, issued_index, expires_index, nonce_index) = match lines.first().copied() {
+        Some(DOMAIN_V2) if lines.len() == 6 => {
+            let action = lines[2]
+                .strip_prefix("action: ")
+                .ok_or_else(|| "invalid action line".to_string())?;
+            if !valid_action(action) {
+                return Err("invalid challenge action".into());
+            }
+            if expected_action.is_some_and(|expected| !action_authorizes(action, expected)) {
+                return Err(format!(
+                    "challenge action mismatch: expected {}, got {action}",
+                    expected_action.unwrap_or_default()
+                ));
+            }
+            (1, 3, 4, 5)
+        }
+        Some(DOMAIN_V1) if lines.len() == 5 => {
+            if expected_action.is_some() && !legacy_challenges_allowed() {
+                return Err(
+                    "legacy unscoped challenge rejected; request a fresh action-bound challenge"
+                        .into(),
+                );
+            }
+            (1, 2, 3, 4)
+        }
+        _ => return Err("invalid challenge domain or line count".into()),
+    };
+    let Some(rest) = lines[wallet_index].strip_prefix("wallet: ") else {
         return Err("invalid wallet line".into());
     };
     if rest != wallet_b58 {
         return Err("wallet mismatch".into());
     }
 
-    let issued = lines[2]
+    let issued = lines[issued_index]
         .strip_prefix("issued_unix: ")
         .ok_or_else(|| "issued_unix".to_string())?
         .parse::<u64>()
         .map_err(|_| "issued_unix".to_string())?;
-    let expires = lines[3]
+    let expires = lines[expires_index]
         .strip_prefix("expires_unix: ")
         .ok_or_else(|| "expires_unix".to_string())?
         .parse::<u64>()
         .map_err(|_| "expires_unix".to_string())?;
-    let nonce_line = lines[4]
+    let nonce_line = lines[nonce_index]
         .strip_prefix("nonce: ")
         .ok_or_else(|| "nonce".to_string())?;
     if !parse_nonce_hex(nonce_line) {
@@ -212,6 +364,81 @@ mod tests {
         let sig = kp.sign_message(msg.as_bytes());
         let wrong = solana_keypair::Keypair::new().pubkey().to_string();
         assert!(verify_onboard_submission(secret, &wrong, &msg, &sig.to_string()).is_err());
+    }
+
+    #[test]
+    fn action_bound_challenge_only_authorizes_its_handler() {
+        let secret = b"test-secret-at-least-32-bytes-long!!";
+        let kp = solana_keypair::Keypair::new();
+        let wallet = kp.pubkey().to_string();
+        let (msg, _) =
+            build_signed_onboard_message_for_action(secret, &wallet, "seller:register", 600)
+                .unwrap();
+        let sig = kp.sign_message(msg.as_bytes());
+
+        verify_onboard_submission_for_action(
+            secret,
+            &wallet,
+            &msg,
+            &sig.to_string(),
+            "seller:register",
+        )
+        .unwrap();
+        assert!(verify_onboard_submission_for_action(
+            secret,
+            &wallet,
+            &msg,
+            &sig.to_string(),
+            "seller:retire",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn compatibility_scopes_authorize_only_their_legacy_endpoint_family() {
+        let secret = b"test-secret-at-least-32-bytes-long!!";
+        let kp = solana_keypair::Keypair::new();
+        let wallet = kp.pubkey().to_string();
+
+        let (seller_msg, _) =
+            build_signed_onboard_message_for_action(secret, &wallet, "seller:any", 600).unwrap();
+        let seller_sig = kp.sign_message(seller_msg.as_bytes()).to_string();
+        verify_onboard_submission_for_action(
+            secret,
+            &wallet,
+            &seller_msg,
+            &seller_sig,
+            "seller:retire",
+        )
+        .unwrap();
+        assert!(verify_onboard_submission_for_action(
+            secret,
+            &wallet,
+            &seller_msg,
+            &seller_sig,
+            "resource:probe",
+        )
+        .is_err());
+
+        let (resource_msg, _) =
+            build_signed_onboard_message_for_action(secret, &wallet, "resource:any", 600).unwrap();
+        let resource_sig = kp.sign_message(resource_msg.as_bytes()).to_string();
+        verify_onboard_submission_for_action(
+            secret,
+            &wallet,
+            &resource_msg,
+            &resource_sig,
+            "resource:probe",
+        )
+        .unwrap();
+        assert!(verify_onboard_submission_for_action(
+            secret,
+            &wallet,
+            &resource_msg,
+            &resource_sig,
+            "seller:retire",
+        )
+        .is_err());
     }
 
     #[test]

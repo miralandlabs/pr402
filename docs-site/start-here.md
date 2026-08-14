@@ -75,7 +75,7 @@ Before you set prices, skim [Appendix A · Protocol fees](#appendix-a-protocol-f
 | Mixed Devnet / Mainnet | One `$BASE` everywhere — 402 body, settle, health check |
 | Settle fails quickly on Solana | Call `/settle` promptly; do not verify-then-wait-then-settle with long gaps |
 | Fee eats most of a micro-payment | Raise price or see [Appendix A · Protocol fees](#appendix-a-protocol-fees--pricing) |
-| Need audit / correlation IDs | Optional `POST /verify` before `/settle` — see [Integrate your API](/seller-quick-start.html) |
+| Need audit / correlation IDs | Send your own `X-Correlation-ID` directly to `/settle` — see [Integrate your API](/seller-quick-start.html) |
 
 Deep reference: [Agent integration runbook](/agent-integration.html) · [API overview](/api-reference.html)
 

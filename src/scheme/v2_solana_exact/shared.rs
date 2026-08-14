@@ -219,6 +219,38 @@ impl TransactionInt {
     }
 }
 
+/// Verify every required signature not owned by the facilitator.
+///
+/// Facilitator-sponsored transactions intentionally arrive with that one slot unsigned;
+/// `/settle` fills it before broadcast. All buyer-controlled slots must already contain a
+/// valid Ed25519 signature over the exact serialized message before `/verify` can succeed.
+pub fn verify_client_signatures(
+    transaction: &VersionedTransaction,
+    facilitator: Pubkey,
+) -> Result<(), PaymentVerificationError> {
+    let required = transaction.message.header().num_required_signatures as usize;
+    let signer_keys = transaction.message.static_account_keys();
+    if transaction.signatures.len() < required || signer_keys.len() < required {
+        return Err(PaymentVerificationError::InvalidSignature(
+            "transaction is missing required signature slots".to_string(),
+        ));
+    }
+
+    let message = transaction.message.serialize();
+    for (index, signer) in signer_keys.iter().take(required).enumerate() {
+        if *signer == facilitator {
+            continue;
+        }
+        let signature = &transaction.signatures[index];
+        if *signature == Signature::default() || !signature.verify(signer.as_ref(), &message) {
+            return Err(PaymentVerificationError::InvalidSignature(format!(
+                "invalid required signature at index {index} for signer {signer}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 pub struct TransferCheckedInstruction {
     pub amount: u64,
@@ -499,6 +531,7 @@ pub async fn verify_transaction(
         .map_err(SolanaExactError::TransactionDecoding)?;
     reject_versioned_tx_with_address_lookup_tables(&transaction)
         .map_err(SolanaExactError::TransactionDecoding)?;
+    verify_client_signatures(&transaction, provider.pubkey())?;
 
     let cfg = solana_client::rpc_config::RpcSimulateTransactionConfig {
         sig_verify: false,
@@ -513,7 +546,9 @@ pub async fn verify_transaction(
     let sim_result = provider
         .simulate_transaction_with_config(&transaction, cfg)
         .await
-        .map_err(|e| PaymentVerificationError::TransactionSimulation(e.to_string()))?;
+        .map_err(|e| {
+            PaymentVerificationError::TransactionSimulation(format!("RPC simulation failed: {e}"))
+        })?;
 
     if let Some(err) = sim_result.value.err {
         return Err(PaymentVerificationError::TransactionSimulation(format!(
@@ -1287,6 +1322,33 @@ mod payment_shape_tests {
             collection_beneficiary: None,
         };
         verify_budget_and_payment_instructions(&test_provider(), tx, &requirement).await
+    }
+
+    #[test]
+    fn client_signature_verification_accepts_valid_required_signature() {
+        let fixture = Fixture::new();
+        let tx = fixture.tx(vec![fixture.transfer_ix()]);
+        verify_client_signatures(&tx, Pubkey::new_unique()).unwrap();
+    }
+
+    #[test]
+    fn client_signature_verification_rejects_missing_required_signature() {
+        let fixture = Fixture::new();
+        let mut tx = fixture.tx(vec![fixture.transfer_ix()]);
+        tx.signatures[0] = Signature::default();
+        let error = verify_client_signatures(&tx, Pubkey::new_unique()).unwrap_err();
+        assert!(matches!(
+            error,
+            PaymentVerificationError::InvalidSignature(_)
+        ));
+    }
+
+    #[test]
+    fn client_signature_verification_allows_facilitator_slot_to_be_filled_later() {
+        let fixture = Fixture::new();
+        let mut tx = fixture.tx(vec![fixture.transfer_ix()]);
+        tx.signatures[0] = Signature::default();
+        verify_client_signatures(&tx, fixture.payer.pubkey()).unwrap();
     }
 
     #[tokio::test]

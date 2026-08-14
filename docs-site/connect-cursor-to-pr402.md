@@ -6,14 +6,12 @@ title: "Connect Cursor to pr402"
 
 > **Audience:** You use **Cursor** (or another MCP host) and want pr402 buyer/seller tools without writing HTTP glue.
 
-**Package:** [`@pr402/mcp-server@0.1.2`](https://www.npmjs.com/package/@pr402/mcp-server) — stdio MCP adapter over [`@pr402/client`](https://www.npmjs.com/package/@pr402/client).
-
-> **Version pin:** Use **`@pr402/mcp-server@0.1.2`**. Versions **0.1.0** and **0.1.1** are broken — do not use them.
+**Package:** [`@pr402/mcp-server`](https://www.npmjs.com/package/@pr402/mcp-server) — stdio MCP adapter over [`@pr402/client`](https://www.npmjs.com/package/@pr402/client).
 
 ## Install
 
 ```bash
-npx -y @pr402/mcp-server@0.1.2
+npx -y @pr402/mcp-server
 ```
 
 ## Configure Cursor
@@ -25,7 +23,7 @@ Create or edit **`.cursor/mcp.json`** in your project (or user-level MCP setting
   "mcpServers": {
     "pr402": {
       "command": "npx",
-      "args": ["-y", "@pr402/mcp-server@0.1.2"],
+      "args": ["-y", "@pr402/mcp-server"],
       "env": {
         "PR402_FACILITATOR_URL": "https://preview.ipay.sh",
         "PR402_PAYER_KEYPAIR_JSON": "/absolute/path/to/buyer-keypair.json"

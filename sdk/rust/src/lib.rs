@@ -1,7 +1,15 @@
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use solana_sdk::{signature::Keypair, signer::Signer, transaction::VersionedTransaction};
+use std::collections::HashSet;
 use std::fmt;
+
+const DEFAULT_TRUSTED_FACILITATOR_ORIGINS: &[&str] = &[
+    "https://ipay.sh",
+    "https://agent.pay402.me",
+    "https://preview.ipay.sh",
+    "https://preview.agent.pay402.me",
+];
 
 // ── Error types ─────────────────────────────────────────────────────────
 
@@ -30,6 +38,12 @@ pub enum X402Error {
     MissingVerifyTemplate,
     /// The build response is missing the `transaction` field.
     MissingTransaction,
+    /// The 402 challenge points at a Facilitator origin the wallet did not trust.
+    UntrustedFacilitator(String),
+    /// The requested amount exceeds the wallet's configured atomic-unit ceiling.
+    PaymentLimitExceeded { amount: u64, maximum: u64 },
+    /// The Facilitator changed authoritative terms from the selected 402 line.
+    InconsistentBuild(String),
     /// The agent's wallet pubkey was not found in the transaction's account keys.
     SignerNotInTransaction,
     /// The blockhash embedded in the transaction has expired. Request a fresh build.
@@ -53,6 +67,9 @@ impl fmt::Display for X402Error {
             Self::BuildFailed { status, detail } => write!(f, "Facilitator build-exact-payment-tx returned HTTP {status}: {detail}"),
             Self::MissingVerifyTemplate => write!(f, "Facilitator response is missing 'verifyBodyTemplate'. The Facilitator may be running an incompatible version."),
             Self::MissingTransaction => write!(f, "Facilitator response is missing 'transaction'. The Facilitator may be running an incompatible version."),
+            Self::UntrustedFacilitator(origin) => write!(f, "Refusing to send a signing request to untrusted Facilitator origin {origin}. Add it explicitly with with_trusted_facilitator_origins if intended."),
+            Self::PaymentLimitExceeded { amount, maximum } => write!(f, "Payment amount {amount} exceeds configured maximum {maximum}."),
+            Self::InconsistentBuild(detail) => write!(f, "Facilitator returned an inconsistent payment build: {detail}"),
             Self::SignerNotInTransaction => write!(f, "Agent wallet pubkey not found in the unsigned transaction's account keys. The payer address may not match the wallet used to initialize this client."),
             Self::BlockhashExpired { expires_at } => write!(f, "The embedded blockhash expired at UNIX {expires_at}. Request a fresh build from the Facilitator."),
             Self::RateLimited { retry_after_secs } => write!(f, "Facilitator rate-limited this request. Retry after {retry_after_secs}s."),
@@ -94,6 +111,8 @@ pub struct X402AgentClient {
     http: Client,
     wallet: Keypair,
     pub auto_wrap_sol: bool,
+    trusted_facilitator_origins: HashSet<String>,
+    max_payment_amount: Option<u64>,
 }
 
 impl X402AgentClient {
@@ -102,11 +121,36 @@ impl X402AgentClient {
             http: Client::new(),
             wallet,
             auto_wrap_sol: false,
+            trusted_facilitator_origins: DEFAULT_TRUSTED_FACILITATOR_ORIGINS
+                .iter()
+                .map(|origin| (*origin).to_string())
+                .collect(),
+            max_payment_amount: None,
         }
     }
 
     pub fn with_auto_wrap_sol(mut self, enabled: bool) -> Self {
         self.auto_wrap_sol = enabled;
+        self
+    }
+
+    /// Replace the default official-origin allowlist for self-hosted deployments.
+    pub fn with_trusted_facilitator_origins<I, S>(mut self, origins: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.trusted_facilitator_origins = origins
+            .into_iter()
+            .map(Into::into)
+            .map(|origin: String| origin.trim_end_matches('/').to_string())
+            .collect();
+        self
+    }
+
+    /// Refuse 402 challenges above this amount, expressed in mint atomic units.
+    pub fn with_max_payment_amount(mut self, maximum: u64) -> Self {
+        self.max_payment_amount = Some(maximum);
         self
     }
 
@@ -132,6 +176,7 @@ impl X402AgentClient {
 
         let available_mints: Vec<String> = accepts
             .iter()
+            .filter(|candidate| is_compatible_exact_solana_rule(candidate))
             .filter_map(|a| {
                 a.get("asset")
                     .and_then(|x| x.as_str())
@@ -141,11 +186,30 @@ impl X402AgentClient {
 
         let rule = accepts
             .iter()
+            .filter(|candidate| is_compatible_exact_solana_rule(candidate))
             .find(|a| a.get("asset").and_then(|x| x.as_str()) == Some(preferred_mint))
             .ok_or_else(|| X402Error::MintNotAccepted {
                 requested_mint: preferred_mint.to_string(),
                 available_mints,
             })?;
+
+        let payment_amount = rule
+            .get("amount")
+            .and_then(Value::as_str)
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or_else(|| {
+                X402Error::InconsistentBuild(
+                    "accepted.amount must be a non-negative integer string".to_string(),
+                )
+            })?;
+        if let Some(maximum) = self.max_payment_amount {
+            if payment_amount > maximum {
+                return Err(X402Error::PaymentLimitExceeded {
+                    amount: payment_amount,
+                    maximum,
+                });
+            }
+        }
 
         let cap_url = rule
             .get("extra")
@@ -153,8 +217,24 @@ impl X402AgentClient {
             .and_then(|c| c.as_str())
             .ok_or(X402Error::MissingCapabilitiesUrl)?;
 
-        let fac_base_url = cap_url.replace("/capabilities", "");
-        let build_url = format!("{}/build-exact-payment-tx", fac_base_url);
+        let mut fac_base_url = reqwest::Url::parse(cap_url)
+            .map_err(|_| X402Error::UntrustedFacilitator(cap_url.to_string()))?;
+        let base_path = fac_base_url
+            .path()
+            .strip_suffix("/capabilities")
+            .ok_or_else(|| X402Error::UntrustedFacilitator(cap_url.to_string()))?
+            .to_string();
+        let origin = fac_base_url.origin().ascii_serialization();
+        if !self.trusted_facilitator_origins.contains(&origin) {
+            return Err(X402Error::UntrustedFacilitator(origin));
+        }
+        fac_base_url.set_path(&base_path);
+        fac_base_url.set_query(None);
+        fac_base_url.set_fragment(None);
+        let build_url = format!(
+            "{}/build-exact-payment-tx",
+            fac_base_url.as_str().trim_end_matches('/')
+        );
 
         let build_payload = serde_json::json!({
             "payer": self.wallet.pubkey().to_string(),
@@ -212,6 +292,8 @@ impl X402AgentClient {
             .cloned()
             .ok_or(X402Error::MissingVerifyTemplate)?;
 
+        assert_build_matches_rule(&verify_body, rule)?;
+
         let tx_b64 = build_json
             .get("transaction")
             .and_then(|t| t.as_str())
@@ -234,10 +316,20 @@ impl X402AgentClient {
                 .ok_or(X402Error::SignerNotInTransaction)?
         };
 
+        let num_required_signatures = vtx.message.header().num_required_signatures as usize;
+        if my_idx >= num_required_signatures
+            || vtx.message.static_account_keys().get(my_idx) != Some(&self.wallet.pubkey())
+        {
+            return Err(X402Error::SignerNotInTransaction);
+        }
+
         vtx.signatures[my_idx] = self.wallet.sign_message(&vtx.message.serialize());
         let signed_tx_b64 = STANDARD.encode(bincode::serialize(&vtx)?);
 
-        verify_body["paymentPayload"]["payload"]["transaction"] = Value::String(signed_tx_b64);
+        let transaction = verify_body
+            .pointer_mut("/paymentPayload/payload/transaction")
+            .ok_or(X402Error::MissingVerifyTemplate)?;
+        *transaction = Value::String(signed_tx_b64);
         let proof_b64 = STANDARD.encode(serde_json::to_string(&verify_body)?);
 
         // x402 v2 uses the `PAYMENT-SIGNATURE` header name (see the x402 HTTP
@@ -254,5 +346,100 @@ impl X402AgentClient {
             .await?;
 
         Ok(final_res)
+    }
+}
+
+fn is_compatible_exact_solana_rule(candidate: &Value) -> bool {
+    let scheme = candidate.get("scheme").and_then(Value::as_str);
+    let network = candidate.get("network").and_then(Value::as_str);
+    matches!(scheme, Some("exact" | "v2:solana:exact"))
+        && network.is_some_and(|value| value.starts_with("solana:"))
+}
+
+fn normalized_exact_scheme(value: Option<&str>) -> Option<&str> {
+    match value {
+        Some("v2:solana:exact") => Some("exact"),
+        other => other,
+    }
+}
+
+fn assert_build_matches_rule(template: &Value, rule: &Value) -> Result<(), X402Error> {
+    let built = template
+        .get("paymentRequirements")
+        .and_then(Value::as_object)
+        .ok_or(X402Error::MissingVerifyTemplate)?;
+    let selected = rule.as_object().ok_or_else(|| {
+        X402Error::InconsistentBuild("selected accepts[] entry is not an object".to_string())
+    })?;
+
+    for field in ["scheme", "network", "asset", "amount", "payTo"] {
+        let matches = if field == "scheme" {
+            normalized_exact_scheme(selected.get(field).and_then(Value::as_str))
+                == normalized_exact_scheme(built.get(field).and_then(Value::as_str))
+        } else {
+            selected.get(field) == built.get(field)
+        };
+        if !matches {
+            return Err(X402Error::InconsistentBuild(format!(
+                "Facilitator changed payment term '{field}' in verifyBodyTemplate"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selects_only_exact_solana_rules() {
+        assert!(is_compatible_exact_solana_rule(&serde_json::json!({
+            "scheme": "v2:solana:exact",
+            "network": "solana:mainnet"
+        })));
+        assert!(!is_compatible_exact_solana_rule(&serde_json::json!({
+            "scheme": "sla-escrow",
+            "network": "solana:mainnet"
+        })));
+        assert!(!is_compatible_exact_solana_rule(&serde_json::json!({
+            "scheme": "exact",
+            "network": "eip155:1"
+        })));
+    }
+
+    #[test]
+    fn accepts_scheme_alias_but_rejects_changed_terms() {
+        let selected = serde_json::json!({
+            "scheme": "v2:solana:exact",
+            "network": "solana:mainnet",
+            "asset": "mint",
+            "amount": "10",
+            "payTo": "vault"
+        });
+        let matching = serde_json::json!({
+            "paymentRequirements": {
+                "scheme": "exact",
+                "network": "solana:mainnet",
+                "asset": "mint",
+                "amount": "10",
+                "payTo": "vault"
+            }
+        });
+        assert_build_matches_rule(&matching, &selected).unwrap();
+
+        let changed = serde_json::json!({
+            "paymentRequirements": {
+                "scheme": "exact",
+                "network": "solana:mainnet",
+                "asset": "mint",
+                "amount": "11",
+                "payTo": "vault"
+            }
+        });
+        assert!(matches!(
+            assert_build_matches_rule(&changed, &selected),
+            Err(X402Error::InconsistentBuild(_))
+        ));
     }
 }
