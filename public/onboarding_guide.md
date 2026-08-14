@@ -95,4 +95,4 @@ universalsettle vault-status --seller <YOUR_WALLET_PUBKEY>
 - **PDA Seeds**: `["vault", seller_pubkey]`
 - **SOL Storage**: `["sol_storage", vault_pda]`
 
-For deep integration, refer to the [X402 SDK Documentation](https://sdk.miraland.dev) or the Facilitator `/openapi.json`.
+For deep integration, refer to the Facilitator `/openapi.json`.

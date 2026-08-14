@@ -102,4 +102,4 @@ Authoritative sources on the facilitator host you call:
 
 **Conceptually**, UniversalSettle-style deployments derive vault-related PDAs from the seller identity on-chain; the exact seeds and program IDs must match what **`supported`** advertises for that cluster.
 
-For deep integration, refer to the [X402 SDK Documentation](https://sdk.miraland.dev), **`GET /openapi.json`** on your facilitator, and [API reference](/api-reference) in this site.
+For deep integration, refer to the **`GET /openapi.json`** on your facilitator, and [API reference](/api-reference) in this site.
