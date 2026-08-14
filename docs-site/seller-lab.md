@@ -8,7 +8,7 @@ title: "Hands-on seller lab"
 
 This lab uses **preview.ipay.sh + Solana Devnet + Devnet USDC**. Production later uses **ipay.sh + Solana Mainnet + real USDC**.
 
-**Start here:** [x402-seller-lab-express](https://github.com/miraland-labs/x402/tree/main/x402-seller-lab-express) — not [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter) (Rust; same idea, different repo).
+**Start here:** [x402-seller-lab-express](https://github.com/miraland-labs/x402-seller-lab-express) — not [x402-seller-starter](https://github.com/miraland-labs/x402-seller-starter) (Rust; same idea, different repo).
 
 Full steps: repo **README.md**.
 
