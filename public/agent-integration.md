@@ -98,7 +98,7 @@ The `POST /sellers/provision-tx` response carries a `statusCode` enum so agents 
 
 If you receive payment for resources and want **Sovereign** status (90 bps fee tier — a 10 bps discount off the standard 100 bps rate) and correct **402 `accepts[]`** lines:
 
-1. **Discover rules**: [Onboarding guide](/onboarding_guide) — Sovereign vs facilitated (JIT) paths.
+1. **Discover rules**: [Onboarding guide](/onboarding_guide.md) — Sovereign vs facilitated (JIT) paths.
 2. **Preview (no wallet):** `GET /api/v1/facilitator/sellers/{YOUR_PUBKEY}/preview`. The `lifecycle` block tells you what stage to act on next.
 3. **Activate (on-chain):**
    - **Build**: `POST /api/v1/facilitator/sellers/provision-tx` with `{ "wallet": "<YOUR_PUBKEY>", "asset": "SOL" }` (or `USDC`, `USDT`, or a base58 SPL mint). Idempotent per `(wallet, asset)` (`statusCode: "ALREADY_PROVISIONED"` + no `transaction` when done).
@@ -124,7 +124,7 @@ Your HTTP **402** body must be valid x402 **v2**, but fields must match **this f
 2. **Bootstrap shape from discovery**  
    Call **`GET /api/v1/facilitator/supported`** (or read **`supported`** inside **`GET /capabilities`**). Copy the structure of a `kinds[]` entry for your rail (`v2:solana:exact` or `v2:solana:sla-escrow`): `network`, `scheme`, and especially **`extra`** (fee payer, program IDs, oracle lists, bank/config PDAs). Your **`accepts[]`** lines should be consistent with that shape so buyers can call builders without guessing.
 
-   **Several options in one 402:** x402 **`accepts[]`** is an **array**—each entry is a full payment requirement with its own **`payTo`**, **`asset`**, and metadata; the buyer returns **one** chosen line as **`accepted`**. This is how you advertise more than one token or rail on the same resource. With this facilitator’s **one asset per merchant wallet** rule, use **distinct seller pubkeys** per rail and give each `accepts[]` row the **`payTo`** / **`extra.merchantWallet`** from discovery for **that** key (see [Onboarding guide](/onboarding_guide) — *Policy: one payment asset per merchant wallet*).
+   **Several options in one 402:** x402 **`accepts[]`** is an **array**—each entry is a full payment requirement with its own **`payTo`**, **`asset`**, and metadata; the buyer returns **one** chosen line as **`accepted`**. This is how you advertise more than one token or rail on the same resource. With this facilitator’s **one asset per merchant wallet** rule, use **distinct seller pubkeys** per rail and give each `accepts[]` row the **`payTo`** / **`extra.merchantWallet`** from discovery for **that** key (see [Onboarding guide](/onboarding_guide.md) — *Policy: one payment asset per merchant wallet*).
 
 3. **`v2:solana:exact` (UniversalSettle)**  
    - **`payTo`**: Must identify the **vault rail** the facilitator checks on-chain (split-vault / SOL storage / vault ATA semantics per deployment). Use PDAs from **`GET /api/v1/facilitator/sellers/{your_seller_pubkey}/rails/exact`** (`vaultPda`, `solStoragePda`, etc.). Do **not** publish only your personal wallet as `payTo` unless that is explicitly the derived rail for your deployment.  
@@ -285,7 +285,7 @@ These are deliberate design choices that differentiate pr402 from a generic x402
 | **`/sellers/{wallet}/rails/{scheme}` (lightweight)** | Single-scheme, read-only lookup of `payTo` PDA. No auth, no DB. Sellers can call this from any language with a simple HTTP GET. |
 | **CORS `Access-Control-Expose-Headers`** | `PAYMENT-RESPONSE`, `X-Correlation-ID`, and `X-API-Version` are exposed so browser-based agents can read settlement results. |
 | **Toxic asset protection** | Configurable mint allowlist (`PR402_ALLOWED_PAYMENT_MINTS`) prevents settlement with worthless spam tokens. |
-| **Seller quick start** | Language-agnostic guide at [`/seller-quick-start`](/seller-quick-start) with pseudocode and examples in Rust, Python, JS/TS, and Go. |
+| **Seller quick start** | Language-agnostic guide at [`/seller-quick-start.md`](/seller-quick-start.md) with pseudocode and examples in Rust, Python, JS/TS, and Go. |
 
 ---
 
@@ -295,7 +295,7 @@ These are deliberate design choices that differentiate pr402 from a generic x402
 - **Facilitator — machine-readable:** `{FACILITATOR}/openapi.json` (OpenAPI 3.1) — primary contract for agents and codegen.
 - **Facilitator — Markdown mirror:** `{FACILITATOR}/agent-integration.md` (same runbook as this page when deployments stay aligned).
 - **Facilitator — other Markdown artifacts:** e.g. `{FACILITATOR}/seller-quick-start.md`, `{FACILITATOR}/onboarding_guide.md` (see deployment routing).
-- **Humans — docs site:** [API overview](/api-reference) · [Seller Quick Start](/seller-quick-start) · [Buyer Quick Start](/quickstart-buyer).
+- **Humans — docs site:** [API overview](https://docs.ipay.sh/api-reference.html) · [Seller Quick Start](https://docs.ipay.sh/seller-quick-start.html) · [Buyer Quick Start](https://docs.ipay.sh/quickstart-buyer.html).
 
 ---
 

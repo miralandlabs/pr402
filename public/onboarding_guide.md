@@ -91,8 +91,13 @@ universalsettle vault-status --seller <YOUR_WALLET_PUBKEY>
 ---
 
 ## 4. Technical Details
-- **Program ID**: `u4KywhcSonWTzeDrb5HNSHAeHqD2a3Fdn1xEHqmK8QC` (Devnet)
-- **PDA Seeds**: `["vault", seller_pubkey]`
-- **SOL Storage**: `["sol_storage", vault_pda]`
+
+**Program IDs, vault PDAs, and `extra` fields are deployment-specific** (Mainnet vs Devnet, program upgrades, facilitator config). Do **not** copy static addresses from documentation into production.
+
+Authoritative sources on the facilitator host you call:
+
+- **`GET /api/v1/facilitator/supported`** — copy **`programId`**, **`configAddress`**, and other **`extra`** keys from the `kinds[]` entry that matches your scheme (`v2:solana:exact`, `v2:solana:sla-escrow`).
+- **`GET /api/v1/facilitator/sellers/…/rails/exact`** — canonical **`payTo`** / rail PDAs for your seller wallet.
+- **`POST /api/v1/facilitator/payment-required/enrich`** — injects the same institutional **`payTo`** / **`extra`** into a naive 402 body.
 
 For deep integration, refer to the Facilitator `/openapi.json`.

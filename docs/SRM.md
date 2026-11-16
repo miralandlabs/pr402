@@ -39,7 +39,7 @@ Current: **`0.1.0`** (JSON Schema: [`public/x402-resources.schema.json`](../publ
 
 ## Multi-SKU rule
 
-The global pr402 index lists **entry-point resource URLs** only. Parameterized offers (mints, amounts, recipients) stay in seller-local catalogs and **intent-contract** documents — see [`x402-buy-spl-token`](../../x402-buy-spl-token) `GET /api/v1/buy-spl-token/intent-contract`.
+The global pr402 index lists **entry-point resource URLs** only. Parameterized offers (mints, amounts, recipients) stay in seller-local catalogs and **intent-contract** documents — see [`x402-buy-spl-token`](https://github.com/miralandlabs/x402-buy-spl-token) `GET /api/v1/buy-spl-token/intent-contract`.
 
 ## Authoritative pricing
 
