@@ -1,3 +1,5 @@
+> Facilitator copy of [Buyer Quick Start](https://docs.ipay.sh/quickstart-buyer.html). Edit `docs-site/quickstart-buyer.md`; keep this file in step with it.
+
 # Buyer Quick Start
 
 > You have a Solana wallet and got **HTTP 402** from a seller.
@@ -63,7 +65,7 @@ curl -sS "$BASE/api/v1/facilitator/providers?limit=50" | jq '.entries[] | {displ
 
 ### `sla-escrow`
 
-Use **`POST /build-sla-escrow-payment-tx`**. See [`/agent-integration.md`](/agent-integration.md) and the [oracles Buyer Guide](https://github.com/miraland-labs/oracles/blob/main/docs/BUYER_GUIDE.md).
+Use **`POST /build-sla-escrow-payment-tx`**. See [Agent integration](https://docs.ipay.sh/agent-integration.html) and the [oracles Buyer Guide](https://github.com/miraland-labs/oracles/blob/main/docs/BUYER_GUIDE.md).
 
 ---
 
@@ -89,4 +91,4 @@ curl -sS -X POST "$BASE/api/v1/facilitator/settle" \
 - After build, only replace the signed **`transaction`** in **`verifyBodyTemplate`**.
 - For **`sla-escrow`**, verify the seller's oracle authority before funding.
 
-**More:** [`/agent-integration.md`](/agent-integration.md) · **`GET /openapi.json`**
+**More:** [Agent integration](https://docs.ipay.sh/agent-integration.html) · **`GET /openapi.json`**

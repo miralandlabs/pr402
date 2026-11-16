@@ -1,3 +1,4 @@
+<!-- Facilitator copy: public/onboarding_guide.md. When this page changes, regenerate that copy (absolute https://docs.ipay.sh links; ipay.sh does not serve these routes). -->
 # X402 Resource Provider Onboarding Guide
 
 > **Buyer / payer agent?** Use the [Agent integration runbook](/agent-integration#buyer-agents-payers) (discover → build → sign → verify → settle).  

@@ -1,10 +1,8 @@
----
-title: "Seller shortcut · 5 steps"
----
+> Facilitator copy of [Quick reference · 5 steps](https://docs.ipay.sh/quickstart-seller.html). Edit `docs-site/quickstart-seller.md`; keep this file in step with it.
 
-# Seller shortcut · 5 steps
+# Quick reference · 5 steps
 
-> **Cheat-sheet.** This is the minimal 5-step flow for sellers who already understand x402. If you want the full walkthrough with diagrams, language examples, and rationale, use [Seller Quickstart](/seller-quick-start.md) instead.
+> **Cheat-sheet.** Minimal 5-step flow for sellers who already understand x402. **New seller?** → [Start here · Sellers](https://docs.ipay.sh/start-here.html) (prerequisites + pick rail). **Full walkthrough?** → [Integrate your API](https://docs.ipay.sh/seller-quick-start.html) (diagram + language examples).
 
 > **You have a Solana wallet and want to charge for API calls. Here's the fastest path.**
 
@@ -22,7 +20,7 @@ Use the same `$BASE` in your public docs, 402 bodies, buyer instructions, `/veri
 
 **What you do:** Copy the template, replace the placeholders (`resource.url`, `payTo`, `asset`, `amount`), and keep this JSON—you will POST it in Step 2.
 
-**This is not what buyers see.** In the abstract x402 spec, some examples show `payTo` as a seller’s wallet address. **pr402’s `exact` (UniversalSettle) rail does not settle to that model:** the facilitator and on-chain program expect buyers to pay into **your SplitVault rail PDAs**. The **`payTo`** you eventually publish must be the **vault PDA** returned from **`GET /api/v1/facilitator/sellers/{wallet}/rails/{scheme}`** or from **`POST /api/v1/facilitator/payment-required/enrich`** — see the full [seller guide](/seller-quick-start.md) (`payTo`: **`<YOUR_VAULT_PDA>`**, with **`extra.merchantWallet`** for your real wallet).
+**This is not what buyers see.** In the abstract x402 spec, some examples show `payTo` as a seller’s wallet address. **pr402’s `exact` (UniversalSettle) rail does not settle to that model:** the facilitator and on-chain program expect buyers to pay into **your SplitVault rail PDAs**. The **`payTo`** you eventually publish must be the **vault PDA** returned from **`GET /api/v1/facilitator/sellers/{wallet}/rails/{scheme}`** or from **`POST /api/v1/facilitator/payment-required/enrich`** — see the [full seller guide](https://docs.ipay.sh/seller-quick-start.html) (`payTo`: **`<YOUR_VAULT_PDA>`**, with **`extra.merchantWallet`** for your real wallet).
 
 The JSON below is only **input** to **`/payment-required/enrich`**: put your **normal Solana wallet pubkey** in `payTo` here so the facilitator can **replace** it with the correct vault PDA and inject `extra`. **Do not return this draft to buyers** — only the Step 2 response is buyer-facing.
 
@@ -117,19 +115,21 @@ Content-Type: application/json
 
 ## That's it!
 
-**No PDA derivation. No Solana SDK** for accepting payments — `/payment-required/enrich` handles institutional routing.
+**No PDA derivation. No on-chain setup. No Solana SDK.**
 
-**Full reference:** `GET /seller-quick-start.md` and `GET /openapi.json` on the facilitator.
+The `/payment-required/enrich` endpoint handles all institutional routing for you. For sovereign status (lower fees), see the full [onboarding guide](https://docs.ipay.sh/onboarding_guide.html).
 
----
+**Human-readable docs:** [Hands-on seller lab](https://docs.ipay.sh/seller-lab.html) · [Integrate your API](https://docs.ipay.sh/seller-quick-start.html) · [Start here · Sellers](https://docs.ipay.sh/start-here.html) · [API overview](https://docs.ipay.sh/api-reference.html).
+
+**Machine-readable:** `{FACILITATOR}/openapi.json` — substitute your facilitator `$BASE` (for example `https://ipay.sh` or `https://preview.ipay.sh`).
 
 ## Want to appear in the public directory?
 
-Payment integration (steps 1–5 above) is enough to **charge** for API calls. To **list** on [browse payable APIs](https://ipay.sh/#directory), follow the same **6-step go-live** on ipay.sh:
+Payment integration above is enough to **charge** for API calls. To **list** on [browse payable APIs](https://ipay.sh/#directory):
 
 | Step | What you do | Where |
 |------|-------------|-------|
-| 1 | API returns **402** when unpaid | Your server — **[Hands-on lab (Express · weather API)](https://docs.ipay.sh/seller-lab.html)** or this doc |
+| 1 | API returns **402** when unpaid | Your server — [Hands-on lab](https://docs.ipay.sh/seller-lab.html) or this page |
 | 2 | Preview vault *(optional)* | [ipay.sh → go live](https://ipay.sh/#seller-lifecycle) |
 | 3 | **Activate** payment vault | Same page, step 3 |
 | 4 | **Register shop** (API website + sign) | Same page, step 4 |
@@ -137,8 +137,6 @@ Payment integration (steps 1–5 above) is enough to **charge** for API calls. T
 | 6 | **We verify 402** | Automatic after step 5 |
 
 Steps 3–4 require a one-time on-chain **Activate** (wallet signs). Use [preview.ipay.sh](https://preview.ipay.sh) on Devnet first.
-
----
 
 ## Launch checklist
 

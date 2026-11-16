@@ -1,6 +1,8 @@
 ---
 title: "Integrate your API"
 ---
+<!-- Facilitator copy: public/seller-quick-start.md. When this page changes, regenerate that copy (absolute https://docs.ipay.sh links; ipay.sh does not serve these routes). -->
+
 
 # Integrate your API
 
