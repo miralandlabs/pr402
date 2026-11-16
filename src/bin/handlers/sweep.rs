@@ -211,6 +211,8 @@ fn timing_safe_eq(a: &str, b: &str) -> bool {
     a.as_bytes().ct_eq(b.as_bytes()).into()
 }
 
+// Response-as-Err is the early-return pattern for these cron auth helpers.
+#[allow(clippy::result_large_err)]
 async fn authorize_sweep(header: Option<&str>) -> Result<(), Response<Body>> {
     let expected = pr402::parameters::resolve_sweep_cron_token(pr402_db())
         .await

@@ -42,16 +42,6 @@
       "sellerTools": false
     },
     {
-      "id": "langchain",
-      "name": "langchain-pr402",
-      "registry": "pypi",
-      "install": "pip install langchain-pr402",
-      "audience": "Python LangChain agents",
-      "rails": ["exact"],
-      "sellerTools": false,
-      "url": "https://pypi.org/project/langchain-pr402/"
-    },
-    {
       "id": "rust-client",
       "name": "pr402-client",
       "registry": "crates.io",

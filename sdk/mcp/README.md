@@ -135,7 +135,6 @@ Runbook: [`/agent-integration.md`](https://ipay.sh/agent-integration.md) · Buye
 |-------|---------|
 | **MCP hosts** (this package) | `npm i @pr402/mcp-server` |
 | **Node scripts / embed** | `npm i @pr402/client` (`pr402-buy` CLI + `X402AgentClient`) |
-| **Python LangChain** | [`langchain-pr402`](https://pypi.org/project/langchain-pr402/) on PyPI |
 | **Rust** | [`pr402-client`](https://crates.io/crates/pr402-client) on crates.io |
 
 ## Maintainers — publish to npm

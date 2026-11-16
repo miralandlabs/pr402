@@ -118,6 +118,8 @@ async fn execute_sla_escrow_settle(
         .unwrap()
 }
 
+// Response-as-Err is the early-return pattern for these cron auth helpers.
+#[allow(clippy::result_large_err)]
 async fn authorize_sla_escrow_settle(header: Option<&str>) -> Result<(), Response<Body>> {
     let expected = pr402::parameters::resolve_sla_escrow_settle_cron_token(pr402_db())
         .await
