@@ -1,3 +1,4 @@
+<!-- Facilitator copy: public/quickstart-buyer.md. When this page changes, regenerate that copy (absolute https://docs.ipay.sh links; ipay.sh does not serve these routes). -->
 # Buyer Quick Start
 
 > You have a Solana wallet and got **HTTP 402** from a seller.

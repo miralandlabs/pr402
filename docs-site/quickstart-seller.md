@@ -1,6 +1,8 @@
 ---
 title: "Quick reference · 5 steps"
 ---
+<!-- Facilitator copy: public/quickstart-seller.md. When this page changes, regenerate that copy (absolute https://docs.ipay.sh links; ipay.sh does not serve these routes). -->
+
 
 # Quick reference · 5 steps
 
@@ -124,6 +126,21 @@ The `/payment-required/enrich` endpoint handles all institutional routing for yo
 **Human-readable docs:** [Hands-on seller lab](/seller-lab.html) · [Integrate your API](/seller-quick-start.html) · [Start here · Sellers](/start-here.html) · [API overview](/api-reference).
 
 **Machine-readable:** `{FACILITATOR}/openapi.json` — substitute your facilitator `$BASE` (for example `https://ipay.sh` or `https://preview.ipay.sh`).
+
+## Want to appear in the public directory?
+
+Payment integration above is enough to **charge** for API calls. To **list** on [browse payable APIs](https://ipay.sh/#directory):
+
+| Step | What you do | Where |
+|------|-------------|-------|
+| 1 | API returns **402** when unpaid | Your server — [Hands-on lab](/seller-lab.html) or this page |
+| 2 | Preview vault *(optional)* | [ipay.sh → go live](https://ipay.sh/#seller-lifecycle) |
+| 3 | **Activate** payment vault | Same page, step 3 |
+| 4 | **Register shop** (API website + sign) | Same page, step 4 |
+| 5 | **Add your API** | [/resources](https://ipay.sh/resources) |
+| 6 | **We verify 402** | Automatic after step 5 |
+
+Steps 3–4 require a one-time on-chain **Activate** (wallet signs). Use [preview.ipay.sh](https://preview.ipay.sh) on Devnet first.
 
 ## Launch checklist
 

@@ -1,3 +1,4 @@
+<!-- Facilitator copy: public/agent-integration.md. When this page changes, regenerate that copy (absolute https://docs.ipay.sh links; ipay.sh does not serve these routes). -->
 # Agent integration (pr402 facilitator)
 
 > **New here?** Start with the concise quick starts:

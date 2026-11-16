@@ -1,6 +1,8 @@
+> Facilitator copy of [X402 Resource Provider Onboarding Guide](https://docs.ipay.sh/onboarding_guide.html). Edit `docs-site/onboarding_guide.md`; keep this file in step with it.
+
 # X402 Resource Provider Onboarding Guide
 
-> **Buyer / payer agent?** Use the [Agent integration runbook](./agent-integration.md#buyer-agents-payers) (discover → build → sign → verify → settle).  
+> **Buyer / payer agent?** Use the [Agent integration runbook](https://docs.ipay.sh/agent-integration.html#buyer-agents-payers) (discover → build → sign → verify → settle).  
 > **Seller / resource provider?** You are in the right place.
 
 Welcome to the X402 Agentic Economy. This guide explains how to onboard as a Resource Provider (Seller) using the **UniversalSettle** protocol with Institutional Neutrality.
@@ -90,7 +92,7 @@ universalsettle vault-status --seller <YOUR_WALLET_PUBKEY>
 
 ---
 
-## 4. Technical Details
+## 4. Technical details
 
 **Program IDs, vault PDAs, and `extra` fields are deployment-specific** (Mainnet vs Devnet, program upgrades, facilitator config). Do **not** copy static addresses from documentation into production.
 
@@ -100,4 +102,6 @@ Authoritative sources on the facilitator host you call:
 - **`GET /api/v1/facilitator/sellers/…/rails/exact`** — canonical **`payTo`** / rail PDAs for your seller wallet.
 - **`POST /api/v1/facilitator/payment-required/enrich`** — injects the same institutional **`payTo`** / **`extra`** into a naive 402 body.
 
-For deep integration, refer to the Facilitator `/openapi.json`.
+**Conceptually**, UniversalSettle-style deployments derive vault-related PDAs from the seller identity on-chain; the exact seeds and program IDs must match what **`supported`** advertises for that cluster.
+
+For deep integration, refer to the **`GET /openapi.json`** on your facilitator, and [API reference](https://docs.ipay.sh/api-reference.html) in this site.
