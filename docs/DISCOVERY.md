@@ -91,5 +91,5 @@ Schema `1.2.0` adds optional pointers:
 
 ## Client libraries
 
-- `@pr402/discovery` — `searchResources`, `getResource`, `probeResource`
+- `@pr402/discovery` — `searchResources`, `getResource`, `probeResource` (source in [`sdk/discovery`](../sdk/discovery); not published to npm)
 - MCP tools: `pr402_search_resources`, `pr402_probe_resource`

@@ -105,7 +105,7 @@ Schema `1.2.0` adds optional pointers:
 
 ## Client libraries
 
-- `@pr402/discovery` — `searchResources`, `getResource`, `probeResource`
+- `@pr402/discovery` — `searchResources`, `getResource`, `probeResource` (source in [pr402 `sdk/discovery`](https://github.com/miralandlabs/pr402/tree/main/sdk/discovery); not published to npm)
 - MCP tools: `pr402_search_resources`, `pr402_probe_resource`
 
 See also [API reference](/api-reference) and live **`GET {BASE}/openapi.json`**.
